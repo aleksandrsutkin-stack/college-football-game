@@ -23,7 +23,6 @@ POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 POS_WEIGHTS = {"QB": 0.25, "RB": 0.10, "WR": 0.15, "OL": 0.15, "DL": 0.15, "LB": 0.10, "DB": 0.10}
 REGIONS = ["South", "North", "West", "Texas"]
 
-# Teams defined individually to prevent syntax errors
 TEAMS_DB = {}
 TEAMS_DB["Georgia"] = {"tier": 1, "budget": 24000000, "expect": 11, "coach": 9, "facilities": 10, "color": "#BA0C2F", "region": "South"}
 TEAMS_DB["Ohio State"] = {"tier": 1, "budget": 24000000, "expect": 11, "coach": 9, "facilities": 10, "color": "#BB0000", "region": "North"}
@@ -35,7 +34,6 @@ TEAMS_DB["Penn State"] = {"tier": 2, "budget": 16000000, "expect": 9, "coach": 8
 TEAMS_DB["Boise State"] = {"tier": 3, "budget": 7000000, "expect": 9, "coach": 6, "facilities": 5, "color": "#0033A0", "region": "West"}
 TEAMS_DB["San Jose State"] = {"tier": 4, "budget": 4500000, "expect": 6, "coach": 5, "facilities": 3, "color": "#0055A2", "region": "West"}
 
-# Opponent Pool defined safely
 OPPONENT_POOL = [
     "USC", "Michigan", "LSU", "Clemson", "Notre Dame", "Oklahoma", "Miami",
     "Tennessee", "Auburn", "Texas A&M", "Wisconsin", "UCLA", "Iowa",
@@ -90,24 +88,41 @@ class Utils:
 
     @staticmethod
     def get_bowl_name(rank):
-        if rank <= 12: return "CFP Playoff"
-        elif rank <= 18: return random.choice(BOWL_MAPPING["Elite"])
-        elif rank <= 25: return random.choice(BOWL_MAPPING["High"])
-        elif rank <= 40: return random.choice(BOWL_MAPPING["Mid"])
-        else: return random.choice(BOWL_MAPPING["Low"])
+        if rank <= 12:
+            return "CFP Playoff"
+        elif rank <= 18:
+            return random.choice(BOWL_MAPPING["Elite"])
+        elif rank <= 25:
+            return random.choice(BOWL_MAPPING["High"])
+        elif rank <= 40:
+            return random.choice(BOWL_MAPPING["Mid"])
+        else:
+            return random.choice(BOWL_MAPPING["Low"])
 
 class TeamEngine:
     @staticmethod
     def generate_initial_roster(tier):
-        if tier == 1: base = 90
-        elif tier == 2: base = 82
-        elif tier == 3: base = 74
-        else: base = 64
-        return {p: min(99, max(40, base + random.randint(0, 6))) for p in POSITIONS}
+        base = 64
+        if tier == 1:
+            base = 90
+        elif tier == 2:
+            base = 82
+        elif tier == 3:
+            base = 74
+        
+        roster = {}
+        for p in POSITIONS:
+            roster[p] = min(99, max(40, base + random.randint(0, 6)))
+        return roster
 
     @staticmethod
     def generate_star_player(position, tier):
-        base = 92 if tier == 1 else (86 if tier == 2 else 75)
+        base = 75
+        if tier == 1:
+            base = 92
+        elif tier == 2:
+            base = 86
+        
         return {
             "id": random.randint(10000, 99999),
             "name": Utils.generate_name(),
@@ -122,11 +137,9 @@ class TeamEngine:
         off_rating = sum(roster[p] for p in ["QB", "RB", "WR", "OL"]) / 4
         def_rating = sum(roster[p] for p in ["DL", "LB", "DB"]) / 3
         
-        # Coordinator Impact
         off_rating += (OC - 5) * 1.5 
         def_rating += (DC - 5) * 1.5 
         
-        # Star Impact
         star_boost = 0
         for s in stars:
             if s['trait'] == "🧠 General":
@@ -141,10 +154,9 @@ class SimEngine:
 
     @staticmethod
     def play_game(my_rating, opponent_name, coach_lvl, stars):
+        opp_rating = random.randint(70, 96)
         if "FCS" in opponent_name:
             opp_rating = random.randint(55, 65)
-        else:
-            opp_rating = random.randint(70, 96) 
         
         rating_diff = my_rating - opp_rating
         execution_bonus = (coach_lvl - 5) * 0.5 
@@ -196,7 +208,6 @@ class RecruitingEngine:
                 buying_power = amount / (800000 * inflation)
                 rating_gain = buying_power * scout_eff * prestige_bonus
                 
-                # Gem Logic
                 gem_prob = (scout_lvl * 4) / 100.0
                 if amount > (250000 * inflation) and random.random() < gem_prob:
                     rating_gain += 5 
@@ -210,4 +221,50 @@ class RecruitingEngine:
         return results
 
 # --- 5. SESSION STATE ---
-if
+if 'game_state' not in st.session_state:
+    st.session_state.game_state = 'SETUP'
+    st.session_state.year = 2026
+    st.session_state.budget = 0
+    st.session_state.prestige = 50
+    st.session_state.job_security = 100
+    st.session_state.booster_morale = 80
+    st.session_state.roster = {}
+    st.session_state.stars = []
+    st.session_state.hall_of_fame = []
+    st.session_state.history = []
+    st.session_state.record = {"w": 0, "l": 0}
+    st.session_state.career_stats = {"w": 0, "l": 0, "bowl_w": 0, "bowl_l": 0, "titles": 0}
+    st.session_state.facilities = {"Marketing": 1, "Training": 1, "Stadium": 1}
+    st.session_state.staff = {
+        "Coach": 5, "Scout": 5, "OC": 5, "DC": 5, 
+        "Coach_Sal": 3000000, "Scout_Sal": 500000, "OC_Sal": 1000000, "DC_Sal": 1000000
+    }
+    st.session_state.rank = 0
+    st.session_state.inflation = 1.0
+    st.session_state.team_color = "#333333"
+    st.session_state.current_headline = "Welcome to College Football!"
+    st.session_state.home_region = "South" 
+    st.session_state.talent_pool = {}
+    st.session_state.last_season_summary = {} 
+    st.session_state.postseason_result = {}
+
+# --- 6. VIEW CONTROLLERS ---
+
+def run_setup():
+    st.title("🏆 Gridiron CEO V4.9")
+    st.markdown("### Dynasty Mode")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        name = st.text_input("AD Name", "Coach Prime")
+    with col2:
+        diff = st.selectbox("Difficulty", ["Normal", "Hard", "Easy"])
+    
+    team = st.selectbox("Choose School", sorted(TEAMS_DB.keys()))
+    d = TEAMS_DB[team]
+    st.info(f"**{team}** ({d['region']}) | Tier {d['tier']} | Budget: {Utils.format_cash(d['budget'])}")
+    
+    if st.button("Start Career", type="primary"):
+        st.session_state.ad_name = name
+        st.session_state.team_name = team
+        st
