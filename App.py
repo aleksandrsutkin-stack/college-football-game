@@ -1,19 +1,3 @@
-This is a comprehensive update to the Streamlit App Code.
-
-I have fixed the Staff Upgrade buttons, built a dedicated Year-End Summary Screen, fixed the Recruiting Engine to clearly show "Hidden Gems" and Booster Money, and added the "Saban Career Score" metric.
-
-How to Update
-Open your app.py file.
-
-Delete everything currently in it.
-
-Paste the code below (it is the full, corrected game).
-
-Save and refresh your browser.
-
-Corrected Streamlit App Code
-Python
-
 import streamlit as st
 import random
 import time
