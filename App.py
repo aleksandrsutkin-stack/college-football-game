@@ -1,7 +1,3 @@
-Got it — I’ll apply the 5 realism upgrades (defense in team rating, linear talent gap, opponent Off/Def ratings, true home/away using opponent stadium, and a lightweight recruiting time-lag) and give you one complete copy-paste file named **College Football V1**.
-
-
-```python
 # College Football V1
 import streamlit as st
 import random
@@ -1304,4 +1300,3 @@ elif st.session_state.game_state == 'RECRUITING':
     show_recruiting()
 elif st.session_state.game_state == 'RETIREMENT':
     show_retirement()
-```
