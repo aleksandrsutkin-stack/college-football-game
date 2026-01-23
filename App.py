@@ -2,19 +2,17 @@ import streamlit as st
 import random
 import pandas as pd
 
-# --- 1. PAGE CONFIG (Must be first) ---
+# --- 1. PAGE CONFIG ---
 st.set_page_config(page_title="Gridiron CEO", page_icon="🏈", layout="centered")
 
-# --- 2. SIDEBAR & RESET ---
+# --- 2. SIDEBAR RESET ---
 with st.sidebar:
     st.header("Game Controls")
-    if st.button("⚠️ Hard Reset Game", type="primary"):
+    if st.button("⚠️ Hard Reset", type="primary"):
         st.session_state.clear()
         st.rerun()
-    st.markdown("---")
-    st.markdown("**Debug Status:** App Running ✅")
 
-# --- 3. CSS STYLING ---
+# --- 3. CSS ---
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
@@ -73,8 +71,10 @@ HEADLINES = [
 # --- 5. LOGIC FUNCTIONS ---
 
 def format_cash(amount):
-    if amount >= 1000000: return f"${amount/1000000:.1f}M"
-    elif amount >= 1000: return f"${amount/1000:.0f}K"
+    if amount >= 1000000:
+        return f"${amount/1000000:.1f}M"
+    elif amount >= 1000:
+        return f"${amount/1000:.0f}K"
     return f"${int(amount)}"
 
 def generate_name():
@@ -102,7 +102,8 @@ def generate_initial_roster(tier):
     elif tier == 2: base = 82
     elif tier == 3: base = 74
     roster = {}
-    for p in POSITIONS: roster[p] = min(99, max(40, base + random.randint(0, 6)))
+    for p in POSITIONS:
+        roster[p] = min(99, max(40, base + random.randint(0, 6)))
     return roster
 
 def generate_star_player(position, tier):
@@ -141,34 +142,45 @@ def play_game(my_rating, opponent_name, coach_lvl, stars, opponents_db):
     
     rating_diff = my_rating - opp_rating
     execution_bonus = (coach_lvl - 5) * 0.5 
-    
     trait_impact = 0
     clutch = False
+    
     for s in stars:
-        if s['trait'] == "😤 Enforcer": trait_impact += 2 
-        if s['trait'] == "❄️ Clutch" and abs(rating_diff) < 8: trait_impact += 5; clutch = True
+        if s['trait'] == "😤 Enforcer":
+            trait_impact += 2 
+        if s['trait'] == "❄️ Clutch" and abs(rating_diff) < 8:
+            trait_impact += 5
+            clutch = True
     
     final_margin = rating_diff + execution_bonus + trait_impact + random.randint(-8, 8)
     
-    my_score = 0; opp_score = 0; res = ""
+    my_score = 0
+    opp_score = 0
+    res = ""
+    
     if final_margin > 0:
-        res = "W"; my_score = int(28 + (final_margin / 1.5)); opp_score = int(my_score - final_margin)
+        res = "W"
+        my_score = int(28 + (final_margin / 1.5))
+        opp_score = int(my_score - final_margin)
     else:
-        res = "L"; opp_score = int(30 + (abs(final_margin) / 1.5)); my_score = int(opp_score - abs(final_margin))
+        res = "L"
+        opp_score = int(30 + (abs(final_margin) / 1.5))
+        my_score = int(opp_score - abs(final_margin))
         
-    return {
-        "result": res,
-        "score": f"{max(0,my_score)}-{max(0,opp_score)}",
-        "ovr": opp_rating,
-        "clutch": clutch,
-        "my_power": int(my_rating + execution_bonus + trait_impact)
-    }
+    result = {}
+    result["result"] = res
+    result["score"] = f"{max(0,my_score)}-{max(0,opp_score)}"
+    result["ovr"] = opp_rating
+    result["clutch"] = clutch
+    result["my_power"] = int(my_rating + execution_bonus + trait_impact)
+    return result
 
 def process_recruiting(budget, allocations, scout_lvl, prestige, inflation):
     results = {"roster_updates": {}, "gems": [], "cost": 0, "booster_bonus": 0}
     total_cost = sum(allocations.values())
+    if total_cost > budget:
+        return None
     
-    if total_cost > budget: return None
     results["cost"] = total_cost
     scout_eff = 1.0 + (scout_lvl / 10.0)
     prestige_bonus = 1.0 + (prestige / 200.0)
@@ -189,7 +201,7 @@ def process_recruiting(budget, allocations, scout_lvl, prestige, inflation):
             results["roster_updates"][pos] = rating_gain
     return results
 
-# --- 6. INITIALIZATION (Top Level) ---
+# --- 6. INITIALIZATION ---
 
 if 'game_state' not in st.session_state:
     st.session_state.game_state = 'SETUP'
@@ -222,11 +234,13 @@ if 'game_state' not in st.session_state:
 # --- 7. SCREEN FUNCTIONS ---
 
 def run_setup():
-    st.title("🏆 Gridiron CEO V10.0")
+    st.title("🏆 Gridiron CEO V11.0")
     st.markdown("### Dynasty Mode")
     col1, col2 = st.columns(2)
-    with col1: name = st.text_input("AD Name", "Coach Prime")
-    with col2: diff = st.selectbox("Difficulty", ["Normal", "Hard", "Easy"])
+    with col1:
+        name = st.text_input("AD Name", "Coach Prime")
+    with col2:
+        diff = st.selectbox("Difficulty", ["Normal", "Hard", "Easy"])
     
     team = st.selectbox("Choose School", sorted(TEAMS_DB.keys()))
     d = TEAMS_DB[team]
@@ -248,7 +262,8 @@ def run_setup():
         
         st.session_state.roster = generate_initial_roster(d['tier'])
         st.session_state.stars = [generate_star_player("QB", d['tier'])]
-        if d['tier'] < 4: st.session_state.stars.append(generate_star_player("LB", d['tier']))
+        if d['tier'] < 4:
+            st.session_state.stars.append(generate_star_player("LB", d['tier']))
         
         base = max(4, 9 - d['tier'])
         st.session_state.staff["Coach"] = base
@@ -259,7 +274,6 @@ def run_setup():
         st.session_state.team_rating = calculate_ovr(st.session_state.roster, st.session_state.stars, st.session_state.staff["OC"], st.session_state.staff["DC"])
         st.session_state.facilities['Training'] = d['facilities']
         
-        # Init Opponents
         for opp in OPPONENT_POOL:
             rtg = 75
             if opp in ["Michigan", "LSU", "Clemson", "Oklahoma", "Notre Dame"]: rtg = 90
@@ -307,19 +321,25 @@ def show_dashboard():
             if st.button("Upgrade HC"): 
                 cost = 3000000
                 if st.session_state.budget >= cost and st.session_state.staff['Coach'] < 10:
-                    st.session_state.budget -= cost; st.session_state.staff['Coach'] += 1; st.rerun()
+                    st.session_state.budget -= cost
+                    st.session_state.staff['Coach'] += 1
+                    st.rerun()
         with sc2:
             st.markdown(f"<div class='staff-card'><b>Off Coord (OC)</b><br>Lvl {st.session_state.staff['OC']}</div>", unsafe_allow_html=True)
             if st.button("Hire Better OC"): 
                 cost = 1500000
                 if st.session_state.budget >= cost and st.session_state.staff['OC'] < 10:
-                    st.session_state.budget -= cost; st.session_state.staff['OC'] += 1; st.rerun()
+                    st.session_state.budget -= cost
+                    st.session_state.staff['OC'] += 1
+                    st.rerun()
         with sc3:
             st.markdown(f"<div class='staff-card'><b>Def Coord (DC)</b><br>Lvl {st.session_state.staff['DC']}</div>", unsafe_allow_html=True)
             if st.button("Hire Better DC"): 
                 cost = 1500000
                 if st.session_state.budget >= cost and st.session_state.staff['DC'] < 10:
-                    st.session_state.budget -= cost; st.session_state.staff['DC'] += 1; st.rerun()
+                    st.session_state.budget -= cost
+                    st.session_state.staff['DC'] += 1
+                    st.rerun()
         
         st.markdown("---")
         st.subheader("Scouting Department")
@@ -328,10 +348,332 @@ def show_dashboard():
         if st.button(f"Upgrade Scout ($1.5M)"):
             cost = 1500000
             if st.session_state.budget >= cost and scout_lvl < 10:
-                st.session_state.budget -= cost; st.session_state.staff['Scout'] += 1; st.toast("Scout Upgraded!"); st.rerun()
+                st.session_state.budget -= cost
+                st.session_state.staff['Scout'] += 1
+                st.toast("Scout Upgraded!")
+                st.rerun()
         
         st.divider()
         st.subheader("Facilities")
         fc1, fc2, fc3 = st.columns(3)
         with fc1:
-            if
+            if st.button("Marketing ($1M)"):
+                if st.session_state.budget >= 1000000:
+                    st.session_state.budget -= 1000000
+                    st.session_state.facilities['Marketing'] += 1
+                    st.toast("Revenue +")
+                    st.rerun()
+        with fc2:
+            if st.button("Training ($3M)"):
+                if st.session_state.budget >= 3000000:
+                    st.session_state.budget -= 3000000
+                    st.session_state.facilities['Training'] += 1
+                    st.toast("Development +")
+                    st.rerun()
+        with fc3:
+            if st.button("Stadium ($10M)"):
+                if st.session_state.budget >= 10000000:
+                    st.session_state.budget -= 10000000
+                    st.session_state.facilities['Stadium'] += 1
+                    st.session_state.prestige += 5
+                    st.rerun()
+
+    with tab3:
+        if st.button("▶️ SIMULATE SEASON", type="primary"):
+            st.session_state.current_headline = random.choice(HEADLINES)
+            run_season()
+
+def run_season():
+    wins = 0
+    losses = 0
+    logs = []
+    schedule = generate_schedule(st.session_state.team_name)
+    bar = st.progress(0, "Kickoff...")
+    base_rating = st.session_state.team_rating
+    
+    for i, opp_name in enumerate(schedule):
+        # NO SLEEP - Instant Sim
+        res = play_game(
+            base_rating, 
+            opp_name, 
+            st.session_state.staff['Coach'], 
+            st.session_state.stars, 
+            st.session_state.opponents
+        )
+        
+        if res['result'] == "W": wins += 1
+        else: losses += 1
+        
+        if res['result'] == "W" and res['ovr'] > 90:
+            st.session_state.booster_morale = min(100, st.session_state.booster_morale + 2)
+        if res['result'] == "L" and res['ovr'] < 75:
+            st.session_state.booster_morale = max(0, st.session_state.booster_morale - 5)
+        
+        entry = {}
+        entry["Week"] = i+1
+        entry["Opponent"] = opp_name
+        entry["My Power"] = res['my_power']
+        entry["Opp Power"] = res['ovr']
+        entry["Result"] = res['result']
+        entry["Score"] = res['score']
+        logs.append(entry)
+        bar.progress((i+1)/12, f"Week {i+1}: {res['result']}")
+
+    st.session_state.record = {"w": wins, "l": losses}
+    st.session_state.season_logs = logs
+    score_val = (wins * 100) + st.session_state.team_rating
+    st.session_state.rank = max(1, 130 - int(score_val/12))
+    
+    rank = st.session_state.rank
+    wins = st.session_state.record['w']
+    outcome = {}
+    outcome["type"] = "None"
+    outcome["name"] = "None"
+    outcome["result"] = "None"
+    outcome["payout"] = 0
+    outcome["titles"] = 0
+    outcome["bowl_w"] = 0
+    outcome["bowl_l"] = 0
+    
+    if rank <= 12:
+        outcome["type"] = "Playoff"
+        outcome["name"] = "CFP Playoff"
+        outcome["payout"] = 5000000
+        if random.random() < 0.5:
+            outcome["result"] = "Won National Title"
+            outcome["titles"] = 1
+            outcome["bowl_w"] = 1
+            outcome["payout"] += 10000000
+        else:
+            outcome["result"] = "Lost in Playoffs"
+            outcome["bowl_l"] = 1
+    elif wins >= 6:
+        outcome["type"] = "Bowl"
+        outcome["name"] = get_bowl_name(rank)
+        outcome["payout"] = 2000000
+        if random.random() < 0.6:
+            outcome["result"] = "Won Bowl"
+            outcome["bowl_w"] = 1
+            outcome["payout"] += 2000000
+        else:
+            outcome["result"] = "Lost Bowl"
+            outcome["bowl_l"] = 1
+            
+    st.session_state.postseason_result = outcome
+    st.session_state.game_state = "POSTSEASON"
+    st.rerun()
+
+def show_postseason():
+    st.header(f"Season Finale: {st.session_state.record['w']}-{st.session_state.record['l']}")
+    st.dataframe(pd.DataFrame(st.session_state.season_logs), use_container_width=True)
+    
+    outcome = st.session_state.postseason_result
+    
+    if outcome["type"] == "Playoff":
+        if outcome["titles"] == 1:
+            st.balloons()
+            st.success(f"🏆 NATIONAL CHAMPIONS! ({outcome['name']})")
+            
+            amt = outcome['payout']
+            amt_str = format_cash(amt)
+            msg = f"Boosters Donated {amt_str}"
+            st.success(msg)
+        else:
+            st.warning(f"Eliminated in {outcome['name']}")
+    elif outcome["type"] == "Bowl":
+        if outcome["bowl_w"] == 1:
+            st.success(f"🏆 Won the {outcome['name']}!")
+            
+            amt = outcome['payout']
+            amt_str = format_cash(amt)
+            msg = f"Boosters Donated {amt_str}"
+            st.success(msg)
+        else:
+            st.error(f"Lost the {outcome['name']}")
+    else:
+        st.info("No Bowl Game Invited.")
+    
+    if st.button("View Year-End Summary"):
+        st.session_state.budget += outcome["payout"]
+        st.session_state.career_stats['w'] += st.session_state.record['w']
+        st.session_state.career_stats['l'] += st.session_state.record['l']
+        st.session_state.career_stats['titles'] += outcome["titles"]
+        st.session_state.career_stats['bowl_w'] += outcome["bowl_w"]
+        st.session_state.career_stats['bowl_l'] += outcome["bowl_l"]
+        
+        history_entry = {}
+        history_entry["Year"] = st.session_state.year
+        history_entry["Record"] = f"{st.session_state.record['w']}-{st.session_state.record['l']}"
+        history_entry["Rank"] = f"#{st.session_state.rank}"
+        history_entry["Result"] = outcome["result"]
+        
+        st.session_state.history.append(history_entry)
+        st.session_state.last_season_summary = history_entry 
+        
+        if st.session_state.record['w'] >= 10:
+            if random.random() < 0.3:
+                st.session_state.staff['OC'] = max(1, st.session_state.staff['OC'] - 3)
+            if random.random() < 0.3:
+                st.session_state.staff['DC'] = max(1, st.session_state.staff['DC'] - 3)
+            
+        st.session_state.game_state = "SUMMARY"
+        st.rerun()
+
+def show_year_summary():
+    st.title(f"📊 {st.session_state.year} Year-End Review")
+    
+    if st.session_state.last_season_summary:
+        entry = st.session_state.last_season_summary
+        st.markdown(f"""<div class="summary-card"><h3>Season Performance</h3><p><b>Record:</b> {entry.get('Record')} | <b>Final Rank:</b> {entry.get('Rank')}</p><p><b>Postseason:</b> {entry.get('Result')}</p></div>""", unsafe_allow_html=True)
+    
+    st.subheader("Program History")
+    df_hist = pd.DataFrame(st.session_state.history)
+    st.dataframe(df_hist, use_container_width=True)
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Career Wins", st.session_state.career_stats['w'])
+    c2.metric("Titles", st.session_state.career_stats['titles'])
+    c3.metric("Bowl Wins", st.session_state.career_stats['bowl_w'])
+    
+    st.divider()
+    col_next, col_retire = st.columns(2)
+    with col_next:
+        if st.button("➡️ Begin Offseason (Recruiting)", type="primary"):
+            st.session_state.game_state = "RECRUITING"
+            st.rerun()
+    with col_retire:
+        if st.session_state.year >= 2030:
+            if st.button("🌴 Retire & Hall of Fame"):
+                st.session_state.game_state = "RETIREMENT"
+                st.rerun()
+
+def show_recruiting():
+    st.header("🦅 Recruiting War Room")
+    if not st.session_state.talent_pool:
+        st.session_state.talent_pool = {pos: random.choice(REGIONS) for pos in POSITIONS}
+    
+    home = st.session_state.home_region
+    st.info(f"**Home Pipeline:** {home} Region | **Pipeline Bonus:** 1.5x Multiplier")
+    cols = st.columns(4)
+    for i, (pos, region) in enumerate(st.session_state.talent_pool.items()):
+        match = "✅" if region == home else "❌"
+        cols[i % 4].metric(f"{pos} Class", region, match)
+
+    current_spend = 0
+    for pos in POSITIONS:
+        if f"recruit_{pos}" in st.session_state:
+            current_spend += st.session_state[f"recruit_{pos}"]
+    remaining = st.session_state.budget - current_spend
+    
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    c1.metric("Total Budget", format_cash(st.session_state.budget))
+    c2.metric("Remaining", format_cash(remaining), delta_color="normal" if remaining >= 0 else "inverse")
+    st.markdown("---")
+
+    c1, c2 = st.columns(2)
+    allocations = {}
+    for i, pos in enumerate(POSITIONS):
+        with c1 if i%2==0 else c2:
+            allocations[pos] = st.number_input(f"{pos} Investment", 0, 10000000, 0, step=100000, key=f"recruit_{pos}")
+
+    st.markdown("###")
+    if st.button("✍️ Sign Class & Finalize", type="primary"):
+        if current_spend > st.session_state.budget: 
+            st.error("Over Budget!")
+        else:
+            # 1. RECRUITING
+            result = process_recruiting(st.session_state.budget, allocations, st.session_state.staff['Scout'], st.session_state.prestige, st.session_state.inflation)
+            st.session_state.budget -= result['cost']
+            
+            for pos, gain in result['roster_updates'].items():
+                st.session_state.roster[pos] = min(99, st.session_state.roster[pos] + gain)
+            
+            # 2. GRADUATION (User)
+            for pos in POSITIONS:
+                loss = random.randint(3, 8)
+                st.session_state.roster[pos] = max(40, st.session_state.roster[pos] - loss)
+            
+            # 3. GLOBAL SIM (Opponents)
+            for opp_team in st.session_state.opponents:
+                decay = random.randint(4, 8)
+                base_recruit = random.randint(2, 7)
+                if opp_team in ["Michigan", "LSU", "Clemson", "Oklahoma", "Notre Dame"]: base_recruit += 2
+                net_change = base_recruit - decay
+                st.session_state.opponents[opp_team] = max(60, min(99, st.session_state.opponents[opp_team] + net_change))
+
+            # 4. AGE STARS
+            active_stars = []
+            for s in st.session_state.stars:
+                if s['year'] == "Sr":
+                    st.toast(f"⭐ {s['name']} Graduated!")
+                else:
+                    if s['year'] == "Fr": s['year'] = "So"
+                    elif s['year'] == "So": s['year'] = "Jr"
+                    elif s['year'] == "Jr": s['year'] = "Sr"
+                    active_stars.append(s)
+            
+            if result['gems']:
+                st.balloons()
+                active_stars.extend(result['gems'])
+                for g in result['gems']:
+                    st.markdown(f"<div class='gem-box'>💎 <b>GEM FOUND:</b> {g['name']} ({g['pos']})</div>", unsafe_allow_html=True)
+            
+            st.session_state.stars = active_stars
+
+            if result['booster_bonus'] > 0:
+                st.session_state.budget += result['booster_bonus']
+                amt = result['booster_bonus']
+                amt_str = format_cash(amt)
+                msg = f"💰 Boosters donated {amt_str} for finding gems!"
+                st.success(msg)
+            
+            st.success("Recruiting Complete! Seniors Graduated.")
+            st.session_state.talent_pool = {} 
+            st.session_state.year += 1
+            
+            st.session_state.team_rating = calculate_ovr(st.session_state.roster, st.session_state.stars, st.session_state.staff['OC'], st.session_state.staff['DC'])
+            
+            booster_mult = st.session_state.booster_morale / 100.0
+            base_rev = 16000000 + (st.session_state.facilities['Marketing'] * 1000000)
+            st.session_state.budget += int(base_rev * booster_mult)
+            
+            time.sleep(2)
+            st.session_state.game_state = "DASHBOARD"
+            st.rerun()
+
+def show_retirement():
+    st.balloons()
+    st.title(f"🏛️ Hall of Fame: {st.session_state.ad_name}")
+    score = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
+    st.metric("Final Legacy Score", score, help="Saban = 600")
+    st.divider()
+    st.subheader("Career Timeline")
+    df_hist = pd.DataFrame(st.session_state.history)
+    st.dataframe(df_hist, use_container_width=True)
+    st.subheader("Trophy Case")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Titles", st.session_state.career_stats['titles'])
+    c2.metric("Bowl Wins", st.session_state.career_stats['bowl_w'])
+    c3.metric("Total Wins", st.session_state.career_stats['w'])
+    if st.button("Start New Career"):
+        st.session_state.clear()
+        st.rerun()
+
+# --- 7. MAIN CONTROLLER ---
+def main():
+    if st.session_state.game_state == 'SETUP':
+        run_setup()
+    elif st.session_state.game_state == 'DASHBOARD':
+        show_dashboard()
+    elif st.session_state.game_state == 'POSTSEASON':
+        show_postseason()
+    elif st.session_state.game_state == 'SUMMARY':
+        show_year_summary()
+    elif st.session_state.game_state == 'RECRUITING':
+        show_recruiting()
+    elif st.session_state.game_state == 'RETIREMENT':
+        show_retirement()
+
+if __name__ == "__main__":
+    main()
