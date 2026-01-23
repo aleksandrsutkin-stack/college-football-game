@@ -5,7 +5,7 @@ import pandas as pd
 
 # --- 1. CONFIG ---
 try:
-    st.set_page_config(page_title="College Football Mogul V5.2", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="College Football Mogul V6.1", page_icon="🏈", layout="wide")
 except:
     pass
 
@@ -21,29 +21,31 @@ st.markdown("""
     .security-warm { color: #fd7e14; font-weight: bold; }
     .security-hot { color: #dc3545; font-weight: bold; }
     
-    .game-card { padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .game-card-win { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
-    .game-card-loss { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
-    .game-card-pending { background-color: #f8f9fa; border-color: #dfdfdf; color: #333; }
-    .score-line { font-size: 1.2em; font-weight: bold; }
-    .stat-line { font-size: 0.85em; opacity: 0.9; margin-top: 4px; }
-    .home-label { color: #555; font-size: 0.8em; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-    .recruiting-intel { background-color: #e0f7fa; border-left: 5px solid #006064; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
+    /* Enhanced Game Card UI */
+    .game-card { padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.08); background: white; }
+    .game-card-win { border-left: 5px solid #28a745; }
+    .game-card-loss { border-left: 5px solid #dc3545; }
+    .game-card-pending { border-left: 5px solid #6c757d; background: #f8f9fa; }
     
-    .scout-report { background-color: #212529; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
-    .bracket-box { background-color: #2c3e50; color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    .card-score { font-size: 1.1em; font-weight: 800; }
+    .card-opp { font-weight: 600; color: #333; }
+    
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.85em; }
+    .stat-row { display: flex; justify-content: space-between; }
+    .stat-label { color: #666; font-weight: 500; }
+    .stat-val { font-weight: bold; color: #222; }
+    
+    .home-label { font-size: 0.7em; font-weight: bold; text-transform: uppercase; color: #888; letter-spacing: 1px; }
+    
+    .recruiting-intel { background-color: #e0f7fa; border-left: 5px solid #006064; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 
-REGION_STRENGTH = {
-    "South": 1.08,    
-    "Midwest": 1.05,  
-    "West": 1.05,     
-    "North": 1.02     
-}
+REGION_STRENGTH = {"South": 1.08, "Midwest": 1.05, "West": 1.05, "North": 1.02}
 
 TEAMS_DB = {
     "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F", "facilities": 10, "region": "South"},
@@ -101,7 +103,7 @@ BOWL_MAPPING = {
     "Low": ["Gasparilla Bowl", "Boca Raton Bowl", "Potato Bowl", "Frisco Bowl", "Myrtle Beach Bowl"]
 }
 
-# --- 4. LOGIC FUNCTIONS ---
+# --- 4. HELPER FUNCTIONS ---
 
 def format_cash(amount):
     if amount >= 1000000: return f"${amount/1000000:.1f}M"
@@ -120,8 +122,10 @@ def generate_coach_name():
 def generate_coach(role, tier):
     base = 8 if tier == 1 else (5 if tier == 2 else 1)
     cost = random.randint(4000000, 8000000) if tier == 1 else random.randint(500000, 3500000)
+    
     trait_pool = list(COACH_TRAITS.keys())
     if role == "OC": trait_pool = ["Air Raid", "Smashmouth", "Pro Style", "Recruiter", "Tactician"]
+    
     c = {
         "name": f"{generate_coach_name()}",
         "role": role,
@@ -179,12 +183,15 @@ def generate_hotspots():
     return hotspots
 
 def calculate_ovr(roster, stars, staff, facilities):
+    # Weighted Offense Calculation
     qb = roster["QB"]
     ol = roster["OL"]
     skill = (roster["RB"] + roster["WR"]) / 2
     off = (qb * 0.30) + (ol * 0.25) + (skill * 0.45)
+    
     defs = sum(roster[p] for p in ["DL","LB","DB"]) / 3
     
+    # Coordinator Impact
     if "OC" in staff: off += (staff["OC"]["off"] - 5) * 1.5
     if "DC" in staff: defs += (staff["DC"]["def"] - 5) * 1.5
     if "HC" in staff: 
@@ -206,15 +213,34 @@ def generate_schedule(my_team_name, my_conf):
     random.shuffle(schedule)
     return schedule
 
-def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game_plan="Normal", opp_coach_rating=5, is_home=False, is_rival=False, facilities_lvl=1, opp_coaches={}):
+# --- 4. SIMULATION ENGINE ---
+
+def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game_plan="Normal", opp_coaches={}, is_home=False, is_rival=False, facilities_lvl=1, my_roster={}):
+    
+    # Calculate Unit Ratings for Display
+    qb_rtg = my_roster["QB"]
+    opp_qb_rtg = int(opp_rating + random.randint(-5, 5)) # Est opponent QB
+    
+    # Weighted Offense for Game Logic
+    my_qb = my_roster["QB"]
+    my_ol = my_roster["OL"]
+    my_skill = (my_roster["RB"] + my_roster["WR"]) / 2
+    my_off_talent = (my_qb * 0.30) + (my_ol * 0.25) + (my_skill * 0.45)
+    my_def_talent = sum(my_roster[p] for p in ["DL","LB","DB"]) / 3
+    
+    # Estimate Opponent Units (simplified from OVR)
+    opp_off_talent = opp_rating
+    opp_def_talent = opp_rating
+    
+    # 1. Non-Linear Talent Gap
     talent_gap = (my_rating**2 - opp_rating**2) / 125.0
     
+    # 2. Scheme Matchup
     scheme_bonus = 0
     if COUNTERS[opp_schemes['Def']] == my_schemes['Off']: scheme_bonus += 4 
     elif COUNTERS[my_schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 4 
-    if COUNTERS[opp_schemes['Off']] == my_schemes['Def']: scheme_bonus += 4
-    elif COUNTERS[my_schemes['Def']] == opp_schemes['Off']: scheme_bonus -= 4
     
+    # 3. Staff Matchups
     my_oc = staff['OC']['off'] if 'OC' in staff else 3
     my_dc = staff['DC']['def'] if 'DC' in staff else 3
     opp_oc = opp_coaches.get('OC', 5)
@@ -224,9 +250,11 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
     def_adv = (my_dc - opp_oc) * 1.2
     coaching_delta = off_adv + def_adv
     
+    # 4. Synergy
     synergy = 0
     if 'OC' in staff and staff['OC']['trait'] == my_schemes['Off']: synergy += 2
     
+    # 5. Game Plan
     plan_bonus = 0
     variance_mult = 1.0
     if game_plan == "Aggressive":
@@ -236,11 +264,7 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
         variance_mult = 0.7 
         if my_rating > opp_rating: plan_bonus = 3 
         
-    exec_bonus = 0
-    if "HC" in staff:
-        if staff["HC"]["trait"] == "Tactician": exec_bonus += 3
-        exec_bonus += (staff["HC"]["off"] + staff["HC"]["def"] - 10) * 0.2
-
+    # 6. Home Field
     home_bonus = 0
     if is_home and facilities_lvl > 8: home_bonus = 3
     elif not is_home: 
@@ -248,10 +272,11 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
     
     if is_rival: variance_mult *= 2.0
 
+    # 7. MONTE CARLO SIMULATION
     sim_scores = []
     for _ in range(100):
         luck = random.gauss(0, 3.0 * variance_mult) 
-        margin = talent_gap + scheme_bonus + coaching_delta + synergy + plan_bonus + exec_bonus + home_bonus + luck
+        margin = talent_gap + scheme_bonus + coaching_delta + synergy + plan_bonus + home_bonus + luck
         sim_scores.append(margin)
     
     avg_margin = sum(sim_scores) / len(sim_scores)
@@ -259,12 +284,21 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
     my_score = int(28 + (avg_margin/1.5)) if avg_margin > 0 else int(24 + (avg_margin/1.5))
     opp_score = int(my_score - avg_margin)
     
+    # Unit Ratings for UI (Visual Only)
+    display_my_off = int(my_off_talent + (my_oc - 5))
+    display_my_def = int(my_def_talent + (my_dc - 5))
+    display_opp_off = int(opp_off_talent + (opp_oc - 5))
+    display_opp_def = int(opp_def_talent + (opp_dc - 5))
+    
     return {
         "result": "W" if avg_margin > 0 else "L", 
         "score": f"{max(0,my_score)}-{max(0,opp_score)}",
-        "my_power": int(my_rating + talent_gap + coaching_delta + home_bonus),
-        "opp_power": int(opp_rating),
-        "margin": avg_margin
+        "stats": {
+            "qb_duel": [qb_rtg, opp_qb_rtg],
+            "off_vs_def": [display_my_off, display_opp_def],
+            "def_vs_off": [display_my_def, display_opp_off],
+            "staff": [f"{my_oc}/{my_dc}", f"{opp_oc}/{opp_dc}"]
+        }
     }
 
 def process_recruiting(budget, allocations, staff, prestige, inflation):
@@ -311,8 +345,10 @@ if 'game_state' not in st.session_state:
     st.session_state.prestige = 50
     st.session_state.job_security = 80
     st.session_state.expected_wins = 6
+    st.session_state.school_tier = 3
+    st.session_state.tenure = 1
     st.session_state.roster = {p: 75 for p in POSITIONS}
-    st.session_state.active_transfers = {p: False for p in POSITIONS} # New Tracker
+    st.session_state.active_transfers = {p: False for p in POSITIONS}
     st.session_state.stars = []
     st.session_state.staff = {}
     st.session_state.facilities = {"Marketing": 1, "Training": 1, "Stadium": 1}
@@ -343,7 +379,6 @@ if 'game_state' not in st.session_state:
     st.session_state.season_simulated = False 
     st.session_state.hotspots = {}
 
-# REPAIR
 if 'active_transfers' not in st.session_state: st.session_state.active_transfers = {p: False for p in POSITIONS}
 if 'job_security' not in st.session_state: st.session_state.job_security = 80
 if 'expected_wins' not in st.session_state: st.session_state.expected_wins = 6
@@ -353,7 +388,7 @@ if 'hotspots' not in st.session_state: st.session_state.hotspots = generate_hots
 # --- 6. SCREENS ---
 
 def run_setup():
-    st.title("🏆 College Football Mogul V5.2")
+    st.title("🏆 College Football Mogul V6.1")
     st.markdown("### Dynasty Mode")
     col1, col2 = st.columns(2)
     with col1: name = st.text_input("AD Name", "Coach Prime")
@@ -378,6 +413,7 @@ def run_setup():
         st.session_state.team_rival = d.get('rival', 'None')
         st.session_state.home_region = d.get('region', 'South')
         st.session_state.expected_wins = expect
+        st.session_state.school_tier = d['tier']
         
         mult = 1.0
         if diff == "Hard": mult = 0.75
@@ -385,7 +421,8 @@ def run_setup():
             
         st.session_state.budget = int(d['budget'] * mult)
         st.session_state.prestige = 95 - (d['tier'] * 12)
-        st.session_state.job_security = 75
+        st.session_state.job_security = 80
+        st.session_state.tenure = 1
         st.session_state.active_transfers = {p: False for p in POSITIONS}
         
         st.session_state.roster = generate_initial_roster(d['tier'])
@@ -419,19 +456,20 @@ def run_setup():
         st.rerun()
 
 def show_dashboard():
-    if st.session_state.job_security < 25:
+    fire_threshold = 0 if st.session_state.tenure <= 2 else 30
+    if st.session_state.job_security < fire_threshold:
         st.session_state.game_state = "FIRED"
         st.rerun()
 
     saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
-    
     sec = st.session_state.job_security
     sec_class = "security-safe" if sec >= 75 else ("security-warm" if sec >= 40 else "security-hot")
     sec_text = "🛡️ Safe" if sec >= 75 else ("🔥 Warm" if sec >= 40 else "🚨 HOT SEAT")
+    if st.session_state.tenure <= 2: sec_text += " (Honeymoon)"
     
     st.markdown(f"""
     <div class='security-box'>
-        <span>Expectation: <b>{st.session_state.expected_wins}+ Wins</b></span> | 
+        <span>Year {st.session_state.tenure} | Expectation: <b>{st.session_state.expected_wins}+ Wins</b></span> | 
         <span>Job Security: <span class='{sec_class}'>{sec}% ({sec_text})</span></span>
     </div>
     """, unsafe_allow_html=True)
@@ -519,6 +557,7 @@ def show_dashboard():
         st.info(f"Conference: {st.session_state.team_conf}")
         if len(st.session_state.staff) < 4: st.error("Fill Staff first!"); return
         
+        # --- ENHANCED GAME CARDS ---
         if not st.session_state.season_simulated:
             st.write("### 📅 Upcoming Schedule")
             if not st.session_state.schedule:
@@ -531,14 +570,30 @@ def show_dashboard():
                     opp = st.session_state.schedule[i]
                     opp_ovr = st.session_state.opponents_db.get(opp, {}).get('OVR', 75)
                     loc = "HOME" if i%2==0 else "AWAY"
-                    st.markdown(f"""<div class="game-card game-card-pending"><span class="home-label">{loc}</span><br><b>Week {i+1}</b> vs {opp}<br><span class="stat-line">OVR: {opp_ovr}</span></div>""", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class="game-card game-card-pending">
+                        <div class="card-header">
+                            <span class="home-label">{loc}</span>
+                            <span class="card-opp">Week {i+1} vs {opp}</span>
+                        </div>
+                        <span class="stat-line">OVR: {opp_ovr}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
             with c2:
                 st.caption("Second Half")
                 for i in range(6, 12):
                     opp = st.session_state.schedule[i]
                     opp_ovr = st.session_state.opponents_db.get(opp, {}).get('OVR', 75)
                     loc = "HOME" if i%2==0 else "AWAY"
-                    st.markdown(f"""<div class="game-card game-card-pending"><span class="home-label">{loc}</span><br><b>Week {i+1}</b> vs {opp}<br><span class="stat-line">OVR: {opp_ovr}</span></div>""", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class="game-card game-card-pending">
+                        <div class="card-header">
+                            <span class="home-label">{loc}</span>
+                            <span class="card-opp">Week {i+1} vs {opp}</span>
+                        </div>
+                        <span class="stat-line">OVR: {opp_ovr}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             if st.button("▶️ SIMULATE SEASON", type="primary"):
                 run_season()
@@ -546,20 +601,33 @@ def show_dashboard():
             st.write("### 📊 Season Results")
             logs = st.session_state.season_logs
             c1, c2 = st.columns(2)
-            with c1:
-                st.caption("First Half")
-                for i in range(6):
-                    log = logs[i]
-                    is_win = "W" in log['Score']
-                    css = "game-card-win" if is_win else "game-card-loss"
-                    st.markdown(f"""<div class="game-card {css}"><b>Week {log['Week']}</b> vs {log['Opponent']}<br><div class="score-line">{log['Score']}</div><div class="stat-line">OVR: {log['My Power']} vs {log['Opp Power']}</div></div>""", unsafe_allow_html=True)
-            with c2:
-                st.caption("Second Half")
-                for i in range(6, 12):
-                    log = logs[i]
-                    is_win = "W" in log['Score']
-                    css = "game-card-win" if is_win else "game-card-loss"
-                    st.markdown(f"""<div class="game-card {css}"><b>Week {log['Week']}</b> vs {log['Opponent']}<br><div class="score-line">{log['Score']}</div><div class="stat-line">OVR: {log['My Power']} vs {log['Opp Power']}</div></div>""", unsafe_allow_html=True)
+            
+            for col_idx, col in enumerate([c1, c2]):
+                with col:
+                    start = 0 if col_idx == 0 else 6
+                    end = 6 if col_idx == 0 else 12
+                    st.caption("First Half" if col_idx == 0 else "Second Half")
+                    
+                    for i in range(start, end):
+                        log = logs[i]
+                        stats = log['Stats']
+                        is_win = "W" in log['Score']
+                        css = "game-card-win" if is_win else "game-card-loss"
+                        
+                        st.markdown(f"""
+                        <div class="game-card {css}">
+                            <div class="card-header">
+                                <span class="card-score">{log['Score']}</span>
+                                <span class="card-opp">vs {log['Opponent']}</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-row"><span class="stat-label">🔥 QB Duel:</span> <span class="stat-val">{stats['qb_duel'][0]} vs {stats['qb_duel'][1]}</span></div>
+                                <div class="stat-row"><span class="stat-label">⚔️ Off vs Def:</span> <span class="stat-val">{stats['off_vs_def'][0]} vs {stats['off_vs_def'][1]}</span></div>
+                                <div class="stat-row"><span class="stat-label">🛡️ Def vs Off:</span> <span class="stat-val">{stats['def_vs_off'][0]} vs {stats['def_vs_off'][1]}</span></div>
+                                <div class="stat-row"><span class="stat-label">🧠 Staff:</span> <span class="stat-val">{stats['staff'][0]} vs {stats['staff'][1]}</span></div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
             
             st.success(f"Regular Season Complete! Record: {st.session_state.record['w']}-{st.session_state.record['l']}")
             if st.button("➡️ Proceed to Postseason", type="primary"):
@@ -572,6 +640,11 @@ def run_season():
     my_oc = st.session_state.staff['OC']['off'] if 'OC' in st.session_state.staff else 3
     my_dc = st.session_state.staff['DC']['def'] if 'DC' in st.session_state.staff else 3
     
+    patience = 1.0
+    if st.session_state.tenure <= 2: patience = 0.5 
+    elif st.session_state.school_tier == 4: patience = 0.5 
+    elif st.session_state.school_tier == 1: patience = 1.5 
+    
     bar = st.progress(0, "Simulating Games...")
     for i, opp_name in enumerate(schedule):
         opp_data = st.session_state.opponents_db.get(opp_name)
@@ -580,7 +653,7 @@ def run_season():
         is_home = (i % 2 == 0)
         my_facilities = st.session_state.facilities.get("Stadium", 1)
         
-        res = play_game(st.session_state.team_rating, opp_data["OVR"], st.session_state.staff, st.session_state.stars, st.session_state.my_schemes, opp_schemes, "Normal", opp_data["Coaches"], is_home, is_rival, my_facilities)
+        res = play_game(st.session_state.team_rating, opp_data["OVR"], st.session_state.staff, st.session_state.stars, st.session_state.my_schemes, opp_schemes, "Normal", opp_data["Coaches"], is_home, is_rival, my_facilities, st.session_state.roster)
         
         if res['result'] == "W": 
             wins += 1
@@ -590,10 +663,14 @@ def run_season():
         else: 
             losses += 1
             st.session_state.momentum = 0
-            st.session_state.job_security = max(0, st.session_state.job_security - 3)
-            if is_rival: st.session_state.job_security = max(0, st.session_state.job_security - 8)
+            loss_hit = 3 * patience
+            st.session_state.job_security = max(0, int(st.session_state.job_security - loss_hit))
             
-        logs.append({"Week": i+1, "Opponent": opp_name, "Score": f"{res['result']} {res['score']}", "My Power": res['my_power'], "Opp Power": res['opp_power']})
+        logs.append({
+            "Week": i+1, "Opponent": opp_name, 
+            "Score": f"{res['result']} {res['score']}", 
+            "Stats": res['stats']
+        })
         bar.progress((i+1)/12)
 
     st.session_state.record = {"w": wins, "l": losses}
@@ -659,7 +736,7 @@ def show_postseason():
             st.markdown(f"""<div class='scout-report'><b>MY TEAM</b><br>OVR: {st.session_state.team_rating}<br>Staff: OC {my_oc} / DC {my_dc}<br>Offense: {st.session_state.my_schemes['Off']}<br>Defense: {st.session_state.my_schemes['Def']}</div>""", unsafe_allow_html=True)
         game_plan = st.selectbox("Game Plan", ["Balanced", "Aggressive", "Conservative"], help="Aggressive: High Risk/Reward. Conservative: Play safe.")
         if st.button("PLAY GAME 🏈"):
-            res = play_game(st.session_state.team_rating, opp_data['OVR'], st.session_state.staff, st.session_state.stars, st.session_state.my_schemes, {"Off":opp_data['Off'],"Def":opp_data['Def']}, game_plan, opp_data['Coaches'], False, False, 10)
+            res = play_game(st.session_state.team_rating, opp_data['OVR'], st.session_state.staff, st.session_state.stars, st.session_state.my_schemes, {"Off":opp_data['Off'],"Def":opp_data['Def']}, game_plan, opp_data['Coaches'], False, False, 10, st.session_state.roster)
             st.session_state.match_history.append(f"{st.session_state.ps_mode}: {res['result']} {res['score']} vs {st.session_state.current_matchup_name}")
             if res['result'] == "W":
                 st.balloons()
@@ -699,7 +776,6 @@ def show_postseason():
         rev = 15000000 + (st.session_state.facilities['Marketing'] * 1000000)
         st.success(f"Season Complete. Revenue Generated: {format_cash(rev)}")
         
-        # --- DYNAMIC BOOSTER PAYOUT ---
         delta = wins - st.session_state.expected_wins
         if delta > 0:
             bonus = delta * 1000000
@@ -710,7 +786,11 @@ def show_postseason():
             cut = abs(delta) * 500000
             st.error(f"📉 MISSED EXPECTATIONS. Budget cut by {format_cash(cut)}")
             st.session_state.budget -= cut
-            st.session_state.job_security = max(0, st.session_state.job_security - 15)
+            if st.session_state.tenure <= 2:
+                st.info("🔰 Rebuild Protection: Job Security hit reduced.")
+                st.session_state.job_security = max(0, st.session_state.job_security - 5)
+            else:
+                st.session_state.job_security = max(0, st.session_state.job_security - 15)
         
         if st.session_state.team_conf == "G5" and rank <= 12:
             st.success("🌟 BIG 12 INVITE RECEIVED!")
@@ -765,7 +845,6 @@ def show_portal():
                     new_star = {"id": random.randint(1000,9999), "name": p['name'], "pos": p['pos'], "rating": p['rating'], "year": p.get('year', 'Sr'), "trait": p.get('trait', 'None')}
                     st.session_state.stars.append(new_star)
                     st.session_state.roster[p['pos']] = max(st.session_state.roster[p['pos']], p['rating'])
-                    # FLAG AS TRANSFER
                     st.session_state.active_transfers[p['pos']] = True 
                     st.session_state.portal_players.pop(i)
                     st.toast("Signed!")
@@ -803,16 +882,12 @@ def show_recruiting():
         res = process_recruiting(st.session_state.budget, allocs, st.session_state.staff, st.session_state.prestige, st.session_state.inflation)
         if not res: st.error("Over Budget!"); return
         st.session_state.budget -= res['cost']
-        
-        # APPLY RESULTS WITH RENTAL CLIFF LOGIC
         for p, g in res['roster_updates'].items():
-            base_loss = random.randint(2, 5) # Normal graduation
+            base_loss = random.randint(2, 5)
             if st.session_state.active_transfers.get(p):
-                base_loss = 12 # Rental Cliff
-                st.session_state.active_transfers[p] = False # Reset flag
-            
+                base_loss = 12
+                st.session_state.active_transfers[p] = False
             st.session_state.roster[p] = max(40, min(99, st.session_state.roster[p] - base_loss + g))
-            
         if res['gems']: st.session_state.stars.extend(res['gems'])
         if res['booster_bonus'] > 0:
             st.session_state.budget += res['booster_bonus']
@@ -827,6 +902,7 @@ def show_recruiting():
                 active_stars.append(s)
         st.session_state.stars = active_stars
         st.session_state.year += 1
+        st.session_state.tenure += 1
         st.session_state.inflation *= 1.05 
         st.session_state.schedule = generate_schedule(st.session_state.team_name, st.session_state.team_conf)
         st.session_state.hotspots = generate_hotspots()
