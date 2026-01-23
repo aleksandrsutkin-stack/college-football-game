@@ -3,10 +3,39 @@ import random
 import time
 import pandas as pd
 
-# --- 1. PAGE CONFIG ---
+# --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Gridiron CEO", page_icon="🏈", layout="centered")
 
-# --- 2. CSS STYLING ---
+# --- 2. SESSION STATE INITIALIZATION (Must be at the top) ---
+if 'game_state' not in st.session_state:
+    st.session_state.game_state = 'SETUP'
+    st.session_state.year = 2026
+    st.session_state.budget = 0
+    st.session_state.prestige = 50
+    st.session_state.job_security = 100
+    st.session_state.booster_morale = 80
+    st.session_state.roster = {}
+    st.session_state.stars = []
+    st.session_state.hall_of_fame = []
+    st.session_state.history = []
+    st.session_state.record = {"w": 0, "l": 0}
+    st.session_state.career_stats = {"w": 0, "l": 0, "bowl_w": 0, "bowl_l": 0, "titles": 0}
+    st.session_state.facilities = {"Marketing": 1, "Training": 1, "Stadium": 1}
+    st.session_state.staff = {"Coach": 5, "Scout": 5, "OC": 5, "DC": 5}
+    st.session_state.rank = 0
+    st.session_state.inflation = 1.0
+    st.session_state.team_color = "#333333"
+    st.session_state.team_name = "Team"
+    st.session_state.current_headline = "Welcome to College Football!"
+    st.session_state.home_region = "South" 
+    st.session_state.talent_pool = {}
+    st.session_state.last_season_summary = {} 
+    st.session_state.postseason_result = {}
+    st.session_state.opponents = {} 
+    st.session_state.season_logs = []
+    st.session_state.team_rating = 0
+
+# --- 3. CSS ---
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
@@ -18,7 +47,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATA CONFIGURATION ---
+# --- 4. GAME DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 REGIONS = ["South", "North", "West", "Texas"]
 
@@ -62,7 +91,7 @@ HEADLINES = [
     "Polls: Voters skeptical of strength of schedule."
 ]
 
-# --- 4. HELPER FUNCTIONS ---
+# --- 5. LOGIC FUNCTIONS ---
 
 def format_cash(amount):
     if amount >= 1000000: return f"${amount/1000000:.1f}M"
@@ -75,6 +104,27 @@ def generate_name():
     return f"{random.choice(first)} {random.choice(last)}"
 
 def calculate_saban_score(career_stats, prestige):
-    wins = career_stats['w'] * 1
-    bowls = career_stats['bowl_w'] * 5
-    titles = career_stats['
+    return int((career_stats['w'] * 1) + (career_stats['bowl_w'] * 5) + (career_stats['titles'] * 50) + (prestige * 0.5))
+
+def get_bowl_name(rank):
+    if rank <= 12: return "CFP Playoff"
+    elif rank <= 18: return random.choice(BOWL_MAPPING["Elite"])
+    elif rank <= 25: return random.choice(BOWL_MAPPING["High"])
+    elif rank <= 40: return random.choice(BOWL_MAPPING["Mid"])
+    else: return random.choice(BOWL_MAPPING["Low"])
+
+def generate_initial_roster(tier):
+    base = 64
+    if tier == 1: base = 90
+    elif tier == 2: base = 82
+    elif tier == 3: base = 74
+    roster = {}
+    for p in POSITIONS: roster[p] = min(99, max(40, base + random.randint(0, 6)))
+    return roster
+
+def generate_star_player(position, tier):
+    base = 75
+    if tier == 1: base = 92
+    elif tier == 2: base = 86
+    star = {}
+    star
