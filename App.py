@@ -5,7 +5,7 @@ import pandas as pd
 
 # --- 1. CONFIG ---
 try:
-    st.set_page_config(page_title="College Football Mogul V6.1", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="College Football Mogul V6.3", page_icon="🏈", layout="wide")
 except:
     pass
 
@@ -15,13 +15,11 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
     .news-ticker { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 15px; border: 1px solid #ffeeba; }
     
-    /* Security Meter */
     .security-box { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; text-align: center; margin-bottom: 10px; }
     .security-safe { color: #28a745; font-weight: bold; }
     .security-warm { color: #fd7e14; font-weight: bold; }
     .security-hot { color: #dc3545; font-weight: bold; }
     
-    /* Enhanced Game Card UI */
     .game-card { padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.08); background: white; }
     .game-card-win { border-left: 5px solid #28a745; }
     .game-card-loss { border-left: 5px solid #dc3545; }
@@ -38,33 +36,51 @@ st.markdown("""
     
     .home-label { font-size: 0.7em; font-weight: bold; text-transform: uppercase; color: #888; letter-spacing: 1px; }
     
+    .scout-report { background-color: #212529; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+    .bracket-box { background-color: #2c3e50; color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
+    
     .recruiting-intel { background-color: #e0f7fa; border-left: 5px solid #006064; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATA ---
+# --- 3. DATA & REAL WORLD MAPPINGS ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 
 REGION_STRENGTH = {"South": 1.08, "Midwest": 1.05, "West": 1.05, "North": 1.02}
 
-TEAMS_DB = {
-    "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F", "facilities": 10, "region": "South"},
-    "Ohio State": {"tier": 1, "budget": 24000000, "conf": "Big Ten", "rival": "Michigan", "color": "#BB0000", "facilities": 10, "region": "Midwest"},
-    "Texas": {"tier": 1, "budget": 25000000, "conf": "SEC", "rival": "Oklahoma", "color": "#BF5700", "facilities": 10, "region": "South"},
-    "Alabama": {"tier": 1, "budget": 22000000, "conf": "SEC", "rival": "Georgia", "color": "#9E1B32", "facilities": 9, "region": "South"},
-    "Oregon": {"tier": 1, "budget": 20000000, "conf": "Big Ten", "rival": "Washington", "color": "#154733", "facilities": 10, "region": "West"},
-    "Florida St": {"tier": 2, "budget": 15000000, "conf": "ACC", "rival": "Clemson", "color": "#782F40", "facilities": 8, "region": "South"},
-    "Penn State": {"tier": 2, "budget": 16000000, "conf": "Big Ten", "rival": "Ohio State", "color": "#041E42", "facilities": 8, "region": "Midwest"},
-    "Boise State": {"tier": 3, "budget": 7000000, "conf": "G5", "rival": "Fresno St", "color": "#0033A0", "facilities": 5, "region": "West"},
-    "San Jose State": {"tier": 4, "budget": 4500000, "conf": "G5", "rival": "San Diego St", "color": "#0055A2", "facilities": 3, "region": "West"}
+# Real World 2026 Starting State (Rankings + Talent Composite)
+REAL_WORLD_INIT = {
+    "Indiana": {"Prestige": 99, "Talent": 86, "Tier": 1},
+    "Ohio State": {"Prestige": 95, "Talent": 94, "Tier": 1},
+    "Miami": {"Prestige": 94, "Talent": 89, "Tier": 1},
+    "Oregon": {"Prestige": 93, "Talent": 92, "Tier": 1},
+    "Georgia": {"Prestige": 92, "Talent": 96, "Tier": 1},
+    "Ole Miss": {"Prestige": 91, "Talent": 88, "Tier": 1},
+    "Texas Tech": {"Prestige": 90, "Talent": 84, "Tier": 2},
+    "Texas A&M": {"Prestige": 89, "Talent": 91, "Tier": 2},
+    "Alabama": {"Prestige": 85, "Talent": 95, "Tier": 1},
+    "Notre Dame": {"Prestige": 87, "Talent": 90, "Tier": 1},
+    "BYU": {"Prestige": 86, "Talent": 82, "Tier": 2},
+    "Texas": {"Prestige": 84, "Talent": 97, "Tier": 1},
+    "Oklahoma": {"Prestige": 83, "Talent": 90, "Tier": 2},
+    "Utah": {"Prestige": 82, "Talent": 85, "Tier": 2},
+    "Vanderbilt": {"Prestige": 80, "Talent": 78, "Tier": 3},
+    "USC": {"Prestige": 79, "Talent": 89, "Tier": 2},
+    "Michigan": {"Prestige": 78, "Talent": 91, "Tier": 2},
+    "Penn State": {"Prestige": 77, "Talent": 88, "Tier": 2},
+    "LSU": {"Prestige": 76, "Talent": 92, "Tier": 2},
+    "Florida St": {"Prestige": 70, "Talent": 87, "Tier": 3},
+    "Colorado": {"Prestige": 75, "Talent": 85, "Tier": 2},
+    "Boise State": {"Prestige": 72, "Talent": 79, "Tier": 3},
+    "Tulane": {"Prestige": 74, "Talent": 77, "Tier": 3}
 }
 
 CONFERENCES = {
-    "SEC": ["Georgia", "Alabama", "Texas", "LSU", "Tennessee", "Oklahoma", "Auburn", "Texas A&M"],
-    "Big Ten": ["Ohio State", "Oregon", "Penn State", "Michigan", "USC", "Wisconsin", "Iowa", "Washington"],
-    "ACC": ["Florida St", "Clemson", "Miami", "Stanford", "Cal", "Louisville", "UNC", "Virginia Tech"],
-    "Big 12": ["Utah", "TCU", "Baylor", "Texas Tech", "Arizona State", "Colorado", "Kansas State", "Oklahoma St"],
-    "G5": ["Boise State", "San Jose State", "San Diego St", "Nevada", "Wyoming", "Air Force", "Colorado St", "Fresno St"]
+    "SEC": ["Georgia", "Alabama", "Texas", "LSU", "Tennessee", "Oklahoma", "Auburn", "Texas A&M", "Ole Miss", "Vanderbilt", "Florida"],
+    "Big Ten": ["Ohio State", "Oregon", "Penn State", "Michigan", "USC", "Wisconsin", "Iowa", "Washington", "Indiana", "Nebraska"],
+    "ACC": ["Florida St", "Clemson", "Miami", "Stanford", "Cal", "Louisville", "UNC", "Virginia Tech", "SMU"],
+    "Big 12": ["Utah", "TCU", "Baylor", "Texas Tech", "Arizona State", "Colorado", "Kansas State", "Oklahoma St", "BYU", "Arizona"],
+    "G5": ["Boise State", "San Jose State", "San Diego St", "Nevada", "Wyoming", "Air Force", "Colorado St", "Fresno St", "Tulane", "Memphis", "Navy", "Army"]
 }
 ALL_TEAMS = [t for c in CONFERENCES.values() for t in c]
 
@@ -103,7 +119,7 @@ BOWL_MAPPING = {
     "Low": ["Gasparilla Bowl", "Boca Raton Bowl", "Potato Bowl", "Frisco Bowl", "Myrtle Beach Bowl"]
 }
 
-# --- 4. HELPER FUNCTIONS ---
+# --- 4. LOGIC FUNCTIONS ---
 
 def format_cash(amount):
     if amount >= 1000000: return f"${amount/1000000:.1f}M"
@@ -138,6 +154,18 @@ def generate_coach(role, tier):
     if c["trait"] == "None": c["salary"] = int(c["salary"] * 0.7)
     return c
 
+# NEW: GA Generator for Low Budget
+def generate_ga_coach(role):
+    return {
+        "name": f"GA {generate_name()}",
+        "role": role,
+        "off": random.randint(1, 3),
+        "def": random.randint(1, 3),
+        "recruit": random.randint(1, 2),
+        "trait": "None",
+        "salary": 50000
+    }
+
 def generate_portal_players():
     players = []
     for _ in range(2):
@@ -165,10 +193,14 @@ def get_bowl_name(rank):
     elif rank <= 50: return random.choice(BOWL_MAPPING["Mid"])
     else: return random.choice(BOWL_MAPPING["Low"])
 
-def generate_initial_roster(tier):
-    base = 90 if tier == 1 else (82 if tier == 2 else 74)
+def generate_initial_roster(tier, base_ovr=None):
+    if base_ovr:
+        base = base_ovr
+    else:
+        base = 90 if tier == 1 else (82 if tier == 2 else 74)
+        
     roster = {}
-    for p in POSITIONS: roster[p] = min(99, max(40, base + random.randint(0, 6)))
+    for p in POSITIONS: roster[p] = min(99, max(40, base + random.randint(-4, 4)))
     return roster
 
 def generate_star_player(position, tier):
@@ -183,7 +215,6 @@ def generate_hotspots():
     return hotspots
 
 def calculate_ovr(roster, stars, staff, facilities):
-    # Weighted Offense Calculation
     qb = roster["QB"]
     ol = roster["OL"]
     skill = (roster["RB"] + roster["WR"]) / 2
@@ -191,7 +222,6 @@ def calculate_ovr(roster, stars, staff, facilities):
     
     defs = sum(roster[p] for p in ["DL","LB","DB"]) / 3
     
-    # Coordinator Impact
     if "OC" in staff: off += (staff["OC"]["off"] - 5) * 1.5
     if "DC" in staff: defs += (staff["DC"]["def"] - 5) * 1.5
     if "HC" in staff: 
@@ -217,30 +247,29 @@ def generate_schedule(my_team_name, my_conf):
 
 def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game_plan="Normal", opp_coaches={}, is_home=False, is_rival=False, facilities_lvl=1, my_roster={}):
     
-    # Calculate Unit Ratings for Display
+    # Visual Stats
     qb_rtg = my_roster["QB"]
-    opp_qb_rtg = int(opp_rating + random.randint(-5, 5)) # Est opponent QB
+    opp_qb_rtg = int(opp_rating + random.randint(-5, 5)) 
     
-    # Weighted Offense for Game Logic
+    # Weighted Offense Logic
     my_qb = my_roster["QB"]
     my_ol = my_roster["OL"]
     my_skill = (my_roster["RB"] + my_roster["WR"]) / 2
     my_off_talent = (my_qb * 0.30) + (my_ol * 0.25) + (my_skill * 0.45)
     my_def_talent = sum(my_roster[p] for p in ["DL","LB","DB"]) / 3
     
-    # Estimate Opponent Units (simplified from OVR)
     opp_off_talent = opp_rating
     opp_def_talent = opp_rating
     
-    # 1. Non-Linear Talent Gap
+    # 1. Talent Gap (Blue Chip Curve)
     talent_gap = (my_rating**2 - opp_rating**2) / 125.0
     
-    # 2. Scheme Matchup
+    # 2. Scheme
     scheme_bonus = 0
     if COUNTERS[opp_schemes['Def']] == my_schemes['Off']: scheme_bonus += 4 
     elif COUNTERS[my_schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 4 
     
-    # 3. Staff Matchups
+    # 3. Staff
     my_oc = staff['OC']['off'] if 'OC' in staff else 3
     my_dc = staff['DC']['def'] if 'DC' in staff else 3
     opp_oc = opp_coaches.get('OC', 5)
@@ -272,7 +301,7 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
     
     if is_rival: variance_mult *= 2.0
 
-    # 7. MONTE CARLO SIMULATION
+    # 7. Monte Carlo
     sim_scores = []
     for _ in range(100):
         luck = random.gauss(0, 3.0 * variance_mult) 
@@ -284,7 +313,6 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
     my_score = int(28 + (avg_margin/1.5)) if avg_margin > 0 else int(24 + (avg_margin/1.5))
     opp_score = int(my_score - avg_margin)
     
-    # Unit Ratings for UI (Visual Only)
     display_my_off = int(my_off_talent + (my_oc - 5))
     display_my_def = int(my_def_talent + (my_dc - 5))
     display_opp_off = int(opp_off_talent + (opp_oc - 5))
@@ -331,9 +359,15 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
                 results["booster_bonus"] += random.randint(2, 5) * 100000
         results["roster_updates"][pos] = rating_change
             
+    # AI Dynamic Evolution (Year to Year)
     for opp_name in st.session_state.opponents_db:
-        if opp_name in ["Georgia", "Ohio State", "Alabama", "Texas", "Oregon"]:
-            st.session_state.opponents_db[opp_name]['OVR'] = random.randint(88, 95)
+        curr = st.session_state.opponents_db[opp_name]['Prestige']
+        flux = random.randint(-2, 2)
+        st.session_state.opponents_db[opp_name]['Prestige'] = max(40, min(99, curr + flux))
+        
+        # Re-calc OVR from new Prestige
+        new_pres = st.session_state.opponents_db[opp_name]['Prestige']
+        st.session_state.opponents_db[opp_name]['OVR'] = int((new_pres * 0.90) + random.randint(-3, 3))
             
     return results
 
@@ -388,65 +422,92 @@ if 'hotspots' not in st.session_state: st.session_state.hotspots = generate_hots
 # --- 6. SCREENS ---
 
 def run_setup():
-    st.title("🏆 College Football Mogul V6.1")
-    st.markdown("### Dynasty Mode")
+    st.title("🏆 College Football Mogul V6.3")
+    st.markdown("### Dynasty Mode (Jan 2026 Start)")
     col1, col2 = st.columns(2)
     with col1: name = st.text_input("AD Name", "Coach Prime")
     with col2: diff = st.selectbox("Difficulty", ["Normal", "Hard", "Easy"])
     
-    team = st.selectbox("Select Team", sorted(TEAMS_DB.keys()))
-    d = TEAMS_DB[team]
-    st.info(f"**{team}** ({d['conf']}) | Region: {d['region']} | Budget: {format_cash(d['budget'])}")
+    sorted_teams = sorted(REAL_WORLD_INIT.keys()) + sorted([t for t in ALL_TEAMS if t not in REAL_WORLD_INIT])
+    team = st.selectbox("Select Team", sorted_teams)
+    
+    if team in REAL_WORLD_INIT:
+        d = REAL_WORLD_INIT[team]
+        tier = d['Tier']
+        budget = 25000000 if tier == 1 else (15000000 if tier == 2 else 5000000)
+        conf = "SEC" if team in CONFERENCES["SEC"] else ("Big Ten" if team in CONFERENCES["Big Ten"] else "G5")
+    else:
+        tier = 3
+        budget = 5000000
+        conf = "G5"
+    
+    st.info(f"**{team}** | Tier: {tier} | Budget: {format_cash(budget)}")
     
     expect = 6
-    if d['tier'] == 1: expect = 10
-    elif d['tier'] == 2: expect = 8
-    elif d['tier'] == 3: expect = 6
+    if tier == 1: expect = 10
+    elif tier == 2: expect = 8
+    elif tier == 3: expect = 6
     else: expect = 4
     st.caption(f"Booster Expectation: {expect}+ Wins")
     
     if st.button("Start Career", type="primary"):
         st.session_state.ad_name = name
         st.session_state.team_name = team
-        st.session_state.team_color = d.get('color', '#333333')
-        st.session_state.team_conf = d.get('conf', 'SEC')
-        st.session_state.team_rival = d.get('rival', 'None')
-        st.session_state.home_region = d.get('region', 'South')
+        st.session_state.team_color = "#333333"
+        if team in TEAMS_DB: st.session_state.team_color = TEAMS_DB[team]['color']
+        
+        st.session_state.team_conf = conf
+        st.session_state.team_rival = "Rival"
+        st.session_state.home_region = "South"
         st.session_state.expected_wins = expect
-        st.session_state.school_tier = d['tier']
+        st.session_state.school_tier = tier
         
         mult = 1.0
         if diff == "Hard": mult = 0.75
         elif diff == "Easy": mult = 1.25
             
-        st.session_state.budget = int(d['budget'] * mult)
-        st.session_state.prestige = 95 - (d['tier'] * 12)
+        st.session_state.budget = int(budget * mult)
         st.session_state.job_security = 80
         st.session_state.tenure = 1
         st.session_state.active_transfers = {p: False for p in POSITIONS}
         
-        st.session_state.roster = generate_initial_roster(d['tier'])
-        st.session_state.stars = [generate_star_player("QB", d['tier'])]
-        if d['tier'] < 4: st.session_state.stars.append(generate_star_player("LB", d['tier']))
+        start_ovr = None
+        if team in REAL_WORLD_INIT:
+            start_ovr = REAL_WORLD_INIT[team]['Talent']
+            st.session_state.prestige = REAL_WORLD_INIT[team]['Prestige']
+        else:
+            st.session_state.prestige = 60
+            
+        st.session_state.roster = generate_initial_roster(tier, start_ovr)
+        st.session_state.stars = [generate_star_player("QB", tier)]
+        if tier < 4: st.session_state.stars.append(generate_star_player("LB", tier))
         
-        for r in ["HC","OC","DC","Scout"]: st.session_state.staff[r] = generate_coach(r, d['tier'])
+        for r in ["HC","OC","DC","Scout"]: st.session_state.staff[r] = generate_coach(r, tier)
         
-        fac_val = d.get('facilities', 1)
+        fac_val = 10 if tier == 1 else (7 if tier == 2 else 3)
         st.session_state.facilities = {"Marketing": fac_val, "Training": fac_val, "Stadium": fac_val}
         
         for opp in ALL_TEAMS:
-            rtg = 75
-            is_tier1 = opp in ["Georgia", "Ohio State", "Alabama", "Texas", "Oregon"]
-            if is_tier1: rtg = 88
+            if opp in REAL_WORLD_INIT:
+                data = REAL_WORLD_INIT[opp]
+                pres = data['Prestige']
+                ovr = data['Talent']
+            else:
+                pres = 60
+                if opp in CONFERENCES["SEC"] or opp in CONFERENCES["Big Ten"]: pres = 80
+                elif opp in CONFERENCES["ACC"] or opp in CONFERENCES["Big 12"]: pres = 72
+                pres += random.randint(-5, 5)
+                ovr = int((pres * 0.9) + random.randint(-3, 3))
             
-            oc_rtg = random.randint(8, 10) if is_tier1 else random.randint(3, 7)
-            dc_rtg = random.randint(8, 10) if is_tier1 else random.randint(3, 7)
+            oc_rtg = int(pres / 10) + random.randint(-1, 1)
+            dc_rtg = int(pres / 10) + random.randint(-1, 1)
             
             st.session_state.opponents_db[opp] = {
-                "OVR": rtg + random.randint(-5, 5),
+                "Prestige": pres,
+                "OVR": ovr,
                 "Off": random.choice(SCHEMES["Offense"]),
                 "Def": random.choice(SCHEMES["Defense"]),
-                "Coaches": {"OC": oc_rtg, "DC": dc_rtg}
+                "Coaches": {"OC": min(10, max(1, oc_rtg)), "DC": min(10, max(1, dc_rtg))}
             }
         
         st.session_state.schedule = generate_schedule(st.session_state.team_name, st.session_state.team_conf)
@@ -518,11 +579,18 @@ def show_dashboard():
                     del st.session_state.staff[role]; st.rerun()
             else:
                 st.warning(f"{role} Vacant")
-                if st.button(f"Search ($500k)", key=f"s_{role}"):
-                    if st.session_state.budget >= 500000:
-                        st.session_state.budget -= 500000
-                        st.session_state.candidates[role] = [generate_coach(role, i) for i in [1,2,3]]
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button(f"Search ($500k)", key=f"s_{role}"):
+                        if st.session_state.budget >= 500000:
+                            st.session_state.budget -= 500000
+                            st.session_state.candidates[role] = [generate_coach(role, i) for i in [1,2,3]]
+                            st.rerun()
+                with c2:
+                    if st.button(f"Promote GA (Free)", key=f"ga_{role}"):
+                        st.session_state.staff[role] = generate_ga_coach(role)
                         st.rerun()
+                        
                 if role in st.session_state.candidates:
                     for i, cand in enumerate(st.session_state.candidates[role]):
                         if st.button(f"Hire {cand['name']} ({format_cash(cand['salary'])})", key=f"h_{role}_{i}"):
