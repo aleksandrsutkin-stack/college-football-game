@@ -23,16 +23,17 @@ st.markdown("""
 # --- 3. DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 
+# TEAMS DATABASE (Fully Connected)
 TEAMS_DB = {
-    "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F"},
-    "Ohio State": {"tier": 1, "budget": 24000000, "conf": "Big Ten", "rival": "Michigan", "color": "#BB0000"},
-    "Texas": {"tier": 1, "budget": 25000000, "conf": "SEC", "rival": "Oklahoma", "color": "#BF5700"},
-    "Alabama": {"tier": 1, "budget": 22000000, "conf": "SEC", "rival": "Georgia", "color": "#9E1B32"},
-    "Oregon": {"tier": 1, "budget": 20000000, "conf": "Big Ten", "rival": "Washington", "color": "#154733"},
-    "Florida St": {"tier": 2, "budget": 15000000, "conf": "ACC", "rival": "Clemson", "color": "#782F40"},
-    "Penn State": {"tier": 2, "budget": 16000000, "conf": "Big Ten", "rival": "Ohio State", "color": "#041E42"},
-    "Boise State": {"tier": 3, "budget": 7000000, "conf": "G5", "rival": "Fresno St", "color": "#0033A0"},
-    "San Jose State": {"tier": 4, "budget": 4500000, "conf": "G5", "rival": "San Diego St", "color": "#0055A2"}
+    "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F", "facilities": 10},
+    "Ohio State": {"tier": 1, "budget": 24000000, "conf": "Big Ten", "rival": "Michigan", "color": "#BB0000", "facilities": 10},
+    "Texas": {"tier": 1, "budget": 25000000, "conf": "SEC", "rival": "Oklahoma", "color": "#BF5700", "facilities": 10},
+    "Alabama": {"tier": 1, "budget": 22000000, "conf": "SEC", "rival": "Georgia", "color": "#9E1B32", "facilities": 9},
+    "Oregon": {"tier": 1, "budget": 20000000, "conf": "Big Ten", "rival": "Washington", "color": "#154733", "facilities": 10},
+    "Florida St": {"tier": 2, "budget": 15000000, "conf": "ACC", "rival": "Clemson", "color": "#782F40", "facilities": 8},
+    "Penn State": {"tier": 2, "budget": 16000000, "conf": "Big Ten", "rival": "Ohio State", "color": "#041E42", "facilities": 8},
+    "Boise State": {"tier": 3, "budget": 7000000, "conf": "G5", "rival": "Fresno St", "color": "#0033A0", "facilities": 5},
+    "San Jose State": {"tier": 4, "budget": 4500000, "conf": "G5", "rival": "San Diego St", "color": "#0055A2", "facilities": 3}
 }
 
 CONFERENCES = {
@@ -73,7 +74,7 @@ HEADLINES = [
     "Committee Chair: 'We are watching the strength of schedule closely.'"
 ]
 
-# --- 4. LOGIC ---
+# --- 4. LOGIC FUNCTIONS ---
 
 def format_cash(amount):
     if amount >= 1000000: return f"${amount/1000000:.1f}M"
@@ -110,7 +111,7 @@ def generate_portal_players():
     for _ in range(2):
         pos = random.choice(POSITIONS)
         players.append({
-            "name": f"{generate_name()}",
+            "name": f"Elite {pos} {random.randint(1,99)}",
             "pos": pos,
             "rating": random.randint(90, 99),
             "cost": random.randint(4000000, 8000000),
@@ -122,7 +123,7 @@ def generate_portal_players():
     for _ in range(2):
         pos = random.choice(POSITIONS)
         players.append({
-            "name": f"{generate_name()}",
+            "name": f"Solid {pos} {random.randint(1,99)}",
             "pos": pos,
             "rating": random.randint(80, 89),
             "cost": random.randint(1000000, 3000000),
@@ -134,7 +135,7 @@ def generate_portal_players():
     for _ in range(3):
         pos = random.choice(POSITIONS)
         players.append({
-            "name": f"{generate_name()}",
+            "name": f"Value {pos} {random.randint(1,99)}",
             "pos": pos,
             "rating": random.randint(70, 79),
             "cost": random.randint(250000, 800000),
@@ -190,6 +191,7 @@ def calculate_ovr(roster, stars, staff, facilities):
         off += (staff["HC"]["off"] - 5) * 0.5
         defs += (staff["HC"]["def"] - 5) * 0.5
     
+    # Facility Bonus Check
     train_lvl = facilities.get("Training", 1)
     fac_bonus = (train_lvl - 1) * 0.5 
     
@@ -310,7 +312,7 @@ if 'last_season_summary' not in st.session_state: st.session_state.last_season_s
 # --- 6. SCREENS ---
 
 def run_setup():
-    st.title("🏆 College Football Mogul v2.0")
+    st.title("🏆 College Football Mogul v2.1")
     st.markdown("### Dynasty Mode")
     col1, col2 = st.columns(2)
     with col1: name = st.text_input("AD Name", "Coach Prime")
@@ -340,7 +342,9 @@ def run_setup():
         
         for r in ["HC","OC","DC","Scout"]: st.session_state.staff[r] = generate_coach(r, d['tier'])
         
-        st.session_state.facilities = {"Marketing": d['facilities'], "Training": d['facilities'], "Stadium": d['facilities']}
+        # FIXED: Explicit facility loading
+        fac_val = d.get('facilities', 1)
+        st.session_state.facilities = {"Marketing": fac_val, "Training": fac_val, "Stadium": fac_val}
         
         for opp in ALL_TEAMS:
             rtg = 75
@@ -355,6 +359,7 @@ def run_setup():
         st.rerun()
 
 def show_dashboard():
+    # FIRE CHECK
     if st.session_state.booster_morale < 25:
         st.session_state.game_state = "FIRED"
         st.rerun()
