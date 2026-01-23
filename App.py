@@ -5,7 +5,7 @@ import pandas as pd
 
 # --- 1. CONFIG ---
 try:
-    st.set_page_config(page_title="College Football Mogul", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="College Football Mogul V4", page_icon="🏈", layout="wide")
 except:
     pass
 
@@ -22,18 +22,26 @@ st.markdown("""
     .bracket-box { background-color: #2c3e50; color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .scout-report { background-color: #333; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
     .recruiting-intel { background-color: #e0f7fa; border-left: 5px solid #006064; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
+    
+    /* Game Card UI */
+    .game-card { padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .game-card-win { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
+    .game-card-loss { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+    .game-card-pending { background-color: #f8f9fa; border-color: #dfdfdf; color: #333; }
+    .score-line { font-size: 1.2em; font-weight: bold; }
+    .stat-line { font-size: 0.85em; opacity: 0.9; margin-top: 4px; }
+    .home-label { color: #555; font-size: 0.8em; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 
-# FIXED: Regional strengths constant
 REGION_STRENGTH = {
-    "South": 1.08,    # SEC Country - Always strong
-    "Midwest": 1.05,  # Big Ten - Strong
-    "West": 1.05,     # Big 12/ACC - Strong
-    "North": 1.02     # Standard
+    "South": 1.08,    
+    "Midwest": 1.05,  
+    "West": 1.05,     
+    "North": 1.02     
 }
 
 TEAMS_DB = {
@@ -166,7 +174,6 @@ def generate_star_player(position, tier):
     return star
 
 def generate_hotspots():
-    # Randomly select 2 positions for each region to receive a bonus
     hotspots = {}
     for reg in ["South", "Midwest", "West", "North"]:
         hotspots[reg] = random.sample(POSITIONS, 2)
@@ -193,23 +200,27 @@ def generate_schedule(my_team_name, my_conf):
     random.shuffle(schedule)
     return schedule
 
-def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game_plan="Normal", opp_coach_rating=5):
+def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game_plan="Normal", opp_coach_rating=5, is_home=False, is_rival=False, facilities_lvl=1):
     margin = my_rating - opp_rating
     
+    # 1. Scheme Matchup (Adjusted to 4)
     scheme_bonus = 0
-    if COUNTERS[opp_schemes['Def']] == my_schemes['Off']: scheme_bonus += 8 
-    elif COUNTERS[my_schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 8 
-    if COUNTERS[opp_schemes['Off']] == my_schemes['Def']: scheme_bonus += 8
-    elif COUNTERS[my_schemes['Def']] == opp_schemes['Off']: scheme_bonus -= 8
+    if COUNTERS[opp_schemes['Def']] == my_schemes['Off']: scheme_bonus += 4 
+    elif COUNTERS[my_schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 4 
+    if COUNTERS[opp_schemes['Off']] == my_schemes['Def']: scheme_bonus += 4
+    elif COUNTERS[my_schemes['Def']] == opp_schemes['Off']: scheme_bonus -= 4
     
+    # 2. Talent Synergy
     talent_bonus = 0
     if my_schemes['Off'] == "Air Raid": talent_bonus += (st.session_state.roster['QB'] - 75) / 5
     if my_schemes['Off'] == "Smashmouth": talent_bonus += (st.session_state.roster['RB'] - 75) / 5
     
+    # 3. Coaching Delta (Adjusted to 1.2)
     my_coach_impact = 0
     if "HC" in staff: my_coach_impact = (staff["HC"]["off"] + staff["HC"]["def"]) / 2
-    coaching_delta = (my_coach_impact - opp_coach_rating) * 1.5
+    coaching_delta = (my_coach_impact - opp_coach_rating) * 1.2
     
+    # 4. Game Plan
     plan_bonus = 0
     variance_mult = 1.0
     if game_plan == "Aggressive":
@@ -219,13 +230,26 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
         variance_mult = 0.7 
         if my_rating > opp_rating: plan_bonus = 3 
         
+    # 5. Coaching Execution
     exec_bonus = 0
     if "HC" in staff:
         if staff["HC"]["trait"] == "Tactician": exec_bonus += 3
         exec_bonus += (staff["HC"]["off"] + staff["HC"]["def"] - 10) * 0.2
 
-    variance = random.gauss(0, 10 * variance_mult) 
-    total_margin = margin + coaching_delta + scheme_bonus + talent_bonus + plan_bonus + exec_bonus + variance
+    # 6. Home Field Advantage (Only if Facilities > 8)
+    home_bonus = 0
+    if is_home and facilities_lvl > 8:
+        home_bonus = 3
+    elif not is_home: 
+        # Opponent Home Field Logic (Simulated)
+        if random.random() < 0.3: home_bonus = -3
+    
+    if is_rival: variance_mult *= 2.0
+
+    # 7. Variance (Standard Deviation = 3.0)
+    variance = random.gauss(0, 3.0 * variance_mult) 
+    
+    total_margin = margin + coaching_delta + scheme_bonus + talent_bonus + plan_bonus + exec_bonus + home_bonus + variance
     
     my_score = int(28 + (total_margin/1.5)) if total_margin > 0 else int(24 + (total_margin/1.5))
     opp_score = int(my_score - total_margin)
@@ -233,7 +257,7 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
     return {
         "result": "W" if total_margin > 0 else "L", 
         "score": f"{max(0,my_score)}-{max(0,opp_score)}",
-        "my_power": int(my_rating + talent_bonus + plan_bonus + coaching_delta),
+        "my_power": int(my_rating + talent_bonus + plan_bonus + coaching_delta + home_bonus),
         "opp_power": int(opp_rating + opp_coach_rating)
     }
 
@@ -252,16 +276,14 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
     prestige_bonus = 1.0 + (prestige / 200.0)
     base_cost = 800000 * inflation
     
-    # NEW LOGIC: Dynamic Regional & Position Bonuses
     home_region = st.session_state.home_region
-    base_region_mult = REGION_STRENGTH.get(home_region, 1.02) # Base advantage of the region
-    hot_positions = st.session_state.hotspots.get(home_region, []) # Positions that are hot this year
+    base_region_mult = REGION_STRENGTH.get(home_region, 1.02)
+    hot_positions = st.session_state.hotspots.get(home_region, []) 
     
     for pos, amount in allocations.items():
         if amount < (base_cost * 0.5):
             rating_change = -random.randint(1, 4) 
         else:
-            # Dynamic Bonus Calculation
             pos_bonus = 1.15 if pos in hot_positions else 1.0
             total_pipeline_mult = base_region_mult * pos_bonus
             
@@ -278,7 +300,6 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
                 results["booster_bonus"] += random.randint(2, 5) * 100000
         results["roster_updates"][pos] = rating_change
             
-    # AI Evolution
     for opp_name in st.session_state.opponents_db:
         is_p4 = opp_name in CONFERENCES["SEC"] or opp_name in CONFERENCES["Big Ten"]
         current = st.session_state.opponents_db[opp_name]['OVR']
@@ -286,7 +307,6 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
         else: target = 72 + random.randint(-8, 8) 
         if current < target: st.session_state.opponents_db[opp_name]['OVR'] += random.randint(1, 3)
         elif current > target: st.session_state.opponents_db[opp_name]['OVR'] -= random.randint(1, 3)
-    
     return results
 
 # --- 5. INITIALIZATION & STATE REPAIR ---
@@ -325,9 +345,8 @@ if 'game_state' not in st.session_state:
     st.session_state.match_history = []
     st.session_state.schedule = []
     st.session_state.season_simulated = False 
-    st.session_state.hotspots = {} # NEW
+    st.session_state.hotspots = {}
 
-# REPAIR STATE
 if 'inflation' not in st.session_state: st.session_state.inflation = 1.0
 if 'playoff_round' not in st.session_state: st.session_state.playoff_round = 0
 if 'undefeated_streak' not in st.session_state: st.session_state.undefeated_streak = 0
@@ -343,7 +362,7 @@ if 'hotspots' not in st.session_state: st.session_state.hotspots = generate_hots
 # --- 6. SCREENS ---
 
 def run_setup():
-    st.title("🏆 College Football Mogul v3.0")
+    st.title("🏆 College Football Mogul V4")
     st.markdown("### Dynasty Mode")
     col1, col2 = st.columns(2)
     with col1: name = st.text_input("AD Name", "Coach Prime")
@@ -478,24 +497,79 @@ def show_dashboard():
         st.info(f"Conference: {st.session_state.team_conf}")
         if len(st.session_state.staff) < 4: st.error("Fill Staff first!"); return
         
+        # --- NEW UI: SPLIT COLUMN SCHEDULE ---
         if not st.session_state.season_simulated:
             st.write("### 📅 Upcoming Schedule")
             if not st.session_state.schedule:
                 st.session_state.schedule = generate_schedule(st.session_state.team_name, st.session_state.team_conf)
                 
-            sched_df = []
-            for i, opp in enumerate(st.session_state.schedule):
-                opp_ovr = st.session_state.opponents_db.get(opp, {}).get('OVR', 75)
-                opp_coach = st.session_state.opponents_db.get(opp, {}).get('Coach', 5)
-                sched_df.append({"Week": i+1, "Opponent": opp, "Opp Rating": opp_ovr, "Opp Coach": opp_coach})
+            c1, c2 = st.columns(2)
+            # Weeks 1-6
+            with c1:
+                st.caption("First Half")
+                for i in range(6):
+                    opp = st.session_state.schedule[i]
+                    opp_ovr = st.session_state.opponents_db.get(opp, {}).get('OVR', 75)
+                    loc = "HOME" if i%2==0 else "AWAY"
+                    st.markdown(f"""
+                    <div class="game-card game-card-pending">
+                        <span class="home-label">{loc}</span><br>
+                        <b>Week {i+1}</b> vs {opp}<br>
+                        <span class="stat-line">OVR: {opp_ovr}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
             
-            st.dataframe(pd.DataFrame(sched_df), use_container_width=True, hide_index=True)
+            # Weeks 7-12
+            with c2:
+                st.caption("Second Half")
+                for i in range(6, 12):
+                    opp = st.session_state.schedule[i]
+                    opp_ovr = st.session_state.opponents_db.get(opp, {}).get('OVR', 75)
+                    loc = "HOME" if i%2==0 else "AWAY"
+                    st.markdown(f"""
+                    <div class="game-card game-card-pending">
+                        <span class="home-label">{loc}</span><br>
+                        <b>Week {i+1}</b> vs {opp}<br>
+                        <span class="stat-line">OVR: {opp_ovr}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             if st.button("▶️ SIMULATE SEASON", type="primary"):
                 run_season()
         else:
-            st.write("### 📊 Season Match Results")
-            st.dataframe(pd.DataFrame(st.session_state.season_logs), use_container_width=True, hide_index=True)
+            st.write("### 📊 Season Results")
+            logs = st.session_state.season_logs
+            c1, c2 = st.columns(2)
+            
+            with c1:
+                st.caption("First Half")
+                for i in range(6):
+                    log = logs[i]
+                    is_win = "W" in log['Score']
+                    css = "game-card-win" if is_win else "game-card-loss"
+                    st.markdown(f"""
+                    <div class="game-card {css}">
+                        <b>Week {log['Week']}</b> vs {log['Opponent']}<br>
+                        <div class="score-line">{log['Score']}</div>
+                        <div class="stat-line">OVR: {log['My OVR']} vs {log['Opp OVR']}</div>
+                        <div class="stat-line">Coach: {log['My Coach']:.1f} vs {log['Opp Coach']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with c2:
+                st.caption("Second Half")
+                for i in range(6, 12):
+                    log = logs[i]
+                    is_win = "W" in log['Score']
+                    css = "game-card-win" if is_win else "game-card-loss"
+                    st.markdown(f"""
+                    <div class="game-card {css}">
+                        <b>Week {log['Week']}</b> vs {log['Opponent']}<br>
+                        <div class="score-line">{log['Score']}</div>
+                        <div class="stat-line">OVR: {log['My OVR']} vs {log['Opp OVR']}</div>
+                        <div class="stat-line">Coach: {log['My Coach']:.1f} vs {log['Opp Coach']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             st.success(f"Regular Season Complete! Record: {st.session_state.record['w']}-{st.session_state.record['l']}")
             
@@ -516,6 +590,10 @@ def run_season():
         opp_data = st.session_state.opponents_db.get(opp_name, {"OVR": 75, "Off": "Pro Style", "Def": "Man Coverage", "Coach": 5})
         is_rival = (opp_name == st.session_state.team_rival)
         opp_schemes = {"Off": opp_data["Off"], "Def": opp_data["Def"]}
+        is_home = (i % 2 == 0) # Even weeks are home
+        
+        # Facilities Check for Home Field Advantage
+        my_facilities = st.session_state.facilities.get("Stadium", 1)
         
         res = play_game(
             st.session_state.team_rating, 
@@ -525,7 +603,10 @@ def run_season():
             st.session_state.my_schemes,
             opp_schemes,
             "Normal",
-            opp_data["Coach"]
+            opp_data["Coach"],
+            is_home,
+            is_rival,
+            my_facilities
         )
         
         if res['result'] == "W": 
@@ -585,10 +666,12 @@ def show_postseason():
         st.session_state.current_matchup = None
         st.session_state.ps_active = True
         
+        # Sort Opponents by Rating to get REAL playoff teams
         sorted_opps = sorted(st.session_state.opponents_db.items(), key=lambda x: x[1]['OVR'], reverse=True)
         
         if rank <= 12: # 12-Team Playoff
             st.session_state.ps_mode = "PLAYOFF"
+            # Pick a top tier opponent from the actual DB
             opp_name, opp_data = sorted_opps[random.randint(0, 11)]
             st.session_state.current_matchup_name = f"#{random.randint(1,12)} {opp_name}"
             st.session_state.current_matchup_data = opp_data
@@ -598,6 +681,7 @@ def show_postseason():
         elif wins >= 6:
             st.session_state.ps_mode = "BOWL"
             bowl_name = get_bowl_name(rank)
+            # Pick a mid tier opponent
             opp_name, opp_data = sorted_opps[random.randint(20, 40)]
             st.session_state.current_matchup_name = f"{opp_name} in {bowl_name}"
             st.session_state.current_matchup_data = opp_data
@@ -608,6 +692,7 @@ def show_postseason():
             st.session_state.ps_active = False
             st.error("Season Over. No Bowl Invite.")
 
+    # --- DISPLAY AREA ---
     if st.session_state.ps_active:
         opp_data = st.session_state.current_matchup_data
         
@@ -666,6 +751,7 @@ def show_postseason():
                         st.session_state.career_stats['titles'] += 1
                         st.session_state.budget += 20000000
                     else:
+                        # Setup Next Round with Top Tier Opponent
                         sorted_opps = sorted(st.session_state.opponents_db.items(), key=lambda x: x[1]['OVR'], reverse=True)
                         opp_name, opp_data = sorted_opps[st.session_state.playoff_round] # Get harder opponents
                         st.session_state.current_matchup_name = f"#{random.randint(1,4)} {opp_name}"
