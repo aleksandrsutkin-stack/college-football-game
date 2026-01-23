@@ -22,16 +22,17 @@ st.markdown("""
 # --- 3. DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 
+# FIXED: Added 'facilities' key back to every team
 TEAMS_DB = {
-    "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F"},
-    "Ohio State": {"tier": 1, "budget": 24000000, "conf": "Big Ten", "rival": "Michigan", "color": "#BB0000"},
-    "Texas": {"tier": 1, "budget": 25000000, "conf": "SEC", "rival": "Oklahoma", "color": "#BF5700"},
-    "Alabama": {"tier": 1, "budget": 22000000, "conf": "SEC", "rival": "Georgia", "color": "#9E1B32"},
-    "Oregon": {"tier": 1, "budget": 20000000, "conf": "Big Ten", "rival": "Washington", "color": "#154733"},
-    "Florida St": {"tier": 2, "budget": 15000000, "conf": "ACC", "rival": "Clemson", "color": "#782F40"},
-    "Penn State": {"tier": 2, "budget": 16000000, "conf": "Big Ten", "rival": "Ohio State", "color": "#041E42"},
-    "Boise State": {"tier": 3, "budget": 7000000, "conf": "G5", "rival": "Fresno St", "color": "#0033A0"},
-    "San Jose State": {"tier": 4, "budget": 4500000, "conf": "G5", "rival": "San Diego St", "color": "#0055A2"}
+    "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F", "facilities": 10},
+    "Ohio State": {"tier": 1, "budget": 24000000, "conf": "Big Ten", "rival": "Michigan", "color": "#BB0000", "facilities": 10},
+    "Texas": {"tier": 1, "budget": 25000000, "conf": "SEC", "rival": "Oklahoma", "color": "#BF5700", "facilities": 10},
+    "Alabama": {"tier": 1, "budget": 22000000, "conf": "SEC", "rival": "Georgia", "color": "#9E1B32", "facilities": 9},
+    "Oregon": {"tier": 1, "budget": 20000000, "conf": "Big Ten", "rival": "Washington", "color": "#154733", "facilities": 10},
+    "Florida St": {"tier": 2, "budget": 15000000, "conf": "ACC", "rival": "Clemson", "color": "#782F40", "facilities": 8},
+    "Penn State": {"tier": 2, "budget": 16000000, "conf": "Big Ten", "rival": "Ohio State", "color": "#041E42", "facilities": 8},
+    "Boise State": {"tier": 3, "budget": 7000000, "conf": "G5", "rival": "Fresno St", "color": "#0033A0", "facilities": 5},
+    "San Jose State": {"tier": 4, "budget": 4500000, "conf": "G5", "rival": "San Diego St", "color": "#0055A2", "facilities": 3}
 }
 
 CONFERENCES = {
@@ -292,10 +293,6 @@ if 'game_state' not in st.session_state:
     st.session_state.season_logs = []
     st.session_state.postseason_result = {}
     st.session_state.undefeated_streak = 0
-    st.session_state.inflation = 1.0 # Added explicit init
-
-# SAFE INIT CHECK (Repairs broken state if inflation is missing)
-if 'inflation' not in st.session_state:
     st.session_state.inflation = 1.0
 
 # --- 6. SCREENS ---
@@ -309,6 +306,8 @@ def run_setup():
     
     team = st.selectbox("Select Team", sorted(TEAMS_DB.keys()))
     d = TEAMS_DB[team]
+    # SAFE GET call to prevent key error
+    fac_score = d.get('facilities', 5)
     st.info(f"**{team}** ({d['conf']}) | Rival: {d['rival']} | Budget: {format_cash(d['budget'])}")
     
     if st.button("Start Career", type="primary"):
@@ -329,10 +328,14 @@ def run_setup():
         st.session_state.stars = [generate_star_player("QB", d['tier'])]
         if d['tier'] < 4: st.session_state.stars.append(generate_star_player("LB", d['tier']))
         
+        # Init Staff
         for r in ["HC","OC","DC","Scout"]: st.session_state.staff[r] = generate_coach(r, d['tier'])
         
-        st.session_state.facilities = {"Marketing": d['facilities'], "Training": d['facilities'], "Stadium": d['facilities']}
+        # Init Facilities with safety check
+        f_val = d.get('facilities', 5)
+        st.session_state.facilities = {"Marketing": f_val, "Training": f_val, "Stadium": f_val}
         
+        # Init Opponents
         for opp in ALL_TEAMS:
             rtg = 75
             if opp in CONFERENCES["SEC"] or opp in CONFERENCES["Big Ten"]: rtg = 85
@@ -547,24 +550,19 @@ def show_recruiting():
     st.header("High School Recruiting")
     st.info(f"Budget: {format_cash(st.session_state.budget)}")
     
-    # Calculate spending on the fly
-    current_spend = 0
     allocs = {}
-    
     c1, c2 = st.columns(2)
+    current_spend = 0
+    
     for i, p in enumerate(POSITIONS):
         with c1 if i%2==0 else c2:
-            # Use a key to keep value, but we need to sum it manually after submission or use session state if we want live update.
-            # Simpler approach: Just inputs.
             val = st.number_input(f"{p} Spend", 0, 10000000, 0, step=100000, key=f"rec_{p}")
             allocs[p] = val
             current_spend += val
             
-    remaining = st.session_state.budget - current_spend
-    if remaining < 0:
-        st.error(f"Over Budget by {format_cash(abs(remaining))}")
-    else:
-        st.success(f"Remaining: {format_cash(remaining)}")
+    rem = st.session_state.budget - current_spend
+    if rem < 0: st.error(f"Over Budget: {format_cash(rem)}")
+    else: st.success(f"Remaining: {format_cash(rem)}")
             
     if st.button("Finalize Class"):
         res = process_recruiting(st.session_state.budget, allocs, st.session_state.staff, st.session_state.prestige, st.session_state.inflation)
@@ -577,7 +575,10 @@ def show_recruiting():
         for p in POSITIONS: st.session_state.roster[p] -= random.randint(2, 6)
         st.session_state.year += 1
         
-        time.sleep(2) # Allow user to see results
+        # Sim Opponents
+        for opp in st.session_state.opponents_db:
+            st.session_state.opponents_db[opp]["OVR"] += random.randint(-3, 3)
+        
         st.session_state.game_state = "DASHBOARD"
         st.rerun()
 
