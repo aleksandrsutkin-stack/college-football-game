@@ -6,14 +6,11 @@ import pandas as pd
 # ==============================================================================
 # ZONE 1: CONFIGURATION & STATIC DATA (The Universe)
 # ==============================================================================
-# PROHIBITED: Do not write game logic here. Only static lists and dictionaries.
-
 try:
-    st.set_page_config(page_title="College Football Mogul V7.0", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="College Football Mogul V7.2", page_icon="🏈", layout="wide")
 except:
     pass
 
-# CSS STYLING
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
@@ -23,6 +20,10 @@ st.markdown("""
     .security-safe { color: #28a745; font-weight: bold; }
     .security-warm { color: #fd7e14; font-weight: bold; }
     .security-hot { color: #dc3545; font-weight: bold; }
+    
+    /* FINANCIAL REPORT BOX */
+    .finance-alert { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold; }
+    .nil-alert { background-color: #cff4fc; color: #055160; border: 1px solid #b6effb; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-size: 1.2em; font-weight: bold; }
     
     /* GAME CARDS */
     .game-card { padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #ddd; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -152,9 +153,9 @@ def generate_ga_coach(role):
 # ==============================================================================
 
 def engine_calculate_revenue(tier, marketing_lvl, inflation):
-    # Base Revenue by Tier
-    base = {1: 40000000, 2: 20000000, 3: 8000000, 4: 3000000}.get(tier, 5000000)
-    # Facility Bonus
+    # Safe fallback
+    if not tier: tier = 3
+    base = {1: 40000000, 2: 25000000, 3: 10000000, 4: 5000000}.get(tier, 5000000)
     marketing_bonus = marketing_lvl * 2000000
     total = (base + marketing_bonus) * inflation
     return int(total)
@@ -208,7 +209,7 @@ def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_pl
     if COUNTERS[opp_schemes['Def']] == schemes['Off']: scheme_bonus += 4
     elif COUNTERS[schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 4
     
-    # 3. Coaching Tier Logic (V7.0: Tuned to 1.1x)
+    # 3. Coaching Tier Logic (1.1x weight)
     my_oc = staff.get('OC', {'off':3})['off']
     my_dc = staff.get('DC', {'def':3})['def']
     opp_oc = opp_coaches.get('OC', 5)
@@ -219,7 +220,7 @@ def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_pl
         elif rating <= 4: return -3
         return 0
     
-    # Net Coaching Impact (Weighted 1.1x per elite request)
+    # Net Coaching Impact
     coaching_net = ((get_tier_bonus(my_oc) - get_tier_bonus(opp_dc)) * 1.1) + ((get_tier_bonus(my_dc) - get_tier_bonus(opp_oc)) * 1.1)
     
     # 4. Sim Variables
@@ -253,7 +254,6 @@ def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_pl
     }
 
 def engine_evolve_universe(opponents_db):
-    """The Living World Engine: Runs every offseason."""
     for team, data in opponents_db.items():
         wins = int((data['OVR']/100)*12) + random.randint(-2, 2)
         wins = max(0, min(12, wins))
@@ -282,7 +282,7 @@ def engine_generate_portal_players():
     for _ in range(3):
         players.append({"name": f"{generate_name()}", "pos": random.choice(POSITIONS), "rating": random.randint(80, 89), 
                         "cost": random.randint(1000000, 2500000), "trait": random.choice(TRAITS), "year": "Sr"})
-    # Bargain Bin (RESTORED)
+    # Bargain Bin
     for _ in range(4):
         players.append({"name": f"{generate_name()}", "pos": random.choice(POSITIONS), "rating": random.randint(70, 78), 
                         "cost": random.randint(150000, 500000), "trait": "None", "year": "Jr"})
@@ -294,6 +294,7 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
     
     scout_rate = staff.get('Scout', {'recruit':1})['recruit']
     
+    # 1-4 Bad (Penalty), 5-7 Normal, 8-10 Elite (Discount)
     cost_mult = 1.2 
     if scout_rate >= 8: cost_mult = 0.8 
     elif scout_rate >= 5: cost_mult = 1.0 
@@ -304,7 +305,7 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
     hot_positions = st.session_state.hotspots.get(home_region, []) 
     
     for pos, amount in allocations.items():
-        if amount < base_cost * 0.5: change = -random.randint(2, 6) # V7.0: Variable Decay
+        if amount < base_cost * 0.5: change = -random.randint(2, 6)
         else:
             bonus = 1.15 if pos in hot_positions else 1.0
             change = (amount / base_cost) * bonus
@@ -348,6 +349,13 @@ def initialize_game_state():
         st.session_state.portal_players = []
         st.session_state.candidates = {}
         st.session_state.postseason_data = {}
+        st.session_state.revenue_report = None
+        st.session_state.inflation = 1.0 
+    
+    # SAFETY CHECK for Existing Saves (V7.2 CRASH FIX)
+    if 'inflation' not in st.session_state: st.session_state.inflation = 1.0
+    if 'revenue_report' not in st.session_state: st.session_state.revenue_report = None
+    if 'postseason_data' not in st.session_state: st.session_state.postseason_data = {}
 
 def generate_hotspots():
     hotspots = {}
@@ -361,7 +369,7 @@ initialize_game_state()
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V7.0")
+    st.title("🏆 College Football Mogul V7.2")
     st.markdown("### Dynasty Mode (Jan 2026)")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", "Coach Prime")
@@ -419,6 +427,10 @@ def run_setup():
 def show_dashboard():
     thresh = 0 if st.session_state.tenure <= 2 else 30
     if st.session_state.job_security < thresh: st.session_state.game_state = "FIRED"; st.rerun()
+    
+    # Financial Report (V7.1 Fix)
+    if st.session_state.revenue_report:
+        st.markdown(f"<div class='finance-alert'>💰 FINANCIAL REPORT<br>{st.session_state.revenue_report}</div>", unsafe_allow_html=True)
     
     sec = st.session_state.job_security
     sec_cls = "security-safe" if sec > 75 else ("security-warm" if sec > 40 else "security-hot")
@@ -611,7 +623,13 @@ def show_postseason():
             st.balloons()
             st.success(f"WON {res['score']}")
             st.session_state.career_stats['bowl_w'] += 1
-            if data['Bowl'] == "CFP Playoff": st.session_state.career_stats['titles'] += 1
+            if data['Bowl'] == "CFP Playoff": 
+                st.session_state.career_stats['titles'] += 1
+                st.session_state.budget += 50000000
+                st.toast("🏆 NATIONAL TITLE BONUS: $50M")
+            else:
+                st.session_state.budget += 2000000
+                st.toast("🎳 BOWL WIN BONUS: $2M")
         else:
             st.error(f"LOST {res['score']}")
             st.session_state.career_stats['bowl_l'] += 1
@@ -634,6 +652,10 @@ def show_postseason():
 def show_year_summary():
     st.title(f"{st.session_state.year} Summary")
     st.dataframe(pd.DataFrame(st.session_state.history), use_container_width=True)
+    
+    # V7.2: Money Clarity
+    st.markdown(f"<div class='nil-alert'>💰 WAR CHEST AVAILABLE FOR NIL: {helper_format_cash(st.session_state.budget)}</div>", unsafe_allow_html=True)
+    
     if st.button("Enter Portal"):
         st.session_state.portal_players = engine_generate_portal_players()
         st.session_state.game_state = "PORTAL"; st.rerun()
@@ -679,15 +701,14 @@ def show_recruiting():
                 st.toast(f"💎 Gem Discovery Bonus: {helper_format_cash(res['booster_bonus'])}")
                 
             for p, g in res['roster_updates'].items():
-                # V7.0 Rental Cliff: -12 if rental, -random(2,6) if homegrown
-                loss = 12 if st.session_state.active_transfers[p] else random.randint(2, 6)
+                loss = 12 if st.session_state.active_transfers[p] else random.randint(2, 5)
                 st.session_state.active_transfers[p] = False
                 st.session_state.roster[p] = max(40, min(99, st.session_state.roster[p] - loss + g))
             
-            # Annual Revenue Payout (V6.13 Fix)
+            # Annual Revenue Payout
             rev = engine_calculate_revenue(st.session_state.school_tier, st.session_state.facilities['Marketing'], st.session_state.inflation)
             st.session_state.budget += rev
-            st.toast(f"💰 New Season Budget: +{helper_format_cash(rev)}")
+            st.session_state.revenue_report = f"Season Budget Injection: +{helper_format_cash(rev)}"
             
             st.session_state.opponents_db = engine_evolve_universe(st.session_state.opponents_db)
             st.session_state.year += 1
