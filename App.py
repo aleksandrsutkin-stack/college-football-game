@@ -20,7 +20,6 @@ st.markdown("""
 
 # --- 3. DATA CONFIGURATION ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
-POS_WEIGHTS = {"QB": 0.25, "RB": 0.10, "WR": 0.15, "OL": 0.15, "DL": 0.15, "LB": 0.10, "DB": 0.10}
 REGIONS = ["South", "North", "West", "Texas"]
 
 TEAMS_DB = {}
@@ -66,10 +65,8 @@ HEADLINES = [
 # --- 4. HELPER FUNCTIONS ---
 
 def format_cash(amount):
-    if amount >= 1000000:
-        return f"${amount/1000000:.1f}M"
-    elif amount >= 1000:
-        return f"${amount/1000:.0f}K"
+    if amount >= 1000000: return f"${amount/1000000:.1f}M"
+    elif amount >= 1000: return f"${amount/1000:.0f}K"
     return f"${int(amount)}"
 
 def generate_name():
@@ -80,148 +77,4 @@ def generate_name():
 def calculate_saban_score(career_stats, prestige):
     wins = career_stats['w'] * 1
     bowls = career_stats['bowl_w'] * 5
-    titles = career_stats['titles'] * 50
-    prest = prestige * 0.5
-    return int(wins + bowls + titles + prest)
-
-def get_bowl_name(rank):
-    if rank <= 12: return "CFP Playoff"
-    elif rank <= 18: return random.choice(BOWL_MAPPING["Elite"])
-    elif rank <= 25: return random.choice(BOWL_MAPPING["High"])
-    elif rank <= 40: return random.choice(BOWL_MAPPING["Mid"])
-    else: return random.choice(BOWL_MAPPING["Low"])
-
-def generate_initial_roster(tier):
-    base = 64
-    if tier == 1: base = 90
-    elif tier == 2: base = 82
-    elif tier == 3: base = 74
-    
-    roster = {}
-    for p in POSITIONS:
-        roster[p] = min(99, max(40, base + random.randint(0, 6)))
-    return roster
-
-def generate_star_player(position, tier):
-    base = 75
-    if tier == 1: base = 92
-    elif tier == 2: base = 86
-    
-    star = {}
-    star["id"] = random.randint(10000, 99999)
-    star["name"] = generate_name()
-    star["pos"] = position
-    star["rating"] = min(99, base + random.randint(2, 6))
-    star["year"] = random.choice(["Fr", "So", "Jr", "Sr"])
-    star["trait"] = random.choice(list(TRAITS.keys()))
-    return star
-
-def calculate_ovr(roster, stars, OC, DC):
-    off_sum = sum(roster[p] for p in ["QB", "RB", "WR", "OL"])
-    off_rating = off_sum / 4
-    
-    def_sum = sum(roster[p] for p in ["DL", "LB", "DB"])
-    def_rating = def_sum / 3
-    
-    off_rating += (OC - 5) * 1.5 
-    def_rating += (DC - 5) * 1.5 
-    
-    star_boost = 0
-    for s in stars:
-        if s['trait'] == "🧠 General":
-            star_boost += 2
-            
-    return int((off_rating * 0.5) + (def_rating * 0.5) + star_boost)
-
-def generate_schedule(my_team_name):
-    pool = [t for t in OPPONENT_POOL if t != my_team_name]
-    return random.sample(pool, 12)
-
-# MODIFIED: Accepts the full opponent database to look up real ratings
-def play_game(my_rating, opponent_name, coach_lvl, stars, opponents_db):
-    if "FCS" in opponent_name:
-        opp_rating = random.randint(55, 65)
-    else:
-        # Default to 75 if not found, otherwise use persistent rating
-        opp_rating = opponents_db.get(opponent_name, 75)
-        # Add slight variance so they aren't static robots
-        opp_rating += random.randint(-2, 2)
-    
-    rating_diff = my_rating - opp_rating
-    execution_bonus = (coach_lvl - 5) * 0.5 
-    
-    trait_impact = 0
-    clutch = False
-    
-    for s in stars:
-        if s['trait'] == "😤 Enforcer":
-            trait_impact += 2 
-        if s['trait'] == "❄️ Clutch" and abs(rating_diff) < 8:
-            trait_impact += 5
-            clutch = True
-    
-    final_margin = rating_diff + execution_bonus + trait_impact + random.randint(-8, 8)
-    
-    my_score = 0
-    opp_score = 0
-    res = ""
-    
-    if final_margin > 0:
-        res = "W"
-        my_score = int(28 + (final_margin / 1.5))
-        opp_score = int(my_score - final_margin)
-    else:
-        res = "L"
-        opp_score = int(30 + (abs(final_margin) / 1.5))
-        my_score = int(opp_score - abs(final_margin))
-        
-    result = {}
-    result["result"] = res
-    result["score"] = f"{max(0,my_score)}-{max(0,opp_score)}"
-    result["ovr"] = opp_rating
-    result["clutch"] = clutch
-    result["my_power"] = int(my_rating + execution_bonus + trait_impact)
-    return result
-
-def process_recruiting(budget, allocations, scout_lvl, prestige, inflation):
-    results = {"roster_updates": {}, "gems": [], "cost": 0, "booster_bonus": 0}
-    total_cost = sum(allocations.values())
-    
-    if total_cost > budget:
-        return None
-    
-    results["cost"] = total_cost
-    scout_eff = 1.0 + (scout_lvl / 10.0)
-    prestige_bonus = 1.0 + (prestige / 200.0)
-    
-    for pos, amount in allocations.items():
-        if amount > 0:
-            buying_power = amount / (800000 * inflation)
-            rating_gain = buying_power * scout_eff * prestige_bonus
-            
-            gem_prob = (scout_lvl * 4) / 100.0
-            thresh = 250000 * inflation
-            
-            if amount > thresh and random.random() < gem_prob:
-                rating_gain += 5 
-                new_star = generate_star_player(pos, 1)
-                new_star['year'] = "Fr"
-                new_star['name'] = f"{new_star['name']} (GEM)"
-                results["gems"].append(new_star)
-                results["booster_bonus"] += random.randint(2, 5) * 100000
-            
-            results["roster_updates"][pos] = rating_gain
-    return results
-
-# --- 5. INITIALIZATION ---
-
-if 'game_state' not in st.session_state:
-    st.session_state.game_state = 'SETUP'
-    st.session_state.year = 2026
-    st.session_state.budget = 0
-    st.session_state.prestige = 50
-    st.session_state.job_security = 100
-    st.session_state.booster_morale = 80
-    st.session_state.roster = {}
-    st.session_state.stars = []
-    st.session_
+    titles = career_stats['
