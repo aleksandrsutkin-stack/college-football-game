@@ -1,18 +1,12 @@
 import streamlit as st
 import random
 import pandas as pd
+import time  # <--- Added this back to fix the NameError
 
 # --- 1. PAGE CONFIG ---
 st.set_page_config(page_title="Gridiron CEO", page_icon="🏈", layout="centered")
 
-# --- 2. SIDEBAR RESET ---
-with st.sidebar:
-    st.header("Game Controls")
-    if st.button("⚠️ Hard Reset", type="primary"):
-        st.session_state.clear()
-        st.rerun()
-
-# --- 3. CSS ---
+# --- 2. CSS STYLING ---
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
@@ -24,7 +18,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. GAME DATA ---
+# --- 3. GAME DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 REGIONS = ["South", "North", "West", "Texas"]
 
@@ -68,7 +62,7 @@ HEADLINES = [
     "Polls: Voters skeptical of strength of schedule."
 ]
 
-# --- 5. LOGIC FUNCTIONS ---
+# --- 4. LOGIC FUNCTIONS ---
 
 def format_cash(amount):
     if amount >= 1000000:
@@ -201,7 +195,7 @@ def process_recruiting(budget, allocations, scout_lvl, prestige, inflation):
             results["roster_updates"][pos] = rating_gain
     return results
 
-# --- 6. INITIALIZATION ---
+# --- 5. INITIALIZATION ---
 
 if 'game_state' not in st.session_state:
     st.session_state.game_state = 'SETUP'
@@ -231,10 +225,10 @@ if 'game_state' not in st.session_state:
     st.session_state.season_logs = []
     st.session_state.team_rating = 0
 
-# --- 7. SCREEN FUNCTIONS ---
+# --- 6. SCREEN FUNCTIONS ---
 
 def run_setup():
-    st.title("🏆 Gridiron CEO V11.0")
+    st.title("🏆 Gridiron CEO V12.1")
     st.markdown("### Dynasty Mode")
     col1, col2 = st.columns(2)
     with col1:
@@ -321,25 +315,19 @@ def show_dashboard():
             if st.button("Upgrade HC"): 
                 cost = 3000000
                 if st.session_state.budget >= cost and st.session_state.staff['Coach'] < 10:
-                    st.session_state.budget -= cost
-                    st.session_state.staff['Coach'] += 1
-                    st.rerun()
+                    st.session_state.budget -= cost; st.session_state.staff['Coach'] += 1; st.rerun()
         with sc2:
             st.markdown(f"<div class='staff-card'><b>Off Coord (OC)</b><br>Lvl {st.session_state.staff['OC']}</div>", unsafe_allow_html=True)
             if st.button("Hire Better OC"): 
                 cost = 1500000
                 if st.session_state.budget >= cost and st.session_state.staff['OC'] < 10:
-                    st.session_state.budget -= cost
-                    st.session_state.staff['OC'] += 1
-                    st.rerun()
+                    st.session_state.budget -= cost; st.session_state.staff['OC'] += 1; st.rerun()
         with sc3:
             st.markdown(f"<div class='staff-card'><b>Def Coord (DC)</b><br>Lvl {st.session_state.staff['DC']}</div>", unsafe_allow_html=True)
             if st.button("Hire Better DC"): 
                 cost = 1500000
                 if st.session_state.budget >= cost and st.session_state.staff['DC'] < 10:
-                    st.session_state.budget -= cost
-                    st.session_state.staff['DC'] += 1
-                    st.rerun()
+                    st.session_state.budget -= cost; st.session_state.staff['DC'] += 1; st.rerun()
         
         st.markdown("---")
         st.subheader("Scouting Department")
@@ -348,10 +336,7 @@ def show_dashboard():
         if st.button(f"Upgrade Scout ($1.5M)"):
             cost = 1500000
             if st.session_state.budget >= cost and scout_lvl < 10:
-                st.session_state.budget -= cost
-                st.session_state.staff['Scout'] += 1
-                st.toast("Scout Upgraded!")
-                st.rerun()
+                st.session_state.budget -= cost; st.session_state.staff['Scout'] += 1; st.toast("Scout Upgraded!"); st.rerun()
         
         st.divider()
         st.subheader("Facilities")
@@ -359,24 +344,15 @@ def show_dashboard():
         with fc1:
             if st.button("Marketing ($1M)"):
                 if st.session_state.budget >= 1000000:
-                    st.session_state.budget -= 1000000
-                    st.session_state.facilities['Marketing'] += 1
-                    st.toast("Revenue +")
-                    st.rerun()
+                    st.session_state.budget -= 1000000; st.session_state.facilities['Marketing'] += 1; st.toast("Revenue +"); st.rerun()
         with fc2:
             if st.button("Training ($3M)"):
                 if st.session_state.budget >= 3000000:
-                    st.session_state.budget -= 3000000
-                    st.session_state.facilities['Training'] += 1
-                    st.toast("Development +")
-                    st.rerun()
+                    st.session_state.budget -= 3000000; st.session_state.facilities['Training'] += 1; st.toast("Development +"); st.rerun()
         with fc3:
             if st.button("Stadium ($10M)"):
                 if st.session_state.budget >= 10000000:
-                    st.session_state.budget -= 10000000
-                    st.session_state.facilities['Stadium'] += 1
-                    st.session_state.prestige += 5
-                    st.rerun()
+                    st.session_state.budget -= 10000000; st.session_state.facilities['Stadium'] += 1; st.session_state.prestige += 5; st.rerun()
 
     with tab3:
         if st.button("▶️ SIMULATE SEASON", type="primary"):
