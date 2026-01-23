@@ -7,7 +7,7 @@ import pandas as pd
 # ZONE 1: CONFIGURATION & STATIC DATA (The Universe)
 # ==============================================================================
 try:
-    st.set_page_config(page_title="College Football Mogul V7.2", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="College Football Mogul V7.7", page_icon="🏈", layout="wide")
 except:
     pass
 
@@ -48,10 +48,10 @@ st.markdown("""
 
     .recruiting-intel { background-color: #e0f7fa; border-left: 5px solid #006064; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
     .bracket-box { background-color: #2c3e50; color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
+    .bracket-row { display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #444; }
     </style>
 """, unsafe_allow_html=True)
 
-# CONSTANTS
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 REGION_STRENGTH = {"South": 1.08, "Midwest": 1.05, "West": 1.05, "North": 1.02}
 SCHEMES = {"Offense": ["Air Raid", "Smashmouth", "Pro Style"], "Defense": ["3-3-5 Cloud", "4-4 Heavy", "Man Coverage"]}
@@ -60,7 +60,6 @@ TRAITS = ["❄️ Clutch", "🚀 Speedster", "🧠 General", "😤 Enforcer"]
 COACH_TRAITS = {"None": "None", "Recruiter": "+10% Recruiting", "Tactician": "+3 Game Boost", "Air Raid": "+2 Scheme", "Smashmouth": "+2 Scheme", "Pro Style": "+2 Scheme"}
 BOWL_MAPPING = {"Elite": ["Rose Bowl", "Sugar Bowl", "Orange Bowl", "Cotton Bowl", "Peach Bowl", "Fiesta Bowl"], "High": ["Citrus Bowl", "Alamo Bowl", "Pop-Tarts Bowl", "Gator Bowl"], "Mid": ["Liberty Bowl", "Music City Bowl", "Las Vegas Bowl"], "Low": ["Gasparilla Bowl", "Boca Raton Bowl", "Potato Bowl"]}
 
-# DATABASE
 TEAMS_DB = {
     "Georgia": {"color": "#BA0C2F"}, "Alabama": {"color": "#9E1B32"}, "Ohio State": {"color": "#BB0000"}, 
     "Michigan": {"color": "#00274C"}, "Texas": {"color": "#BF5700"}, "Oklahoma": {"color": "#841617"},
@@ -108,7 +107,7 @@ CONFERENCES = {
 ALL_TEAMS = [t for c in CONFERENCES.values() for t in c]
 
 # ==============================================================================
-# ZONE 2: HELPER FUNCTIONS & GENERATORS (Stateless)
+# ZONE 2: HELPER FUNCTIONS
 # ==============================================================================
 
 def helper_format_cash(amount): return f"${amount/1000000:.1f}M" if amount >= 1000000 else f"${int(amount/1000)}K"
@@ -153,7 +152,6 @@ def generate_ga_coach(role):
 # ==============================================================================
 
 def engine_calculate_revenue(tier, marketing_lvl, inflation):
-    # Safe fallback
     if not tier: tier = 3
     base = {1: 40000000, 2: 25000000, 3: 10000000, 4: 5000000}.get(tier, 5000000)
     marketing_bonus = marketing_lvl * 2000000
@@ -165,16 +163,7 @@ def engine_generate_coach(role, tier):
     trait_pool = list(COACH_TRAITS.keys())
     if role == "OC": trait_pool = ["Air Raid", "Smashmouth", "Pro Style", "Recruiter", "Tactician"]
     base = 8 if tier == 1 else (5 if tier == 2 else 1)
-    
-    histories = ["Former SEC Coordinator", "Promoted from G5", "Ex-NFL Assistant", "High School Legend", "Analyst at Blue Blood"]
-    
-    return {
-        "name": generate_coach_name(), 
-        "role": role, 
-        "off": min(10, base + random.randint(0, 3)), "def": min(10, base + random.randint(0, 3)), "recruit": min(10, base + random.randint(0, 3)), 
-        "trait": random.choice(trait_pool), 
-        "salary": cost, "history": random.choice(histories), "scouted": False 
-    }
+    return {"name": generate_coach_name(), "role": role, "off": min(10, base + random.randint(0, 3)), "def": min(10, base + random.randint(0, 3)), "recruit": min(10, base + random.randint(0, 3)), "trait": random.choice(trait_pool), "salary": cost, "history": "External Hire", "scouted": False}
 
 def engine_generate_roster(tier, base_ovr=None):
     base = base_ovr if base_ovr else (90 if tier == 1 else 74)
@@ -195,6 +184,8 @@ def engine_generate_schedule(my_team, my_conf, rival):
         schedule.append(rival)
     else:
         random.shuffle(schedule)
+    
+    while len(schedule) > 12: schedule.pop(0)
     return schedule
 
 def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, fac_lvl, my_roster):
@@ -209,7 +200,7 @@ def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_pl
     if COUNTERS[opp_schemes['Def']] == schemes['Off']: scheme_bonus += 4
     elif COUNTERS[schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 4
     
-    # 3. Coaching Tier Logic (1.1x weight)
+    # 3. Coaching (1.1x)
     my_oc = staff.get('OC', {'off':3})['off']
     my_dc = staff.get('DC', {'def':3})['def']
     opp_oc = opp_coaches.get('OC', 5)
@@ -220,25 +211,23 @@ def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_pl
         elif rating <= 4: return -3
         return 0
     
-    # Net Coaching Impact
     coaching_net = ((get_tier_bonus(my_oc) - get_tier_bonus(opp_dc)) * 1.1) + ((get_tier_bonus(my_dc) - get_tier_bonus(opp_oc)) * 1.1)
     
-    # 4. Sim Variables
+    # 4. Sim
     home_bonus = 3 if is_home and fac_lvl > 8 else ( -3 if not is_home and random.random() < 0.3 else 0)
     var_mult = 2.0 if is_rival else 1.0
     if game_plan == "Aggressive": var_mult *= 1.5
     
-    # 5. Monte Carlo Loop
+    # 5. Monte Carlo (100x)
     sims = []
     for _ in range(100):
-        luck = random.gauss(0, 3.0 * var_mult)
+        luck = random.gauss(0, 3.0 * var_mult) # RESTORED VARIANCE
         sims.append(talent_gap + scheme_bonus + coaching_net + home_bonus + luck)
     
     margin = sum(sims) / len(sims)
     my_score = int(28 + (margin/1.5)) if margin > 0 else int(24 + (margin/1.5))
     opp_score = int(my_score - margin)
     
-    # Visual Stats
     visual_my_off = int(my_off + get_tier_bonus(my_oc))
     visual_my_def = int(my_def + get_tier_bonus(my_dc))
     
@@ -274,15 +263,12 @@ def engine_evolve_universe(opponents_db):
 
 def engine_generate_portal_players():
     players = []
-    # High Tier
     for _ in range(3):
         players.append({"name": f"{generate_name()}", "pos": random.choice(POSITIONS), "rating": random.randint(90, 99), 
                         "cost": random.randint(3000000, 6000000), "trait": random.choice(TRAITS), "year": "Sr"})
-    # Mid Tier
     for _ in range(3):
         players.append({"name": f"{generate_name()}", "pos": random.choice(POSITIONS), "rating": random.randint(80, 89), 
                         "cost": random.randint(1000000, 2500000), "trait": random.choice(TRAITS), "year": "Sr"})
-    # Bargain Bin
     for _ in range(4):
         players.append({"name": f"{generate_name()}", "pos": random.choice(POSITIONS), "rating": random.randint(70, 78), 
                         "cost": random.randint(150000, 500000), "trait": "None", "year": "Jr"})
@@ -294,7 +280,6 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
     
     scout_rate = staff.get('Scout', {'recruit':1})['recruit']
     
-    # 1-4 Bad (Penalty), 5-7 Normal, 8-10 Elite (Discount)
     cost_mult = 1.2 
     if scout_rate >= 8: cost_mult = 0.8 
     elif scout_rate >= 5: cost_mult = 1.0 
@@ -320,7 +305,7 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
     return results
 
 # ==============================================================================
-# ZONE 4: STATE MANAGEMENT
+# ZONE 4: STATE MANAGEMENT & BRACKET LOGIC
 # ==============================================================================
 
 def initialize_game_state():
@@ -348,19 +333,50 @@ def initialize_game_state():
         st.session_state.hotspots = {}
         st.session_state.portal_players = []
         st.session_state.candidates = {}
-        st.session_state.postseason_data = {}
+        
+        # V7.7 BRACKET STATE
+        st.session_state.postseason_data = {"Type": None, "Rank": 0, "Round": 0, "Matches": []} 
         st.session_state.revenue_report = None
         st.session_state.inflation = 1.0 
     
-    # SAFETY CHECK for Existing Saves (V7.2 CRASH FIX)
+    # SAFETY CHECKS
     if 'inflation' not in st.session_state: st.session_state.inflation = 1.0
     if 'revenue_report' not in st.session_state: st.session_state.revenue_report = None
-    if 'postseason_data' not in st.session_state: st.session_state.postseason_data = {}
+    if 'postseason_data' not in st.session_state: st.session_state.postseason_data = {"Type": None, "Rank": 0, "Round": 0, "Matches": []}
 
 def generate_hotspots():
     hotspots = {}
     for reg in REGION_STRENGTH.keys(): hotspots[reg] = random.sample(POSITIONS, 2)
     return hotspots
+
+def init_playoff_bracket(user_rank, user_team_name):
+    # Determine the top 12 teams
+    # 1. Sort all AI teams by OVR (Proxy for ranking)
+    sorted_ai = sorted(st.session_state.opponents_db.items(), key=lambda x: x[1]['OVR'], reverse=True)
+    top_12 = []
+    
+    # Insert User into the rankings at their specific rank
+    ai_idx = 0
+    for r in range(1, 13):
+        if r == user_rank:
+            top_12.append(user_team_name)
+        else:
+            top_12.append(sorted_ai[ai_idx][0])
+            ai_idx += 1
+            
+    # ROUND 1 MATCHUPS (Seeds 5-12)
+    # 5v12, 6v11, 7v10, 8v9
+    r1_matches = [
+        {"high": 5, "low": 12, "t1": top_12[4], "t2": top_12[11], "winner": None},
+        {"high": 6, "low": 11, "t1": top_12[5], "t2": top_12[10], "winner": None},
+        {"high": 7, "low": 10, "t1": top_12[6], "t2": top_12[9], "winner": None},
+        {"high": 8, "low": 9,  "t1": top_12[7], "t2": top_12[8], "winner": None}
+    ]
+    
+    # QF WAITING (Seeds 1-4)
+    qf_seeds = [top_12[0], top_12[1], top_12[2], top_12[3]]
+    
+    return {"Type": "CFP", "Round": 1, "Matches": r1_matches, "Seeds": top_12, "QF_Seeds": qf_seeds, "UserAlive": True}
 
 initialize_game_state()
 
@@ -369,7 +385,7 @@ initialize_game_state()
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V7.2")
+    st.title("🏆 College Football Mogul V7.7")
     st.markdown("### Dynasty Mode (Jan 2026)")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", "Coach Prime")
@@ -428,7 +444,6 @@ def show_dashboard():
     thresh = 0 if st.session_state.tenure <= 2 else 30
     if st.session_state.job_security < thresh: st.session_state.game_state = "FIRED"; st.rerun()
     
-    # Financial Report (V7.1 Fix)
     if st.session_state.revenue_report:
         st.markdown(f"<div class='finance-alert'>💰 FINANCIAL REPORT<br>{st.session_state.revenue_report}</div>", unsafe_allow_html=True)
     
@@ -569,15 +584,22 @@ def show_dashboard():
                 wins = st.session_state.record['w']
                 rank = 130 - (wins * 10)
                 if rank < 1: rank = 1
-                bowl = get_bowl_name(rank)
-                candidates = [t for t in ALL_TEAMS if t != st.session_state.team_name]
-                opp = random.choice(candidates)
-                st.session_state.postseason_data = {"Bowl": bowl, "Rank": rank, "Opponent": opp, "OppData": st.session_state.opponents_db[opp]}
+                
+                # V7.7 POSTSEASON INITIALIZATION
+                if rank <= 12:
+                    st.session_state.postseason_data = init_playoff_bracket(rank, st.session_state.team_name)
+                else:
+                    bowl = get_bowl_name(rank)
+                    candidates = [t for t in ALL_TEAMS if t != st.session_state.team_name]
+                    opp = random.choice(candidates)
+                    st.session_state.postseason_data = {"Type": "BOWL", "Bowl": bowl, "Rank": rank, "Opponent": opp, "OppData": st.session_state.opponents_db[opp]}
+                
                 st.session_state.game_state = "POSTSEASON"; st.rerun()
 
 def run_season():
     wins = 0; losses = 0; logs = []
     bar = st.progress(0)
+    total = len(st.session_state.schedule)
     for i, opp in enumerate(st.session_state.schedule):
         opp_data = st.session_state.opponents_db.get(opp)
         is_riv = (opp == st.session_state.team_rival)
@@ -592,7 +614,7 @@ def run_season():
             st.session_state.job_security = max(0, st.session_state.job_security - pen)
             
         logs.append({"Week": i+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res['stats']})
-        bar.progress((i+1)/12)
+        bar.progress((i+1)/total)
         
     st.session_state.record = {"w": wins, "l": losses}
     st.session_state.season_logs = logs
@@ -603,57 +625,136 @@ def show_postseason():
     st.title("Postseason Hub")
     data = st.session_state.postseason_data
     
-    c1, c2 = st.columns(2)
-    c1.metric("Final Rank", f"#{data['Rank']}")
-    c2.metric("Bowl Invite", data['Bowl'])
-    
-    st.markdown(f"<div class='bracket-box'><h3>{data['Bowl']}</h3><h1>VS {data['Opponent']}</h1></div>", unsafe_allow_html=True)
-    
-    c_strat, c_opp = st.columns(2)
-    plan = c_strat.selectbox("Game Plan", ["Balanced", "Aggressive", "Conservative"])
-    c_opp.markdown(f"<div class='scout-report'>Opponent: {data['Opponent']}<br>OVR: {data['OppData']['OVR']}</div>", unsafe_allow_html=True)
-    
-    if st.button("PLAY BOWL GAME 🏈"):
-        res = engine_play_game(st.session_state.team_rating, data['OppData']['OVR'], st.session_state.staff, st.session_state.my_schemes, {"Off":data['OppData']['Off'], "Def":data['OppData']['Def']}, plan, data['OppData']['Coaches'], False, False, 10, st.session_state.roster)
-        
-        wins = st.session_state.record['w'] + (1 if res['result']=="W" else 0)
-        delta = wins - st.session_state.expected_wins
-        
-        if res['result'] == "W":
-            st.balloons()
-            st.success(f"WON {res['score']}")
-            st.session_state.career_stats['bowl_w'] += 1
-            if data['Bowl'] == "CFP Playoff": 
-                st.session_state.career_stats['titles'] += 1
-                st.session_state.budget += 50000000
-                st.toast("🏆 NATIONAL TITLE BONUS: $50M")
-            else:
+    if data['Type'] == "BOWL":
+        # STANDARD BOWL LOGIC
+        st.markdown(f"<div class='bracket-box'><h3>{data['Bowl']}</h3><h1>VS {data['Opponent']}</h1></div>", unsafe_allow_html=True)
+        if st.button("PLAY BOWL GAME 🏈"):
+            res = engine_play_game(st.session_state.team_rating, data['OppData']['OVR'], st.session_state.staff, st.session_state.my_schemes, {"Off":data['OppData']['Off'], "Def":data['OppData']['Def']}, "Normal", data['OppData']['Coaches'], False, False, 10, st.session_state.roster)
+            # Payouts and History
+            wins = st.session_state.record['w'] + (1 if res['result']=="W" else 0)
+            if res['result'] == "W":
                 st.session_state.budget += 2000000
                 st.toast("🎳 BOWL WIN BONUS: $2M")
-        else:
-            st.error(f"LOST {res['score']}")
-            st.session_state.career_stats['bowl_l'] += 1
+                st.session_state.career_stats['bowl_w'] += 1
+            else: st.session_state.career_stats['bowl_l'] += 1
             
-        if delta > 0: 
-            bonus = delta * 1000000
-            st.session_state.budget += bonus
-            st.success(f"💰 Booster Payout: {helper_format_cash(bonus)}")
-        elif delta < 0:
-            cut = abs(delta) * 500000
-            st.session_state.budget -= cut
-            st.error(f"📉 Booster Budget Cut: {helper_format_cash(cut)}")
+            # Booster Calc
+            delta = wins - st.session_state.expected_wins
+            if delta > 0: st.session_state.budget += delta * 1000000
+            elif delta < 0: st.session_state.budget -= abs(delta) * 500000
             
-        hist = {"Year": st.session_state.year, "Record": f"{wins}-{st.session_state.record['l'] + (1 if res['result']=='L' else 0)}", "Rank": f"#{data['Rank']}", "Bowl": data['Bowl']}
-        st.session_state.history.append(hist)
+            hist = {"Year": st.session_state.year, "Record": f"{wins}-{st.session_state.record['l'] + (1 if res['result']=='L' else 0)}", "Rank": f"#{data['Rank']}", "Bowl": data['Bowl']}
+            st.session_state.history.append(hist)
+            st.session_state.game_state = "SUMMARY"; st.rerun()
+            
+    elif data['Type'] == "CFP":
+        # BRACKET LOGIC
+        st.header(f"CFP Round: {['Opening Rd', 'Quarterfinals', 'Semifinals', 'Championship'][data['Round']-1]}")
         
-        time.sleep(4)
-        st.session_state.game_state = "SUMMARY"; st.rerun()
+        # Display Bracket
+        st.write("--- Bracket Status ---")
+        for m in data['Matches']:
+            res_txt = f"✅ {m['t1']} def. {m['t2']}" if m['winner'] == m['t1'] else (f"✅ {m['t2']} def. {m['t1']}" if m['winner'] else f"{m['t1']} vs {m['t2']}")
+            st.markdown(f"<div class='bracket-row'>{res_txt}</div>", unsafe_allow_html=True)
+            
+        # Find User Match
+        user_match = None
+        for m in data['Matches']:
+            if m['t1'] == st.session_state.team_name or m['t2'] == st.session_state.team_name:
+                user_match = m
+                break
+        
+        if data['UserAlive'] and user_match:
+            opp = user_match['t2'] if user_match['t1'] == st.session_state.team_name else user_match['t1']
+            opp_ovr = st.session_state.opponents_db.get(opp, {'OVR': 88})['OVR']
+            st.info(f"Your Matchup: vs {opp} (OVR: {opp_ovr})")
+            if st.button("PLAY PLAYOFF GAME 🏈"):
+                # Sim User Game
+                res = engine_play_game(st.session_state.team_rating, opp_ovr, st.session_state.staff, st.session_state.my_schemes, {"Off":"Pro Style", "Def":"Man Coverage"}, "Normal", {"OC":8,"DC":8}, False, False, 10, st.session_state.roster)
+                
+                # Sim Other Games
+                next_round_teams = []
+                for m in data['Matches']:
+                    if m == user_match:
+                        if res['result'] == "W": 
+                            m['winner'] = st.session_state.team_name
+                            next_round_teams.append(st.session_state.team_name)
+                            st.toast("VICTORY! Advancing...")
+                        else:
+                            m['winner'] = opp
+                            next_round_teams.append(opp)
+                            st.session_state.postseason_data['UserAlive'] = False
+                            st.error(f"Eliminated by {opp}")
+                    else:
+                        # Sim random winner for AI
+                        winner = random.choice([m['t1'], m['t2']])
+                        m['winner'] = winner
+                        next_round_teams.append(winner)
+                
+                # Advance Logic
+                time.sleep(2)
+                if st.session_state.postseason_data['UserAlive']:
+                    # Setup Next Round
+                    if data['Round'] == 4: # Won Title
+                        st.session_state.budget += 50000000
+                        st.session_state.career_stats['titles'] += 1
+                        st.balloons()
+                        st.success("NATIONAL CHAMPIONS!")
+                        time.sleep(3)
+                        # End Season
+                        hist = {"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title"}
+                        st.session_state.history.append(hist)
+                        st.session_state.game_state = "SUMMARY"; st.rerun()
+                    else:
+                        # Generate Next Round Matches
+                        new_matches = []
+                        if data['Round'] == 1: # QF (Add seeds 1-4)
+                            seeds = data['QF_Seeds']
+                            for i in range(4):
+                                new_matches.append({"t1": seeds[i], "t2": next_round_teams[3-i], "winner": None})
+                        elif data['Round'] == 2: # Semis
+                            new_matches.append({"t1": next_round_teams[0], "t2": next_round_teams[3], "winner": None})
+                            new_matches.append({"t1": next_round_teams[1], "t2": next_round_teams[2], "winner": None})
+                        elif data['Round'] == 3: # Finals
+                            new_matches.append({"t1": next_round_teams[0], "t2": next_round_teams[1], "winner": None})
+                            
+                        st.session_state.postseason_data['Round'] += 1
+                        st.session_state.postseason_data['Matches'] = new_matches
+                        st.rerun()
+                else:
+                    # User Lost - End Season
+                    hist = {"Year": st.session_state.year, "Record": "Playoff Loss", "Rank": f"#{data['Rank']}", "Bowl": "CFP"}
+                    st.session_state.history.append(hist)
+                    st.session_state.game_state = "SUMMARY"; st.rerun()
+                    
+        elif data['UserAlive'] and not user_match:
+            st.success("You have a BYE week.")
+            if st.button("Simulate Round"):
+                # Sim all matches
+                next_round_teams = []
+                for m in data['Matches']:
+                    winner = random.choice([m['t1'], m['t2']])
+                    m['winner'] = winner
+                    next_round_teams.append(winner)
+                
+                # Logic for advancing from BYE (Round 1 to QF)
+                if data['Round'] == 1:
+                    # User is one of the QF Seeds
+                    seeds = data['QF_Seeds'] # 1,2,3,4
+                    new_matches = []
+                    # 1 vs 8/9, 2 vs 7/10 etc logic simplified:
+                    # We just map seeds[0] vs next_round[3], etc.
+                    for i in range(4):
+                        new_matches.append({"t1": seeds[i], "t2": next_round_teams[3-i], "winner": None})
+                        
+                    st.session_state.postseason_data['Round'] += 1
+                    st.session_state.postseason_data['Matches'] = new_matches
+                    st.rerun()
 
 def show_year_summary():
     st.title(f"{st.session_state.year} Summary")
     st.dataframe(pd.DataFrame(st.session_state.history), use_container_width=True)
     
-    # V7.2: Money Clarity
     st.markdown(f"<div class='nil-alert'>💰 WAR CHEST AVAILABLE FOR NIL: {helper_format_cash(st.session_state.budget)}</div>", unsafe_allow_html=True)
     
     if st.button("Enter Portal"):
