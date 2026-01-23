@@ -4,49 +4,62 @@ import time
 import pandas as pd
 
 # ==============================================================================
-# ZONE 1: CONFIGURATION & DATABASE
+# ZONE 1: CONFIGURATION & STATIC DATA (The Universe)
 # ==============================================================================
+# PROHIBITED: Do not write game logic here. Only static lists and dictionaries.
+
 try:
-    st.set_page_config(page_title="College Football Mogul V6.11", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="College Football Mogul V7.0", page_icon="🏈", layout="wide")
 except:
     pass
 
+# CSS STYLING
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
+    
+    /* DASHBOARD WIDGETS */
     .security-box { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; text-align: center; margin-bottom: 10px; }
     .security-safe { color: #28a745; font-weight: bold; }
     .security-warm { color: #fd7e14; font-weight: bold; }
     .security-hot { color: #dc3545; font-weight: bold; }
     
-    .game-card { padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.08); background: white; }
+    /* GAME CARDS */
+    .game-card { padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #ddd; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .game-card-win { border-left: 5px solid #28a745; }
     .game-card-loss { border-left: 5px solid #dc3545; }
     .game-card-pending { border-left: 5px solid #6c757d; background: #f8f9fa; }
     .game-card-rival { border: 2px solid #ffc107 !important; background-color: #fffbf0 !important; }
     
+    .card-header { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 5px;}
     .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.85em; }
     .stat-row { display: flex; justify-content: space-between; }
-    .stat-label { color: #555; font-weight: 600; }
     
-    .scout-report { background-color: #212529; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+    /* STAFF CARDS */
+    .staff-card { background: white; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+    .staff-role { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+    .staff-name { font-size: 1.1em; font-weight: 800; color: #333; }
+    .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-right: 5px; display: inline-block;}
+    .badge-tier-s { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    .badge-tier-a { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .badge-tier-f { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    .badge-trait { background: #e2e3e5; color: #383d41; }
+
     .recruiting-intel { background-color: #e0f7fa; border-left: 5px solid #006064; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
     .bracket-box { background-color: #2c3e50; color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
-    
-    /* New Candidate Card UI */
-    .candidate-card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 10px; background: #fff; }
-    .cand-header { font-weight: bold; font-size: 1.1em; margin-bottom: 5px; color: #333; display: flex; justify-content: space-between; }
-    .cand-history { font-size: 0.8em; color: #666; font-style: italic; margin-bottom: 8px; }
-    .cand-stats { display: flex; gap: 10px; font-size: 0.9em; margin-bottom: 8px; }
-    .cand-stat-box { background: #f1f3f5; padding: 4px 8px; border-radius: 4px; }
-    .fit-tag { background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-size: 0.7em; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
+# CONSTANTS
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 REGION_STRENGTH = {"South": 1.08, "Midwest": 1.05, "West": 1.05, "North": 1.02}
+SCHEMES = {"Offense": ["Air Raid", "Smashmouth", "Pro Style"], "Defense": ["3-3-5 Cloud", "4-4 Heavy", "Man Coverage"]}
+COUNTERS = {"Air Raid": "3-3-5 Cloud", "Smashmouth": "4-4 Heavy", "Pro Style": "Man Coverage", "3-3-5 Cloud": "Smashmouth", "4-4 Heavy": "Air Raid", "Man Coverage": "Pro Style"}
+TRAITS = ["❄️ Clutch", "🚀 Speedster", "🧠 General", "😤 Enforcer"]
+COACH_TRAITS = {"None": "None", "Recruiter": "+10% Recruiting", "Tactician": "+3 Game Boost", "Air Raid": "+2 Scheme", "Smashmouth": "+2 Scheme", "Pro Style": "+2 Scheme"}
+BOWL_MAPPING = {"Elite": ["Rose Bowl", "Sugar Bowl", "Orange Bowl", "Cotton Bowl", "Peach Bowl", "Fiesta Bowl"], "High": ["Citrus Bowl", "Alamo Bowl", "Pop-Tarts Bowl", "Gator Bowl"], "Mid": ["Liberty Bowl", "Music City Bowl", "Las Vegas Bowl"], "Low": ["Gasparilla Bowl", "Boca Raton Bowl", "Potato Bowl"]}
 
-# Team Colors & Metadata
+# DATABASE
 TEAMS_DB = {
     "Georgia": {"color": "#BA0C2F"}, "Alabama": {"color": "#9E1B32"}, "Ohio State": {"color": "#BB0000"}, 
     "Michigan": {"color": "#00274C"}, "Texas": {"color": "#BF5700"}, "Oklahoma": {"color": "#841617"},
@@ -93,14 +106,8 @@ CONFERENCES = {
 }
 ALL_TEAMS = [t for c in CONFERENCES.values() for t in c]
 
-SCHEMES = {"Offense": ["Air Raid", "Smashmouth", "Pro Style"], "Defense": ["3-3-5 Cloud", "4-4 Heavy", "Man Coverage"]}
-COUNTERS = {"Air Raid": "3-3-5 Cloud", "Smashmouth": "4-4 Heavy", "Pro Style": "Man Coverage", "3-3-5 Cloud": "Smashmouth", "4-4 Heavy": "Air Raid", "Man Coverage": "Pro Style"}
-TRAITS = ["❄️ Clutch", "🚀 Speedster", "🧠 General", "😤 Enforcer"]
-COACH_TRAITS = {"None": "None", "Recruiter": "+10% Recruiting", "Tactician": "+3 Game Boost", "Air Raid": "+2 Scheme", "Smashmouth": "+2 Scheme", "Pro Style": "+2 Scheme"}
-BOWL_MAPPING = {"Elite": ["Rose Bowl", "Sugar Bowl", "Orange Bowl", "Cotton Bowl", "Peach Bowl", "Fiesta Bowl"], "High": ["Citrus Bowl", "Alamo Bowl", "Pop-Tarts Bowl", "Gator Bowl"], "Mid": ["Liberty Bowl", "Music City Bowl", "Las Vegas Bowl"], "Low": ["Gasparilla Bowl", "Boca Raton Bowl", "Potato Bowl"]}
-
 # ==============================================================================
-# ZONE 2: HELPER FUNCTIONS (Must be defined before Engine)
+# ZONE 2: HELPER FUNCTIONS & GENERATORS (Stateless)
 # ==============================================================================
 
 def helper_format_cash(amount): return f"${amount/1000000:.1f}M" if amount >= 1000000 else f"${int(amount/1000)}K"
@@ -114,6 +121,14 @@ def generate_coach_name():
     first = ["Kirby", "Nick", "Ryan", "Lane", "Dabo", "Lincoln", "Steve", "Chip", "Deion", "Marcus", "Dan", "Kalen"]
     last = ["Smart", "Saban", "Day", "Kiffin", "Swinney", "Riley", "Sarkisian", "Kelly", "Sanders", "Freeman", "Lanning", "DeBoer"]
     return f"{random.choice(first)} {random.choice(last)}"
+
+def get_letter_grade(val):
+    if val >= 9: return "A+"
+    elif val >= 8: return "A"
+    elif val >= 7: return "B"
+    elif val >= 5: return "C"
+    elif val >= 3: return "D"
+    else: return "F"
 
 def calculate_saban_score(career_stats, prestige):
     return int((career_stats['w'] * 1) + (career_stats['bowl_w'] * 5) + (career_stats['titles'] * 50) + (prestige * 0.5))
@@ -130,11 +145,19 @@ def generate_star_player(position, tier):
 
 def generate_ga_coach(role):
     return {"name": f"GA {generate_name()}", "role": role, "off": random.randint(1, 3), 
-            "def": random.randint(1, 3), "recruit": random.randint(1, 2), "trait": "None", "salary": 50000, "history": "Former Player"}
+            "def": random.randint(1, 3), "recruit": random.randint(1, 2), "trait": "None", "salary": 50000, "history": "Former Player", "scouted": True}
 
 # ==============================================================================
-# ZONE 3: THE ENGINE
+# ZONE 3: THE ENGINE (Math & Logic)
 # ==============================================================================
+
+def engine_calculate_revenue(tier, marketing_lvl, inflation):
+    # Base Revenue by Tier
+    base = {1: 40000000, 2: 20000000, 3: 8000000, 4: 3000000}.get(tier, 5000000)
+    # Facility Bonus
+    marketing_bonus = marketing_lvl * 2000000
+    total = (base + marketing_bonus) * inflation
+    return int(total)
 
 def engine_generate_coach(role, tier):
     cost = random.randint(4000000, 8000000) if tier == 1 else random.randint(500000, 3500000)
@@ -142,19 +165,14 @@ def engine_generate_coach(role, tier):
     if role == "OC": trait_pool = ["Air Raid", "Smashmouth", "Pro Style", "Recruiter", "Tactician"]
     base = 8 if tier == 1 else (5 if tier == 2 else 1)
     
-    # Flavor Text for History
     histories = ["Former SEC Coordinator", "Promoted from G5", "Ex-NFL Assistant", "High School Legend", "Analyst at Blue Blood"]
     
     return {
         "name": generate_coach_name(), 
         "role": role, 
-        "off": min(10, base + random.randint(0, 3)), 
-        "def": min(10, base + random.randint(0, 3)), 
-        "recruit": min(10, base + random.randint(0, 3)), 
+        "off": min(10, base + random.randint(0, 3)), "def": min(10, base + random.randint(0, 3)), "recruit": min(10, base + random.randint(0, 3)), 
         "trait": random.choice(trait_pool), 
-        "salary": cost,
-        "history": random.choice(histories),
-        "scouted": False # Fog of War flag
+        "salary": cost, "history": random.choice(histories), "scouted": False 
     }
 
 def engine_generate_roster(tier, base_ovr=None):
@@ -179,12 +197,18 @@ def engine_generate_schedule(my_team, my_conf, rival):
     return schedule
 
 def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, fac_lvl, my_roster):
-    # 1. Roster Talent (Weighted)
+    # 1. Roster Talent
     my_off = (my_roster["QB"] * 0.3) + (my_roster["OL"] * 0.25) + ((my_roster["RB"] + my_roster["WR"])/2 * 0.45)
     my_def = sum(my_roster[p] for p in ["DL","LB","DB"]) / 3
     
-    # 2. Coaching Tier Logic (V6.10 Update)
-    # 1-4: Bad (-3), 5-7: Neutral (0), 8-10: Elite (+3)
+    talent_gap = (my_rating**2 - opp_rating**2) / 125.0
+    
+    # 2. Scheme
+    scheme_bonus = 0
+    if COUNTERS[opp_schemes['Def']] == schemes['Off']: scheme_bonus += 4
+    elif COUNTERS[schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 4
+    
+    # 3. Coaching Tier Logic (V7.0: Tuned to 1.1x)
     my_oc = staff.get('OC', {'off':3})['off']
     my_dc = staff.get('DC', {'def':3})['def']
     opp_oc = opp_coaches.get('OC', 5)
@@ -195,30 +219,15 @@ def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_pl
         elif rating <= 4: return -3
         return 0
     
-    # Matchup: My OC vs Their DC
-    my_off_bonus = get_tier_bonus(my_oc)
-    opp_def_bonus = get_tier_bonus(opp_dc)
+    # Net Coaching Impact (Weighted 1.1x per elite request)
+    coaching_net = ((get_tier_bonus(my_oc) - get_tier_bonus(opp_dc)) * 1.1) + ((get_tier_bonus(my_dc) - get_tier_bonus(opp_oc)) * 1.1)
     
-    # Matchup: My DC vs Their OC
-    my_def_bonus = get_tier_bonus(my_dc)
-    opp_off_bonus = get_tier_bonus(opp_oc)
-    
-    # Net Coaching Impact
-    coaching_net = (my_off_bonus - opp_def_bonus) + (my_def_bonus - opp_off_bonus)
-    
-    # 3. Standard Factors
-    talent_gap = (my_rating**2 - opp_rating**2) / 125.0
-    
-    scheme_bonus = 0
-    if COUNTERS[opp_schemes['Def']] == schemes['Off']: scheme_bonus += 4
-    elif COUNTERS[schemes['Off']] == opp_schemes['Def']: scheme_bonus -= 4
-    
+    # 4. Sim Variables
     home_bonus = 3 if is_home and fac_lvl > 8 else ( -3 if not is_home and random.random() < 0.3 else 0)
-    
     var_mult = 2.0 if is_rival else 1.0
     if game_plan == "Aggressive": var_mult *= 1.5
     
-    # 4. Simulation
+    # 5. Monte Carlo Loop
     sims = []
     for _ in range(100):
         luck = random.gauss(0, 3.0 * var_mult)
@@ -229,21 +238,22 @@ def engine_play_game(my_rating, opp_rating, staff, schemes, opp_schemes, game_pl
     opp_score = int(my_score - margin)
     
     # Visual Stats
-    visual_my_off = int(my_off + my_off_bonus)
-    visual_my_def = int(my_def + my_def_bonus)
+    visual_my_off = int(my_off + get_tier_bonus(my_oc))
+    visual_my_def = int(my_def + get_tier_bonus(my_dc))
     
     return {
         "result": "W" if margin > 0 else "L", "score": f"{max(0,my_score)}-{max(0,opp_score)}",
         "stats": {
             "qb_duel": [int(my_roster["QB"]), int(opp_rating)], 
-            "off_vs_def": [visual_my_off, int(opp_rating + opp_def_bonus)], 
-            "def_vs_off": [visual_my_def, int(opp_rating + opp_off_bonus)], 
+            "off_vs_def": [visual_my_off, int(opp_rating + get_tier_bonus(opp_dc))], 
+            "def_vs_off": [visual_my_def, int(opp_rating + get_tier_bonus(opp_oc))], 
             "staff": [f"{my_oc}/{my_dc}", f"{opp_oc}/{opp_dc}"],
-            "raw_roster": int((my_off + my_def)/2) # Raw talent for display
+            "raw_roster": int((my_off + my_def)/2)
         }
     }
 
 def engine_evolve_universe(opponents_db):
+    """The Living World Engine: Runs every offseason."""
     for team, data in opponents_db.items():
         wins = int((data['OVR']/100)*12) + random.randint(-2, 2)
         wins = max(0, min(12, wins))
@@ -272,7 +282,7 @@ def engine_generate_portal_players():
     for _ in range(3):
         players.append({"name": f"{generate_name()}", "pos": random.choice(POSITIONS), "rating": random.randint(80, 89), 
                         "cost": random.randint(1000000, 2500000), "trait": random.choice(TRAITS), "year": "Sr"})
-    # Bargain Bin
+    # Bargain Bin (RESTORED)
     for _ in range(4):
         players.append({"name": f"{generate_name()}", "pos": random.choice(POSITIONS), "rating": random.randint(70, 78), 
                         "cost": random.randint(150000, 500000), "trait": "None", "year": "Jr"})
@@ -282,13 +292,11 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
     results = {"roster_updates": {}, "gems": [], "cost": sum(allocations.values()), "booster_bonus": 0}
     if results["cost"] > budget: return None
     
-    # New Tier Logic for Recruiting
     scout_rate = staff.get('Scout', {'recruit':1})['recruit']
     
-    # Cost Multiplier based on Scout Tier
-    cost_mult = 1.2 # Default penalty (Bad Scout 1-4)
-    if scout_rate >= 8: cost_mult = 0.8 # Elite Discount
-    elif scout_rate >= 5: cost_mult = 1.0 # Neutral
+    cost_mult = 1.2 
+    if scout_rate >= 8: cost_mult = 0.8 
+    elif scout_rate >= 5: cost_mult = 1.0 
     
     base_cost = 800000 * inflation * cost_mult
     
@@ -296,7 +304,7 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
     hot_positions = st.session_state.hotspots.get(home_region, []) 
     
     for pos, amount in allocations.items():
-        if amount < base_cost * 0.5: change = -random.randint(2, 6)
+        if amount < base_cost * 0.5: change = -random.randint(2, 6) # V7.0: Variable Decay
         else:
             bonus = 1.15 if pos in hot_positions else 1.0
             change = (amount / base_cost) * bonus
@@ -353,7 +361,7 @@ initialize_game_state()
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V6.11")
+    st.title("🏆 College Football Mogul V7.0")
     st.markdown("### Dynasty Mode (Jan 2026)")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", "Coach Prime")
@@ -394,7 +402,6 @@ def run_setup():
         val = 10 if tier == 1 else 5
         st.session_state.facilities = {"Marketing": val, "Training": val, "Stadium": val}
         
-        # Init AI
         for opp in ALL_TEAMS:
             if opp in REAL_WORLD_INIT:
                 data = REAL_WORLD_INIT[opp]
@@ -418,7 +425,6 @@ def show_dashboard():
     st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{sec}%</span></div>", unsafe_allow_html=True)
     st.markdown(f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'><h2>{st.session_state.team_name}</h2></div>", unsafe_allow_html=True)
     
-    # Calculate OVR
     raw_roster_val = int(sum(st.session_state.roster.values()) / 7)
     curr_ovr = int((st.session_state.roster['QB']*0.3) + (st.session_state.roster['OL']*0.25) + ((st.session_state.roster['RB']+st.session_state.roster['WR'])/2 * 0.45) + (st.session_state.facilities['Training']*0.5))
     st.session_state.team_rating = curr_ovr
@@ -440,61 +446,66 @@ def show_dashboard():
             st.progress(min(1.0, v/100), lab)
             
     with tab2:
-        for role in ["HC","OC","DC","Scout"]:
-            if role in st.session_state.staff:
-                c = st.session_state.staff[role]
-                tier_color = "red" if c['off'] <= 4 else ("green" if c['off'] >= 8 else "orange")
-                st.markdown(f"**{role}:** {c['name']} (Rate: :{tier_color}[{c['off']}])")
-                if st.button(f"Fire {role}", key=f"f_{role}"): del st.session_state.staff[role]; st.rerun()
-            else:
-                st.warning(f"{role} Vacant")
-                c1, c2 = st.columns(2)
-                if c1.button("Search ($500k)", key=f"s_{role}"): 
-                    if st.session_state.budget >= 500000:
-                        st.session_state.budget -= 500000
-                        st.session_state.candidates[role] = [engine_generate_coach(role, random.randint(1,3)) for _ in range(3)]
-                        st.rerun()
-                if c2.button("Promote GA (Free)", key=f"ga_{role}"):
-                    st.session_state.staff[role] = generate_ga_coach(role); st.rerun()
+        st.markdown("### 🧢 Current Staff")
+        cols = st.columns(4)
+        roles = ["HC", "OC", "DC", "Scout"]
+        for i, role in enumerate(roles):
+            with cols[i]:
+                if role in st.session_state.staff:
+                    c = st.session_state.staff[role]
+                    rtg = c['off'] if role in ['HC','OC'] else (c['def'] if role=='DC' else c['recruit'])
+                    badge_cls = "badge-tier-s" if rtg >=8 else ("badge-tier-a" if rtg >=5 else "badge-tier-f")
+                    st.markdown(f"""
+                    <div class='staff-card'>
+                        <div class='staff-role'>{role}</div>
+                        <div class='staff-name'>{c['name']}</div>
+                        <div><span class='badge {badge_cls}'>RATING: {rtg}</span></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button(f"Fire", key=f"fire_{role}"): 
+                        del st.session_state.staff[role]; st.rerun()
+                else:
+                    st.warning(f"{role} VACANT")
+        st.divider()
+        st.markdown("### 📋 Job Market")
+        vacancies = [r for r in roles if r not in st.session_state.staff]
+        if vacancies:
+            for role in vacancies:
+                if role not in st.session_state.candidates:
+                    st.session_state.candidates[role] = [engine_generate_coach(role, random.randint(1,3)) for _ in range(3)]
                 
-                # New Candidate Profile UI
-                if role in st.session_state.candidates:
-                    for i, cand in enumerate(st.session_state.candidates[role]):
-                        # Fog of War Display
-                        display_rate = f"{cand['off']}" if cand['scouted'] else f"{['C', 'B', 'A'][int(cand['off']/4)]}"
-                        display_trait = cand['trait'] if cand['scouted'] else "???"
-                        fit_badge = "<span class='fit-tag'>SCHEME FIT</span>" if cand.get('trait') == st.session_state.my_schemes['Off'] else ""
-                        
+                cols = st.columns(3)
+                for i, cand in enumerate(st.session_state.candidates[role]):
+                    with cols[i]:
+                        vis_rate = f"{cand['off']}" if cand['scouted'] else f"{get_letter_grade(cand['off'])}"
+                        vis_trait = cand['trait'] if cand['scouted'] else "???"
                         st.markdown(f"""
-                        <div class="candidate-card">
-                            <div class="cand-header"><span>{cand['name']}</span> <span>{helper_format_cash(cand['salary'])}</span></div>
-                            <div class="cand-history">{cand['history']}</div>
-                            <div class="cand-stats">
-                                <span class="cand-stat-box">OVR: {display_rate}</span>
-                                <span class="cand-stat-box">Trait: {display_trait}</span>
-                                {fit_badge}
-                            </div>
+                        <div class='staff-card'>
+                            <div class='staff-name'>{cand['name']}</div>
+                            <div style='font-size:0.8em'>{cand['history']}</div>
+                            <div style='margin:5px 0'><span class='badge badge-trait'>OVR: {vis_rate}</span></div>
+                            <div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div>
                         </div>
                         """, unsafe_allow_html=True)
-                        
-                        c_hire, c_int = st.columns(2)
-                        if c_hire.button(f"Hire", key=f"h_{i}"):
+                        b1, b2 = st.columns(2)
+                        if b1.button("Hire", key=f"h_{role}_{i}"):
                             if st.session_state.budget >= cand['salary']:
                                 st.session_state.budget -= cand['salary']
                                 st.session_state.staff[role] = cand
                                 del st.session_state.candidates[role]
                                 st.rerun()
-                        if not cand['scouted']:
-                            if c_int.button("Interview ($50k)", key=f"int_{i}"):
-                                if st.session_state.budget >= 50000:
-                                    st.session_state.budget -= 50000
-                                    cand['scouted'] = True
-                                    st.rerun()
+                        if not cand['scouted'] and b2.button("Scout ($25k)", key=f"sc_{role}_{i}"):
+                            if st.session_state.budget >= 25000:
+                                st.session_state.budget -= 25000
+                                cand['scouted'] = True
+                                st.rerun()
+                if st.button(f"Promote GA (Free)", key=f"ga_{role}"):
+                    st.session_state.staff[role] = generate_ga_coach(role); st.rerun()
 
     with tab3:
         c1, c2, c3 = st.columns(3)
         with c1: 
-            st.metric("Marketing", st.session_state.facilities['Marketing'], delta="Rev: +$1M")
+            st.metric("Marketing", st.session_state.facilities['Marketing'], delta="Rev: +$2M/yr")
             if st.button("Upgrade ($1M)", key="um"): 
                 if st.session_state.budget >= 1000000: st.session_state.budget -= 1000000; st.session_state.facilities['Marketing'] += 1; st.rerun()
         with c2:
@@ -539,6 +550,7 @@ def show_dashboard():
                         <div class='stat-row'><span class='stat-label'>⚔️ Off vs Def</span><span>{s['off_vs_def'][0]} vs {s['off_vs_def'][1]}</span></div>
                         <div class='stat-row'><span class='stat-label'>🛡️ Def vs Off</span><span>{s['def_vs_off'][0]} vs {s['def_vs_off'][1]}</span></div>
                         <div class='stat-row'><span class='stat-label'>🧠 Staff</span><span>{s['staff'][0]} vs {s['staff'][1]}</span></div>
+                        <div class='stat-row'><span class='stat-label'>💪 Raw Talent</span><span>{s['raw_roster']}</span></div>
                     </div>
                 </div>""", unsafe_allow_html=True)
             if st.button("Proceed to Postseason"): 
@@ -667,9 +679,15 @@ def show_recruiting():
                 st.toast(f"💎 Gem Discovery Bonus: {helper_format_cash(res['booster_bonus'])}")
                 
             for p, g in res['roster_updates'].items():
-                loss = 12 if st.session_state.active_transfers[p] else random.randint(2, 5)
+                # V7.0 Rental Cliff: -12 if rental, -random(2,6) if homegrown
+                loss = 12 if st.session_state.active_transfers[p] else random.randint(2, 6)
                 st.session_state.active_transfers[p] = False
                 st.session_state.roster[p] = max(40, min(99, st.session_state.roster[p] - loss + g))
+            
+            # Annual Revenue Payout (V6.13 Fix)
+            rev = engine_calculate_revenue(st.session_state.school_tier, st.session_state.facilities['Marketing'], st.session_state.inflation)
+            st.session_state.budget += rev
+            st.toast(f"💰 New Season Budget: +{helper_format_cash(rev)}")
             
             st.session_state.opponents_db = engine_evolve_universe(st.session_state.opponents_db)
             st.session_state.year += 1
@@ -679,7 +697,7 @@ def show_recruiting():
             st.session_state.schedule = []
             st.session_state.hotspots = generate_hotspots()
             
-            time.sleep(2)
+            time.sleep(3)
             st.session_state.game_state = "DASHBOARD"
             st.rerun()
         else: st.error("Over Budget")
