@@ -21,11 +21,20 @@ st.markdown("""
     .fired-card { background-color: #ffcccc; padding: 20px; border-radius: 10px; border: 2px solid #ff0000; text-align: center; }
     .bracket-box { background-color: #2c3e50; color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .scout-report { background-color: #333; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+    .recruiting-intel { background-color: #e0f7fa; border-left: 5px solid #006064; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
+
+# FIXED: Regional strengths constant
+REGION_STRENGTH = {
+    "South": 1.08,    # SEC Country - Always strong
+    "Midwest": 1.05,  # Big Ten - Strong
+    "West": 1.05,     # Big 12/ACC - Strong
+    "North": 1.02     # Standard
+}
 
 TEAMS_DB = {
     "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F", "facilities": 10, "region": "South"},
@@ -156,6 +165,13 @@ def generate_star_player(position, tier):
     star["trait"] = random.choice(list(TRAITS))
     return star
 
+def generate_hotspots():
+    # Randomly select 2 positions for each region to receive a bonus
+    hotspots = {}
+    for reg in ["South", "Midwest", "West", "North"]:
+        hotspots[reg] = random.sample(POSITIONS, 2)
+    return hotspots
+
 def calculate_ovr(roster, stars, staff, facilities):
     off = sum(roster[p] for p in ["QB","RB","WR","OL"]) / 4
     defs = sum(roster[p] for p in ["DL","LB","DB"]) / 3
@@ -208,7 +224,6 @@ def play_game(my_rating, opp_rating, staff, stars, my_schemes, opp_schemes, game
         if staff["HC"]["trait"] == "Tactician": exec_bonus += 3
         exec_bonus += (staff["HC"]["off"] + staff["HC"]["def"] - 10) * 0.2
 
-    # Standard random gauss for variance (no numpy required)
     variance = random.gauss(0, 10 * variance_mult) 
     total_margin = margin + coaching_delta + scheme_bonus + talent_bonus + plan_bonus + exec_bonus + variance
     
@@ -235,15 +250,24 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
             
     scout_eff = 1.0 + (staff_rec / 40.0) 
     prestige_bonus = 1.0 + (prestige / 200.0)
-    pipeline_bonus = 1.1 # Regional bonus active
     base_cost = 800000 * inflation
+    
+    # NEW LOGIC: Dynamic Regional & Position Bonuses
+    home_region = st.session_state.home_region
+    base_region_mult = REGION_STRENGTH.get(home_region, 1.02) # Base advantage of the region
+    hot_positions = st.session_state.hotspots.get(home_region, []) # Positions that are hot this year
     
     for pos, amount in allocations.items():
         if amount < (base_cost * 0.5):
             rating_change = -random.randint(1, 4) 
         else:
+            # Dynamic Bonus Calculation
+            pos_bonus = 1.15 if pos in hot_positions else 1.0
+            total_pipeline_mult = base_region_mult * pos_bonus
+            
             buying_power = amount / base_cost
-            rating_change = buying_power * scout_eff * prestige_bonus * pipeline_bonus
+            rating_change = buying_power * scout_eff * prestige_bonus * total_pipeline_mult
+            
             gem_prob = (staff_rec * 0.5) / 100.0
             if amount > (base_cost * 1.2) and random.random() < gem_prob:
                 rating_change += 5 
@@ -254,6 +278,7 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
                 results["booster_bonus"] += random.randint(2, 5) * 100000
         results["roster_updates"][pos] = rating_change
             
+    # AI Evolution
     for opp_name in st.session_state.opponents_db:
         is_p4 = opp_name in CONFERENCES["SEC"] or opp_name in CONFERENCES["Big Ten"]
         current = st.session_state.opponents_db[opp_name]['OVR']
@@ -261,6 +286,7 @@ def process_recruiting(budget, allocations, staff, prestige, inflation):
         else: target = 72 + random.randint(-8, 8) 
         if current < target: st.session_state.opponents_db[opp_name]['OVR'] += random.randint(1, 3)
         elif current > target: st.session_state.opponents_db[opp_name]['OVR'] -= random.randint(1, 3)
+    
     return results
 
 # --- 5. INITIALIZATION & STATE REPAIR ---
@@ -299,6 +325,7 @@ if 'game_state' not in st.session_state:
     st.session_state.match_history = []
     st.session_state.schedule = []
     st.session_state.season_simulated = False 
+    st.session_state.hotspots = {} # NEW
 
 # REPAIR STATE
 if 'inflation' not in st.session_state: st.session_state.inflation = 1.0
@@ -311,11 +338,12 @@ if 'cfp_g' not in st.session_state.career_stats: st.session_state.career_stats['
 if 'schedule' not in st.session_state: st.session_state.schedule = []
 if 'season_simulated' not in st.session_state: st.session_state.season_simulated = False
 if 'home_region' not in st.session_state: st.session_state.home_region = "South"
+if 'hotspots' not in st.session_state: st.session_state.hotspots = generate_hotspots()
 
 # --- 6. SCREENS ---
 
 def run_setup():
-    st.title("🏆 College Football Mogul v2.9")
+    st.title("🏆 College Football Mogul v3.0")
     st.markdown("### Dynasty Mode")
     col1, col2 = st.columns(2)
     with col1: name = st.text_input("AD Name", "Coach Prime")
@@ -360,6 +388,7 @@ def run_setup():
             }
         
         st.session_state.schedule = generate_schedule(st.session_state.team_name, st.session_state.team_conf)
+        st.session_state.hotspots = generate_hotspots()
             
         st.session_state.game_state = 'DASHBOARD'
         st.rerun()
@@ -551,6 +580,7 @@ def show_postseason():
     st.title("Postseason Hub")
     st.info(f"Season Record: {wins}-{st.session_state.record['l']} | Final Rank: #{rank}")
     
+    # --- LOGIC CONTROLLER ---
     if 'current_matchup' not in st.session_state:
         st.session_state.current_matchup = None
         st.session_state.ps_active = True
@@ -727,6 +757,7 @@ def show_portal():
             if st.button("Sign", key=f"sign_p_{i}"):
                 if st.session_state.budget >= p['cost']:
                     st.session_state.budget -= p['cost']
+                    # FIX: Add to Stars List
                     new_star = {
                         "id": random.randint(1000,9999),
                         "name": p['name'],
@@ -736,6 +767,7 @@ def show_portal():
                         "trait": p.get('trait', 'None')
                     }
                     st.session_state.stars.append(new_star)
+                    # Update Unit Rating
                     st.session_state.roster[p['pos']] = max(st.session_state.roster[p['pos']], p['rating'])
                     
                     st.session_state.portal_players.pop(i)
@@ -757,7 +789,16 @@ def show_portal():
 def show_recruiting():
     st.header("High School Recruiting")
     st.info(f"Budget: {format_cash(st.session_state.budget)}")
-    st.caption(f"Home Region: {st.session_state.home_region} (10% Bonus)")
+    st.caption(f"Home Region: {st.session_state.home_region} (Base Boost: {int((REGION_STRENGTH.get(st.session_state.home_region, 1.0) - 1)*100)}%)")
+    
+    # UI FOR HOTSPOTS
+    hot = st.session_state.hotspots.get(st.session_state.home_region, [])
+    st.markdown(f"""
+    <div class="recruiting-intel">
+        <b>📍 Scouting Report ({st.session_state.home_region})</b><br>
+        Top talent spotted this year at: <b>{', '.join(hot)}</b> (+15% Bonus)
+    </div>
+    """, unsafe_allow_html=True)
     
     current_spend = 0
     allocs = {}
@@ -802,6 +843,7 @@ def show_recruiting():
         st.session_state.inflation *= 1.05 
         
         st.session_state.schedule = generate_schedule(st.session_state.team_name, st.session_state.team_conf)
+        st.session_state.hotspots = generate_hotspots() # Reroll hotspots
         
         time.sleep(2) 
         st.session_state.game_state = "DASHBOARD"
