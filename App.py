@@ -4,7 +4,6 @@ import time
 import pandas as pd
 
 # --- 1. PAGE CONFIGURATION ---
-# This MUST be the very first Streamlit command
 st.set_page_config(page_title="Gridiron CEO", page_icon="🏈", layout="centered")
 
 # --- 2. CUSTOM CSS ---
@@ -24,7 +23,6 @@ POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 POS_WEIGHTS = {"QB": 0.25, "RB": 0.10, "WR": 0.15, "OL": 0.15, "DL": 0.15, "LB": 0.10, "DB": 0.10}
 REGIONS = ["South", "North", "West", "Texas"]
 
-# Teams defined line-by-line to ensure stability
 TEAMS_DB = {}
 TEAMS_DB["Georgia"] = {"tier": 1, "budget": 24000000, "expect": 11, "coach": 9, "facilities": 10, "color": "#BA0C2F", "region": "South"}
 TEAMS_DB["Ohio State"] = {"tier": 1, "budget": 24000000, "expect": 11, "coach": 9, "facilities": 10, "color": "#BB0000", "region": "North"}
@@ -257,7 +255,7 @@ if 'game_state' not in st.session_state:
 # --- 6. APP SCREENS ---
 
 def run_setup():
-    st.title("🏆 Gridiron CEO V5.1")
+    st.title("🏆 Gridiron CEO V5.2")
     st.markdown("### Dynasty Mode")
     
     col1, col2 = st.columns(2)
@@ -471,47 +469,4 @@ def run_season():
             outcome["bowl_l"] = 1
             
     st.session_state.postseason_result = outcome
-    st.session_state.game_state = "POSTSEASON"
-    st.rerun()
-
-def show_postseason():
-    st.header(f"Season Finale: {st.session_state.record['w']}-{st.session_state.record['l']}")
-    st.dataframe(pd.DataFrame(st.session_state.season_logs), use_container_width=True)
-    
-    outcome = st.session_state.postseason_result
-    
-    if outcome["type"] == "Playoff":
-        if outcome["titles"] == 1:
-            st.balloons()
-            st.success(f"🏆 NATIONAL CHAMPIONS! ({outcome['name']})")
-            st.success(f"Boosters Donated {Utils.format_cash(outcome['payout'])}")
-        else:
-            st.warning(f"Eliminated in {outcome['name']}")
-    elif outcome["type"] == "Bowl":
-        if outcome["bowl_w"] == 1:
-            st.success(f"🏆 Won the {outcome['name']}!")
-            st.success(f"Boosters Donated {Utils.format_cash(outcome['payout'])}")
-        else:
-            st.error(f"Lost the {outcome['name']}")
-    else:
-        st.info("No Bowl Game Invited.")
-    
-    if st.button("View Year-End Summary"):
-        st.session_state.budget += outcome["payout"]
-        st.session_state.career_stats['w'] += st.session_state.record['w']
-        st.session_state.career_stats['l'] += st.session_state.record['l']
-        st.session_state.career_stats['titles'] += outcome["titles"]
-        st.session_state.career_stats['bowl_w'] += outcome["bowl_w"]
-        st.session_state.career_stats['bowl_l'] += outcome["bowl_l"]
-        
-        history_entry = {}
-        history_entry["Year"] = st.session_state.year
-        history_entry["Record"] = f"{st.session_state.record['w']}-{st.session_state.record['l']}"
-        history_entry["Rank"] = f"#{st.session_state.rank}"
-        history_entry["Result"] = outcome["result"]
-        
-        st.session_state.history.append(history_entry)
-        st.session_state.last_season_summary = history_entry 
-        
-        if st.session_state.record['w'] >= 10:
-            if random.random() < 0.3: st.session_state.staff['OC'] = max(1, st.session_state.staff['OC']
+    st.session_
