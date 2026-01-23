@@ -22,16 +22,17 @@ st.markdown("""
 # --- 3. DATA ---
 POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
 
+# FIXED: Added 'facilities' and 'expect' back to every team
 TEAMS_DB = {
-    "Georgia": {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F"},
-    "Ohio State": {"tier": 1, "budget": 24000000, "conf": "Big Ten", "rival": "Michigan", "color": "#BB0000"},
-    "Texas": {"tier": 1, "budget": 25000000, "conf": "SEC", "rival": "Oklahoma", "color": "#BF5700"},
-    "Alabama": {"tier": 1, "budget": 22000000, "conf": "SEC", "rival": "Georgia", "color": "#9E1B32"},
-    "Oregon": {"tier": 1, "budget": 20000000, "conf": "Big Ten", "rival": "Washington", "color": "#154733"},
-    "Florida St": {"tier": 2, "budget": 15000000, "conf": "ACC", "rival": "Clemson", "color": "#782F40"},
-    "Penn State": {"tier": 2, "budget": 16000000, "conf": "Big Ten", "rival": "Ohio State", "color": "#041E42"},
-    "Boise State": {"tier": 3, "budget": 7000000, "conf": "G5", "rival": "Fresno St", "color": "#0033A0"},
-    "San Jose State": {"tier": 4, "budget": 4500000, "conf": "G5", "rival": "San Diego St", "color": "#0055A2"}
+    "Georgia":    {"tier": 1, "budget": 24000000, "conf": "SEC", "rival": "Alabama", "color": "#BA0C2F", "facilities": 10, "expect": 11},
+    "Ohio State": {"tier": 1, "budget": 24000000, "conf": "Big Ten", "rival": "Michigan", "color": "#BB0000", "facilities": 10, "expect": 11},
+    "Texas":      {"tier": 1, "budget": 25000000, "conf": "SEC", "rival": "Oklahoma", "color": "#BF5700", "facilities": 10, "expect": 10},
+    "Alabama":    {"tier": 1, "budget": 22000000, "conf": "SEC", "rival": "Georgia", "color": "#9E1B32", "facilities": 9, "expect": 10},
+    "Oregon":     {"tier": 1, "budget": 20000000, "conf": "Big Ten", "rival": "Washington", "color": "#154733", "facilities": 10, "expect": 10},
+    "Florida St": {"tier": 2, "budget": 15000000, "conf": "ACC", "rival": "Clemson", "color": "#782F40", "facilities": 8, "expect": 9},
+    "Penn State": {"tier": 2, "budget": 16000000, "conf": "Big Ten", "rival": "Ohio State", "color": "#041E42", "facilities": 8, "expect": 9},
+    "Boise State": {"tier": 3, "budget": 7000000, "conf": "G5", "rival": "Fresno St", "color": "#0033A0", "facilities": 5, "expect": 9},
+    "San Jose State": {"tier": 4, "budget": 4500000, "conf": "G5", "rival": "San Diego St", "color": "#0055A2", "facilities": 3, "expect": 6}
 }
 
 CONFERENCES = {
@@ -105,7 +106,7 @@ def generate_coach(role, tier):
 
 def generate_portal_players():
     players = []
-    # Tier 1: Elite (Expensive)
+    # Tier 1: Elite
     for _ in range(2):
         pos = random.choice(POSITIONS)
         players.append({
@@ -116,7 +117,7 @@ def generate_portal_players():
             "trait": random.choice(TRAITS),
             "desc": "Day 1 Starter"
         })
-    # Tier 2: Solid (Mid)
+    # Tier 2: Solid
     for _ in range(2):
         pos = random.choice(POSITIONS)
         players.append({
@@ -127,7 +128,7 @@ def generate_portal_players():
             "trait": random.choice(TRAITS),
             "desc": "Good Depth"
         })
-    # Tier 3: Budget (Cheap)
+    # Tier 3: Budget
     for _ in range(3):
         pos = random.choice(POSITIONS)
         players.append({
@@ -319,6 +320,7 @@ def run_setup():
             
         st.session_state.budget = int(d['budget'] * mult)
         st.session_state.prestige = 95 - (d['tier'] * 12)
+        st.session_state.win_expect = d['expect']
         
         st.session_state.roster = generate_initial_roster(d['tier'])
         st.session_state.stars = [generate_star_player("QB", d['tier'])]
