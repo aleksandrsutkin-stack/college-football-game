@@ -4,19 +4,19 @@ import time
 import pandas as pd
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V10 (PATCHED) — SINGLE FILE APP
-# PATCH NOTES:
-# 1) Fixed "Sim Rest of Season" crash (is_riv2 definition).
-# 2) "THEME PROOF" CSS: Forces dark text on cards to prevent "Invisible Ink" in Dark Mode.
-# 3) Includes all V9 features: Season Recap, Booster Meter, Resume Button.
-# 4) Includes all V8 features: Scoring Engine, NIL Tiers, Realignment.
+# COLLEGE FOOTBALL MOGUL V11 — SINGLE FILE APP
+# NEW IN V11:
+# 1) "COMMITTEE SCORE" LOGIC: Ranks based on Wins, Losses, Conference Strength (SEC Bias), and SOS.
+# 2) SELECTION SUNDAY SCREEN: A dedicated reveal screen for CFP/Bowl invites.
+# 3) 6-WIN FLOOR: Teams with < 6 wins are eliminated (No Bowl).
+# 4) AI SIMULATION: AI teams generate realistic records immediately after Week 12.
 # ==============================================================================
 
 # ==============================================================================
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="College Football Mogul V10", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="College Football Mogul V11", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -26,7 +26,7 @@ st.markdown("""
 .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
 
 /* THEME-PROOFING: FORCE DARK TEXT ON LIGHT BACKGROUNDS */
-.game-card, .staff-card, .news-box, .security-box, .trophy-tile {
+.game-card, .staff-card, .news-box, .security-box, .trophy-tile, .rank-row {
     color: #111111 !important; /* Fixes White-on-White in Dark Mode */
 }
 
@@ -82,6 +82,13 @@ st.markdown("""
 
 .booster-meter-container { background: #eee; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden; border: 1px solid #ccc; }
 .booster-meter-fill { height: 100%; transition: width 0.5s; }
+
+/* RANKINGS TABLE */
+.rank-row { background: white; padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+.rank-row-user { background: #e3f2fd !important; border-left: 5px solid #2196f3; font-weight: bold; }
+.rank-num { width: 40px; font-weight: bold; color: #555; }
+.rank-team { flex-grow: 1; }
+.rank-rec { width: 80px; text-align: right; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -478,6 +485,7 @@ def engine_play_game_v8(
 
 def engine_evolve_universe(opponents_db):
     for team, data in opponents_db.items():
+        # This is for off-season evolution (progression), NOT for W-L record gen (that is done in calculate_ai_records)
         wins = int((data.get("OVR", 75) / 100) * 12) + random.randint(-2, 2)
         wins = max(0, min(12, wins))
 
@@ -498,6 +506,54 @@ def engine_evolve_universe(opponents_db):
             data.pop("OffOVR", None)
             data.pop("DefOVR", None)
     return opponents_db
+
+# NEW V11: Generate realistic W-L records for AI teams instantly
+def simulate_ai_regular_season():
+    results = []
+    for team, data in st.session_state.opponents_db.items():
+        if team == st.session_state.team_name:
+            continue
+        
+        # Power weighted win generation
+        prestige = data.get("Prestige", 60)
+        conf = get_conference(team)
+        
+        # Base win projection based on prestige
+        if prestige > 90:
+            wins = random.choices([12, 11, 10, 9], weights=[10, 30, 40, 20])[0]
+        elif prestige > 80:
+            wins = random.choices([11, 10, 9, 8, 7], weights=[5, 20, 35, 30, 10])[0]
+        elif prestige > 60:
+            wins = random.choices([9, 8, 7, 6, 5], weights=[10, 25, 30, 25, 10])[0]
+        else:
+            wins = random.choices([6, 5, 4, 3, 2], weights=[10, 30, 30, 20, 10])[0]
+            
+        losses = 12 - wins
+        results.append({"Team": team, "Wins": wins, "Losses": losses, "Conf": conf, "Prestige": prestige})
+        
+    return results
+
+def calculate_committee_score(team_name, wins, losses, conf, sos_score):
+    # Base: 100 pts per win
+    score = (wins * 100)
+    
+    # Penalties: Heavy penalty for losses
+    score -= (losses * 85)
+    
+    # Conference Bias (The "SEC Bump")
+    if conf in ["SEC", "Big Ten"]:
+        score += 120
+    elif conf in ["ACC", "Big 12"]:
+        score += 60
+    
+    # SOS Bonus (Prestige based)
+    score += sos_score
+    
+    # G5 "Perfection" Gate: If G5 and not perfect, massive penalty to prevent jumping P4 teams
+    if conf == "G5" and losses > 0:
+        score -= 200
+        
+    return int(score)
 
 # HS outreach - V8 Gems logic PRESERVED (unaltered)
 def process_hs_outreach(total_spend: int, shares_pct: dict, staff: dict, prestige: int, inflation: float, hotspots: dict, home_region: str, team_needs: list):
@@ -679,6 +735,10 @@ def initialize_game_state():
 
         # V9: Booster Rating
         st.session_state.booster_rating = 50
+        
+        # V11: Rankings
+        st.session_state.ai_records = []
+        st.session_state.selection_sunday_results = []
 
     # safety defaults
     defaults = {
@@ -700,7 +760,9 @@ def initialize_game_state():
         "conf_revenue_boost_mult": 1.0,
         "pending_invite": None,
         "season_end_ready": False,
-        "booster_rating": 50
+        "booster_rating": 50,
+        "ai_records": [],
+        "selection_sunday_results": []
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -713,17 +775,23 @@ def generate_hotspots():
     return hotspots
 
 def init_playoff_bracket(user_rank, user_team_name):
-    sorted_ai = [(t, d) for t, d in st.session_state.opponents_db.items() if t != user_team_name]
-    sorted_ai = sorted(sorted_ai, key=lambda x: x[1].get("OVR", 80), reverse=True)
-
+    # In V11, user_rank is determined by Committee Score logic, not just wins
+    # Get top 11 AI teams from the Selection Sunday Results
+    
+    # Filter out user to find AI
+    ranked_ai = [t["Team"] for t in st.session_state.selection_sunday_results if t["Team"] != user_team_name]
+    
     top_12 = []
     ai_idx = 0
     for r in range(1, 13):
         if r == user_rank:
             top_12.append(user_team_name)
         else:
-            top_12.append(sorted_ai[ai_idx][0])
-            ai_idx += 1
+            if ai_idx < len(ranked_ai):
+                top_12.append(ranked_ai[ai_idx])
+                ai_idx += 1
+            else:
+                top_12.append("FCS East") # Fallback
 
     r1_matches = [
         {"high": 5, "low": 12, "t1": top_12[4], "t2": top_12[11], "winner": None},
@@ -813,6 +881,10 @@ def end_regular_season_and_stay_on_results():
     st.session_state.budget += rev
     st.session_state.revenue_report = f"End of Regular Season Payout: +{helper_format_cash(rev)}"
     add_news(f"Regular season ends at {st.session_state.record['w']}-{st.session_state.record['l']}.")
+    
+    # Generate AI records NOW so we can rank them in selection sunday
+    st.session_state.ai_records = simulate_ai_regular_season()
+    
     st.session_state.game_state = "SEASON_END"
 
 def render_news_box():
@@ -841,7 +913,7 @@ def render_trophy_gallery(title="🏛️ Trophy Case Gallery"):
 # ZONE 6: UI / ROUTES
 # ==============================================================================
 def run_setup():
-    st.title("🏆 College Football Mogul V10")
+    st.title("🏆 College Football Mogul V11")
     st.markdown("### Dynasty Mode (Jan 2026)")
 
     c1, c2 = st.columns(2)
@@ -930,6 +1002,8 @@ def run_setup():
         st.session_state.conf_revenue_boost_mult = 1.0
         st.session_state.pending_invite = None
         st.session_state.booster_rating = 50
+        st.session_state.ai_records = []
+        st.session_state.selection_sunday_results = []
 
         add_news(f"{team} hires {st.session_state.staff['HC']['name']} as HC.")
         st.session_state.game_state = "DASHBOARD"
@@ -1289,501 +1363,124 @@ def show_season_end():
     st.divider()
     c1, c2 = st.columns(2)
 
-    if c1.button("Proceed to Postseason 🏁", type="primary"):
-        wins = st.session_state.record["w"]
-        rank = max(1, 130 - (wins * 10))
-        if rank <= 12:
-            st.session_state.postseason_data = init_playoff_bracket(rank, st.session_state.team_name)
-        else:
-            bowl = get_bowl_name(rank)
-            candidates = [t for t in ALL_TEAMS if t != st.session_state.team_name]
-            opp = random.choice(candidates)
-            st.session_state.postseason_data = {
-                "Type": "BOWL", "Bowl": bowl, "Rank": rank, "Opponent": opp,
-                "OppData": ensure_opp_units(st.session_state.opponents_db.get(opp, {"OVR": 85, "Off": "Pro Style", "Def": "Man Coverage", "Coaches": {"OC": 5, "DC": 5}, "Stadium": 8}))
-            }
-        st.session_state.game_state = "POSTSEASON"
+    if c1.button("Enter Selection Sunday (Reveal Rankings) 🏆", type="primary"):
+        # We process rankings HERE to ensure the user sees the button explicitly
+        # Combine user record with AI records
+        all_teams = st.session_state.ai_records[:]
+        
+        # Calculate user SOS roughly (avg prestige of opponents)
+        # For simplicity, we just use a placeholder calc or iterate history
+        # Let's just use prestige * 0.5 for now as a base proxy
+        user_sos = int(st.session_state.prestige * 0.5) 
+        
+        user_score = calculate_committee_score(
+            st.session_state.team_name,
+            st.session_state.record['w'],
+            st.session_state.record['l'],
+            st.session_state.team_conf,
+            user_sos
+        )
+        
+        user_entry = {
+            "Team": st.session_state.team_name,
+            "Wins": st.session_state.record['w'],
+            "Losses": st.session_state.record['l'],
+            "Conf": st.session_state.team_conf,
+            "Score": user_score,
+            "IsUser": True
+        }
+        all_teams.append(user_entry)
+        
+        # Calc scores for AI
+        for t in all_teams:
+            if "Score" not in t:
+                # Sim SOS for AI
+                ai_sos = t["Prestige"] * 0.5
+                t["Score"] = calculate_committee_score(t["Team"], t["Wins"], t["Losses"], t["Conf"], ai_sos)
+                t["IsUser"] = False
+                
+        # Sort by Score
+        all_teams.sort(key=lambda x: x["Score"], reverse=True)
+        
+        # Save to state
+        st.session_state.selection_sunday_results = all_teams
+        st.session_state.game_state = "SELECTION_SUNDAY"
         st.rerun()
 
     if c2.button("Back to Dashboard"):
         st.session_state.game_state = "DASHBOARD"
         st.rerun()
 
-def show_postseason():
-    st.title("Postseason Hub")
-    data = st.session_state.postseason_data
-
-    if data.get("Type") == "BOWL":
-        bowl_name = data["Bowl"]
-        st.markdown(f"<div class='bracket-box'><h3>{bowl_name}</h3><h1>VS {data['Opponent']}</h1></div>", unsafe_allow_html=True)
-        if st.button("PLAY BOWL GAME 🏈", type="primary"):
-            opp_data = ensure_opp_units(data["OppData"])
-            res = engine_play_game_v8(
-                st.session_state.team_off, st.session_state.team_def,
-                int(opp_data["OffOVR"]), int(opp_data["DefOVR"]),
-                st.session_state.staff, st.session_state.my_schemes,
-                {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")},
-                st.session_state.game_plan,
-                opp_data.get("Coaches", {"OC": 5, "DC": 5}),
-                is_home=False, is_rival=False,
-                my_stadium_level=st.session_state.facilities["Stadium"],
-                opp_stadium_level=opp_data.get("Stadium", 8)
-            )
-            wins = st.session_state.record["w"] + (1 if res["result"] == "W" else 0)
-            losses = st.session_state.record["l"] + (1 if res["result"] == "L" else 0)
-
-            if res["result"] == "W":
-                st.session_state.budget += 2_000_000
-                st.session_state.career_stats["bowl_w"] += 1
-                add_news(f"{st.session_state.team_name} wins {bowl_name}! ({res['score']})")
-                award_trophy(bowl_name if bowl_name in TROPHY_ICONS else "Bowl Win")
-                st.toast("🎳 BOWL WIN BONUS: $2M")
-            else:
-                st.session_state.career_stats["bowl_l"] += 1
-                add_news(f"{st.session_state.team_name} falls in {bowl_name} ({res['score']})")
-
-            delta = wins - st.session_state.expected_wins
-            if delta > 0: st.session_state.budget += delta * 1_000_000
-            elif delta < 0: st.session_state.budget -= abs(delta) * 500_000
-
-            hist = {"Year": st.session_state.year, "Record": f"{wins}-{losses}", "Rank": f"#{data['Rank']}", "Bowl": bowl_name}
-            st.session_state.history.append(hist)
-
-            st.session_state.game_state = "SEASON_RECAP"
-            st.session_state.offseason_step = 1
-            st.rerun()
-
-    elif data.get("Type") == "CFP":
-        st.header(f"CFP Round: {['Opening Rd', 'Quarterfinals', 'Semifinals', 'Championship'][data['Round'] - 1]}")
-        st.write("--- Bracket Status ---")
-        for m in data["Matches"]:
-            if m.get("winner"):
-                st.markdown(f"<div class='bracket-row'>✅ {m['winner']} advances</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='bracket-row'>{m['t1']} vs {m['t2']}</div>", unsafe_allow_html=True)
-
-        user_match = None
-        for m in data["Matches"]:
-            if m["t1"] == st.session_state.team_name or m["t2"] == st.session_state.team_name:
-                user_match = m
-                break
-
-        if data.get("UserAlive") and user_match:
-            opp = user_match["t2"] if user_match["t1"] == st.session_state.team_name else user_match["t1"]
-            opp_data = ensure_opp_units(st.session_state.opponents_db.get(opp, {"OVR": 88, "Off": "Pro Style", "Def": "Man Coverage", "Coaches": {"OC": 5, "DC": 5}, "Stadium": 9}))
-            st.info(f"Your Matchup: vs {opp} (OVR: {opp_data.get('OVR',88)})")
-            if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
-                res = engine_play_game_v8(
-                    st.session_state.team_off, st.session_state.team_def,
-                    int(opp_data["OffOVR"]), int(opp_data["DefOVR"]),
-                    st.session_state.staff, st.session_state.my_schemes,
-                    {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")},
-                    st.session_state.game_plan,
-                    opp_data.get("Coaches", {"OC": 5, "DC": 5}),
-                    is_home=False, is_rival=False,
-                    my_stadium_level=st.session_state.facilities["Stadium"],
-                    opp_stadium_level=opp_data.get("Stadium", 9)
-                )
-                next_round_teams = []
-                for m in data["Matches"]:
-                    if m is user_match:
-                        if res["result"] == "W":
-                            m["winner"] = st.session_state.team_name
-                            next_round_teams.append(st.session_state.team_name)
-                            add_news(f"{st.session_state.team_name} advances in the CFP!")
-                        else:
-                            m["winner"] = opp
-                            next_round_teams.append(opp)
-                            st.session_state.postseason_data["UserAlive"] = False
-                            add_news(f"{st.session_state.team_name} is eliminated by {opp}.")
-                    else:
-                        t1, t2 = m["t1"], m["t2"]
-                        o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82)
-                        o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
-                        p = o1 / max(1.0, (o1 + o2))
-                        winner = t1 if random.random() < p else t2
-                        m["winner"] = winner
-                        next_round_teams.append(winner)
-
-                time.sleep(0.6)
-                if st.session_state.postseason_data["UserAlive"]:
-                    if data["Round"] == 4:
-                        st.session_state.budget += 50_000_000
-                        st.session_state.career_stats["titles"] += 1
-                        st.balloons()
-                        st.success("NATIONAL CHAMPIONS!")
-                        add_news(f"{st.session_state.team_name} wins the NATIONAL TITLE!")
-                        award_trophy("National Title")
-                        hist = {"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title"}
-                        st.session_state.history.append(hist)
-                        st.session_state.game_state = "SEASON_RECAP"
-                        st.rerun()
-                    else:
-                        new_matches = []
-                        if data["Round"] == 1:
-                            seeds = data["QF_Seeds"]
-                            for i in range(4): new_matches.append({"t1": seeds[i], "t2": next_round_teams[3 - i], "winner": None})
-                        elif data["Round"] == 2:
-                            new_matches.append({"t1": next_round_teams[0], "t2": next_round_teams[3], "winner": None})
-                            new_matches.append({"t1": next_round_teams[1], "t2": next_round_teams[2], "winner": None})
-                        elif data["Round"] == 3:
-                            new_matches.append({"t1": next_round_teams[0], "t2": next_round_teams[1], "winner": None})
-                        st.session_state.postseason_data["Round"] += 1
-                        st.session_state.postseason_data["Matches"] = new_matches
-                        st.rerun()
-                else:
-                    hist = {"Year": st.session_state.year, "Record": "Playoff Loss", "Rank": f"#{data.get('Rank','?')}", "Bowl": "CFP"}
-                    st.session_state.history.append(hist)
-                    st.session_state.game_state = "SEASON_RECAP"
-                    st.rerun()
-        else:
-            st.info("You are no longer alive in the bracket (or you had a BYE).")
-            if st.button("Continue to Summary", type="primary"):
-                st.session_state.game_state = "SEASON_RECAP"
-                st.rerun()
-
-def show_season_recap():
-    st.title(f"SEASON RECAP: {st.session_state.year}")
+def show_selection_sunday():
+    st.title("🏆 SELECTION SUNDAY")
+    st.markdown("The Committee has met. Here are the final rankings.")
     
-    wins = st.session_state.record['w']
-    losses = st.session_state.record['l']
+    results = st.session_state.selection_sunday_results
     
-    this_year_hist = next((h for h in st.session_state.history if h["Year"] == st.session_state.year), None)
+    # Find user rank
+    user_rank = -1
+    for i, t in enumerate(results):
+        if t.get("IsUser"):
+            user_rank = i + 1
+            break
+            
+    # Display Top 25
+    st.write("### 📊 Final Committee Rankings")
     
-    final_rank = this_year_hist["Rank"] if this_year_hist else "Unranked"
-    bowl_res = this_year_hist["Bowl"] if this_year_hist else "No Bowl"
-    
-    expect = st.session_state.expected_wins
-    delta = wins - expect
-    
-    booster_change = delta * 5
-    if "National Title" in bowl_res: booster_change += 20
-    elif "Bowl Win" in bowl_res: booster_change += 5
-    elif "Playoff Loss" in bowl_res: booster_change += 10
-    
-    current_boost = max(0, min(100, st.session_state.booster_rating + booster_change))
-    
-    if "National Title" in bowl_res:
-        headline = "DYNASTY! NATIONAL CHAMPIONS!"
-        subhead = f"{st.session_state.team_name} shocks the world and takes the crown!"
-    elif delta >= 3:
-        headline = "Exceeding All Expectations!"
-        subhead = f"Fans are ecstatic as {st.session_state.team_name} dominates the competition."
-    elif delta <= -3:
-        headline = "Disaster in the Making?"
-        subhead = f"Boosters grow restless as {st.session_state.team_name} underperforms."
-    elif wins > losses:
-        headline = "Solid Season in the Books"
-        subhead = f"The {st.session_state.team_name} finish with a record of {wins}-{losses}."
-    else:
-        headline = "Rebuilding Year Concludes"
-        subhead = f"The {st.session_state.team_name} finish with a record of {wins}-{losses}."
-
-    st.markdown(f"<div class='newspaper-head'>{headline}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='newspaper-sub'>{subhead}</div>", unsafe_allow_html=True)
-    
-    c1, c2 = st.columns(2)
-    
-    with c1:
-        st.subheader("📊 Final Report Card")
-        st.markdown(f"**Final Rank:** {final_rank}")
-        st.markdown(f"**Record:** {wins}-{losses}")
-        st.markdown(f"**Postseason:** {bowl_res}")
-        st.markdown(f"**Expectation:** {expect} Wins")
+    for i, t in enumerate(results[:25]):
+        rank = i + 1
+        is_user = t.get("IsUser", False)
+        bg_class = "rank-row-user" if is_user else "rank-row"
         
-        if delta > 0:
-            st.success(f"Result: {delta} wins ABOVE expectation.")
-        elif delta < 0:
-            st.error(f"Result: {abs(delta)} wins BELOW expectation.")
-        else:
-            st.info("Result: Met expectations.")
-
-    with c2:
-        st.subheader("💰 Booster Confidence")
-        st.write("Confidence determines offseason donations and job security pressure.")
+        # Determine status text
+        status = ""
+        if rank <= 12: status = "🏆 CFP"
+        elif t["Wins"] >= 6: status = "🎳 BOWL"
+        else: status = "❌ OUT"
         
         st.markdown(f"""
-        <div class="booster-meter-container">
-            <div class="booster-meter-fill" style="width: {current_boost}%; background-color: {'#28a745' if current_boost > 60 else ('#dc3545' if current_boost < 40 else '#ffc107')};"></div>
+        <div class='{bg_class}'>
+            <div class='rank-num'>#{rank}</div>
+            <div class='rank-team'>{t['Team']} <span style='font-size:0.8em; color:#666'>({t['Conf']})</span></div>
+            <div class='rank-rec'><b>{t['Wins']}-{t['Losses']}</b></div>
+            <div style='width:80px; text-align:right; font-weight:bold;'>{status}</div>
         </div>
-        <div style="text-align:center; font-weight:bold; margin-top:5px;">{current_boost}/100</div>
         """, unsafe_allow_html=True)
-        
-        if current_boost > 80:
-            st.success("Boosters are opening their checkbooks! Expect a budget bonus.")
-        elif current_boost < 30:
-            st.error("Boosters are angry. Job security is critical.")
-        else:
-            st.info("Boosters are satisfied, but want more next year.")
 
     st.divider()
-    st.subheader("🏆 Legacy Growth (This Season)")
     
-    bowl_w_add = 1 if "Win" in bowl_res or "National" in bowl_res else 0
-    title_add = 1 if "National" in bowl_res else 0
+    # Logic for button
+    user_wins = st.session_state.record['w']
     
-    colA, colB, colC = st.columns(3)
-    colA.metric("Wins Added", f"+{wins}")
-    colB.metric("Bowl Wins", f"+{bowl_w_add}")
-    colC.metric("Titles", f"+{title_add}")
-    
-    st.divider()
-    
-    if st.button("Close the Book on " + str(st.session_state.year) + " -> Go to Offseason", type="primary"):
-        st.session_state.booster_rating = current_boost
-        
-        if current_boost >= 80:
-            bonus = 3_000_000
-            st.session_state.budget += bonus
-            st.toast(f"Booster Donation: +{helper_format_cash(bonus)}")
-        elif current_boost <= 20:
-            st.session_state.job_security -= 10
-            st.toast("Boosters pressure administration: Security -10")
+    if user_wins < 6:
+        st.error("❌ You did not qualify for a bowl game (less than 6 wins).")
+        if st.button("End Season -> Offseason", type="primary"):
+            # No bowl, so add a 'Missed Bowl' history entry or just skip
+            hist = {"Year": st.session_state.year, "Record": f"{user_wins}-{st.session_state.record['l']}", "Rank": "NR", "Bowl": "None"}
+            st.session_state.history.append(hist)
+            st.session_state.game_state = "SEASON_RECAP"
+            st.rerun()
             
-        st.session_state.game_state = "OFFSEASON"
-        st.session_state.offseason_step = 1
-        st.rerun()
-
-def show_offseason():
-    st.title("Offseason Hub")
-    st.markdown(f"<div class='nil-alert'>💰 Offseason Budget: {helper_format_cash(st.session_state.budget)}</div>", unsafe_allow_html=True)
-
-    if st.session_state.pending_invite:
-        inv = st.session_state.pending_invite
-        st.warning(f"📨 Conference Invite: Join the **{inv['to_conf']}** (Revenue boost x{inv['boost_mult']:.2f}). {inv['note']}")
-        c1, c2 = st.columns(2)
-        if c1.button("Accept Invite ✅", type="primary"):
-            apply_conference_move(inv["to_conf"], inv["boost_mult"])
-            st.session_state.pending_invite = None
+    elif user_rank <= 12:
+        st.success(f"🎉 You made the COLLEGE FOOTBALL PLAYOFF! (Rank #{user_rank})")
+        if st.button("Advance to CFP 🏆", type="primary"):
+            st.session_state.postseason_data = init_playoff_bracket(user_rank, st.session_state.team_name)
+            st.session_state.game_state = "POSTSEASON"
             st.rerun()
-        if c2.button("Decline ❌"):
-            add_news(f"{st.session_state.team_name} declines the {inv['to_conf']} invite.")
-            st.session_state.pending_invite = None
-            st.rerun()
-
-    steps = ["1) NIL Prospects (15)", "2) HS Outreach", "3) Top-8 Battles", "Finish Offseason"]
-    st.session_state.offseason_step = st.radio(
-        "Offseason Steps",
-        [1, 2, 3, 4],
-        format_func=lambda x: steps[x-1],
-        index=max(0, min(3, int(st.session_state.offseason_step)-1))
-    )
-
-    if st.session_state.offseason_step == 1:
-        show_offseason_nil_v8()
-    elif st.session_state.offseason_step == 2:
-        show_offseason_hs_outreach()
-    elif st.session_state.offseason_step == 3:
-        show_offseason_top8_v8()
+            
     else:
-        st.subheader("✅ Wrap Up Offseason")
-        st.write("This will advance the year, evolve the universe, reset the schedule, and return to Dashboard.")
-
-        if st.button("Advance to Next Season", type="primary"):
-            for p in POSITIONS:
-                st.session_state.active_transfers[p] = False
-
-            st.session_state.opponents_db = engine_evolve_universe(st.session_state.opponents_db)
-            maybe_generate_conference_invite()
-            ai_conference_swap_lightweight()
-
-            st.session_state.year += 1
-            st.session_state.tenure += 1
-            st.session_state.inflation *= 1.05
-
-            st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
-            st.session_state.schedule = engine_generate_schedule(st.session_state.team_name, st.session_state.team_conf, st.session_state.team_rival)
-            st.session_state.hotspots = generate_hotspots()
-            st.session_state.week_index = 0
-            st.session_state.record = {"w": 0, "l": 0}
-            st.session_state.season_logs = []
-            st.session_state.season_simulated = False
-            st.session_state.season_end_ready = False
-            st.session_state.revenue_report = None
-
-            st.session_state.nil_class = []
-            st.session_state.hs_total_spend = 0
-            st.session_state.hs_shares = {p: 100.0 / len(POSITIONS) for p in POSITIONS}
-            st.session_state.hs_spend_by_pos = {p: 0 for p in POSITIONS}
-            st.session_state.top8 = []
-            st.session_state.top8_resolved = set()
-
-            add_news(f"New season begins. Needs: {', '.join(st.session_state.team_needs)}.")
-            st.session_state.game_state = "DASHBOARD"
+        st.info(f"🎳 You are invited to a Bowl Game! (Rank #{user_rank})")
+        if st.button("Accept Bowl Invite", type="primary"):
+            bowl = get_bowl_name(user_rank)
+            candidates = [t["Team"] for t in results if not t.get("IsUser")]
+            opp = random.choice(candidates) # Simple logic, could pick close rank
+            
+            st.session_state.postseason_data = {
+                "Type": "BOWL", "Bowl": bowl, "Rank": user_rank, "Opponent": opp,
+                "OppData": ensure_opp_units(st.session_state.opponents_db.get(opp, {"OVR": 85, "Off": "Pro Style", "Def": "Man Coverage", "Coaches": {"OC": 5, "DC": 5}, "Stadium": 8}))
+            }
+            st.session_state.game_state = "POSTSEASON"
             st.rerun()
-
-def show_offseason_nil_v8():
-    st.subheader("1) NIL Prospects (Class of 15)")
-    needs = st.session_state.get("team_needs", [])
-
-    if not st.session_state.nil_class:
-        st.session_state.nil_class = generate_nil_class_15(needs)
-        add_news("NIL board posted: 15 prospects (Tier 1/2/3).")
-
-    st.markdown(f"<div class='recruiting-intel'>Team Needs: <b>{', '.join(needs) if needs else 'Balanced'}</b></div>", unsafe_allow_html=True)
-    st.write("You can sign any of these 15. When they’re gone, they’re gone (no infinite respawn).")
-
-    signed = sum(1 for p in st.session_state.nil_class if p["status"] == "SIGNED")
-    available = 15 - signed
-    st.caption(f"Signed: {signed} | Remaining available: {available}")
-
-    for p in st.session_state.nil_class:
-        tier_badge = "badge-tier-s" if p["tier"] == 1 else ("badge-tier-a" if p["tier"] == 2 else "badge-tier-f")
-        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-        c1.markdown(f"⭐ <b>{p['tier_label']}</b> — {p['pos']} {p['name']} ({p['rating']}) — {p['trait']}", unsafe_allow_html=True)
-        c2.markdown(f"<span class='badge {tier_badge}'>{p['tier_label']}</span>", unsafe_allow_html=True)
-        c3.write(f"Ask: {helper_format_cash(p['ask'])}")
-        if p["status"] == "SIGNED":
-            c4.write("✅ SIGNED")
-        else:
-            if c4.button("Sign", key=f"nil_sign_{p['id']}"):
-                if st.session_state.budget >= p["ask"]:
-                    st.session_state.budget -= p["ask"]
-                    st.session_state.roster[p["pos"]] = max(st.session_state.roster[p["pos"]], p["rating"])
-                    p["status"] = "SIGNED"
-                    add_news(f"{st.session_state.team_name} signs NIL {p['tier_label']} {p['pos']} {p['name']} ({p['rating']}).")
-                    st.toast("Signed ✔️")
-                    st.rerun()
-                else:
-                    st.error("Not enough budget.")
-
-def show_offseason_hs_outreach():
-    st.subheader("2) HS Outreach (Fast Input)")
-    st.write("Pick a **total HS outreach spend** once, then allocate by position using % sliders (auto-normalized).")
-    hot = st.session_state.hotspots.get(st.session_state.home_region, [])
-    needs = st.session_state.get("team_needs", [])
-    st.markdown(f"<div class='recruiting-intel'>Pipeline Bonus ({st.session_state.home_region}): {', '.join(hot)}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='recruiting-intel'>Team Needs: <b>{', '.join(needs)}</b></div>", unsafe_allow_html=True)
-
-    max_spend = max(0, int(st.session_state.budget))
-    st.session_state.hs_total_spend = st.slider("Total HS Outreach Spend", 0, max_spend, min(int(st.session_state.hs_total_spend), max_spend), 100_000)
-
-    shares = dict(st.session_state.hs_shares)
-    st.write("### Allocate % by Position (auto-normalized to 100%)")
-    cols = st.columns(2)
-    for idx, pos in enumerate(POSITIONS):
-        with cols[idx % 2]:
-            default = float(shares.get(pos, 100.0 / len(POSITIONS)))
-            shares[pos] = st.slider(f"{pos} %{' (NEED)' if pos in needs else ''}", 0.0, 60.0, float(max(0.0, min(60.0, default))), 1.0, key=f"hs_pct_{pos}")
-
-    shares = normalize_shares(shares)
-    st.session_state.hs_shares = shares
-    spend_by_pos = {p: int(st.session_state.hs_total_spend * (shares[p] / 100.0)) for p in POSITIONS}
-    st.session_state.hs_spend_by_pos = spend_by_pos
-
-    st.write("### Preview Spend by Position")
-    df = pd.DataFrame([{"Pos": p, "Pct": round(shares[p], 1), "Spend": spend_by_pos[p]} for p in POSITIONS])
-    df["Spend_fmt"] = df["Spend"].apply(helper_format_cash)
-    st.dataframe(df[["Pos", "Pct", "Spend_fmt"]], use_container_width=True)
-    st.divider()
-
-    if st.button("Run HS Outreach", type="primary"):
-        if st.session_state.hs_total_spend > st.session_state.budget:
-            st.error("You can't spend more than your budget.")
-            return
-
-        res = process_hs_outreach(st.session_state.hs_total_spend, shares, st.session_state.staff, st.session_state.prestige, st.session_state.inflation, st.session_state.hotspots, st.session_state.home_region, needs)
-        st.session_state.budget -= res["spent"]
-        if res["booster_bonus"] > 0:
-            st.session_state.budget += res["booster_bonus"]
-            st.toast(f"💎 Booster bonus: {helper_format_cash(res['booster_bonus'])}")
-            add_news("Boosters celebrate a surprise GEM discovery!")
-
-        for p, g in res["roster_updates"].items():
-            loss = random.randint(1, 4)
-            st.session_state.roster[p] = max(40, min(99, int(st.session_state.roster[p] - loss + g)))
-
-        if res["gems"]:
-            st.session_state.stars.extend(res["gems"])
-            add_news(f"Recruiting staff finds {len(res['gems'])} GEM(s)!")
-
-        st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
-        add_news("HS outreach completed. Rankings buzz increases.")
-        st.success("HS Outreach complete! Your roster has been updated.")
-        st.rerun()
-
-def show_offseason_top8_v8():
-    st.subheader("3) Top-8 Prospect Battles (Clear Status UX)")
-    st.write("Each recruit is **OPEN → COMMITTED / LOST** after you pitch. You’ll always know what happened.")
-    needs = st.session_state.get("team_needs", [])
-    if not st.session_state.top8:
-        st.session_state.top8 = generate_top8_prospects(needs)
-        st.session_state.top8_resolved = set()
-        add_news("Top-8 battles are live. Elite prospects are being recruited nationwide.")
-
-    spend_by_pos = st.session_state.get("hs_spend_by_pos", {p: 0 for p in POSITIONS})
-    committed = sum(1 for r in st.session_state.top8 if r["status"] == "COMMITTED")
-    lost = sum(1 for r in st.session_state.top8 if r["status"] == "LOST")
-    remaining = 8 - (committed + lost)
-    st.caption(f"Committed: {committed} | Lost: {lost} | Remaining: {remaining}")
-
-    for r in st.session_state.top8:
-        rid = r["id"]
-        status = r.get("status", "OPEN")
-        c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
-        c1.write(f"🏅 {r['pos']} {r['name']} ({r['rating']}) — {r['trait']}")
-        c2.write(f"Ask: {helper_format_cash(r['ask'])}")
-        chance = top8_commit_chance(r, spend_by_pos, st.session_state.staff, st.session_state.prestige)
-        c3.write(f"Chance: {int(chance*100)}%")
-
-        if status == "COMMITTED":
-            c4.write("✅ COMMIT")
-            c5.write(r.get("note", ""))
-            continue
-        if status == "LOST":
-            c4.write("❌ LOST")
-            c5.write(r.get("note", ""))
-            continue
-
-        pitch_cost = int(max(250_000, r["ask"] * 0.10))
-        c4.write(f"Pitch: {helper_format_cash(pitch_cost)}")
-        if c5.button("Pitch", key=f"pitch_{rid}"):
-            if st.session_state.budget < pitch_cost:
-                st.error("Not enough budget to pitch this recruit.")
-                return
-            st.session_state.budget -= pitch_cost
-            if random.random() < chance:
-                st.session_state.roster[r["pos"]] = max(st.session_state.roster[r["pos"]], r["rating"])
-                st.session_state.stars.append({"id": rid, "name": r["name"], "pos": r["pos"], "rating": r["rating"], "year": "Fr", "trait": r["trait"]})
-                booster = int(random.randint(500_000, 3_500_000) * (1.0 + (r["rating"] - 90) / 25))
-                st.session_state.budget += booster
-                r["status"] = "COMMITTED"
-                r["note"] = f"Boosters +{helper_format_cash(booster)}"
-                add_news(f"{st.session_state.team_name} lands TOP-8 recruit {r['pos']} {r['name']} ({r['rating']})! Boosters donate {helper_format_cash(booster)}.")
-                st.success(f"COMMIT! Booster donation {helper_format_cash(booster)}.")
-                st.toast("Top-8 Commit ✅")
-            else:
-                r["status"] = "LOST"
-                r["note"] = "Picked another school"
-                add_news(f"{st.session_state.team_name} loses a Top-8 battle for {r['pos']} {r['name']}.")
-                st.warning("Missed! Another school won this battle.")
-                st.toast("Top-8 Lost ❌")
-            st.session_state.top8_resolved.add(rid)
-            st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
-            st.rerun()
-
-    st.divider()
-    if remaining == 0:
-        st.success("Top-8 battles completed. You can finish the offseason now.")
-
-def show_fired():
-    st.error("FIRED! Your tenure has ended.")
-    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
-    st.write(f"Final Legacy (Saban) Score: **{saban}**")
-    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
-    if st.button("Restart Career"):
-        st.session_state.clear()
-        st.rerun()
-
-def show_retirement():
-    st.title("Retirement")
-    st.write("Thanks for playing!")
-    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
-    st.write(f"Final Legacy (Saban) Score: **{saban}**")
-    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
-    if st.button("Restart Career"):
-        st.session_state.clear()
-        st.rerun()
 
 # ==============================================================================
 # ROUTER
@@ -1796,6 +1493,8 @@ elif st.session_state.game_state == "DASHBOARD":
     show_dashboard()
 elif st.session_state.game_state == "SEASON_END":
     show_season_end()
+elif st.session_state.game_state == "SELECTION_SUNDAY":
+    show_selection_sunday()
 elif st.session_state.game_state == "POSTSEASON":
     show_postseason()
 elif st.session_state.game_state == "SEASON_RECAP":
