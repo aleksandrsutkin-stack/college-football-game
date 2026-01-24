@@ -4,11 +4,12 @@ import time
 import pandas as pd
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V10 — SINGLE FILE APP
-# NEW IN V10:
-# 1) "THEME PROOF" CSS: Forces dark text on cards to prevent "Invisible Ink" in Dark Mode.
-# 2) Includes all V9 features: Season Recap, Booster Meter, Resume Button.
-# 3) Includes all V8 features: Scoring Engine, NIL Tiers, Realignment.
+# COLLEGE FOOTBALL MOGUL V10 (PATCHED) — SINGLE FILE APP
+# PATCH NOTES:
+# 1) Fixed "Sim Rest of Season" crash (is_riv2 definition).
+# 2) "THEME PROOF" CSS: Forces dark text on cards to prevent "Invisible Ink" in Dark Mode.
+# 3) Includes all V9 features: Season Recap, Booster Meter, Resume Button.
+# 4) Includes all V8 features: Scoring Engine, NIL Tiers, Realignment.
 # ==============================================================================
 
 # ==============================================================================
@@ -1201,6 +1202,10 @@ def show_dashboard():
                         if wk2 >= 12: break
                         opp2 = st.session_state.schedule[wk2]
                         opp_data2 = ensure_opp_units(st.session_state.opponents_db.get(opp2, {"OVR": 80, "Off": "Pro Style", "Def": "Man Coverage", "Coaches": {"OC": 5, "DC": 5}, "Stadium": 7}))
+                        
+                        # FIX: Define is_riv2 BEFORE usage
+                        is_riv2 = (opp2 == st.session_state.team_rival)
+
                         res2 = engine_play_game_v8(
                             st.session_state.team_off, st.session_state.team_def,
                             int(opp_data2["OffOVR"]), int(opp_data2["DefOVR"]),
@@ -1208,7 +1213,7 @@ def show_dashboard():
                             {"Off": opp_data2.get("Off", "Pro Style"), "Def": opp_data2.get("Def", "Man Coverage")},
                             st.session_state.game_plan,
                             opp_data2.get("Coaches", {"OC": 5, "DC": 5}),
-                            is_home=(wk2 % 2 == 0), is_rival=(opp2 == st.session_state.team_rival),
+                            is_home=(wk2 % 2 == 0), is_rival=is_riv2,
                             my_stadium_level=st.session_state.facilities["Stadium"],
                             opp_stadium_level=opp_data2.get("Stadium", 7)
                         )
