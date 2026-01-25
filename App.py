@@ -586,7 +586,7 @@ def show_offseason():
         if st.button("Continue to Top-8 Battles →", type="primary"):
             st.session_state.offseason_step = 3
             st.rerun()
-    
+  
     # Step 3: Top-8 Battles
     elif step == 3:
         show_offseason_top8_v8()
@@ -664,6 +664,63 @@ def show_retirement():
     if st.button("Restart Career"):
         st.session_state.clear()
         st.rerun()
+def distribute_exact(total: int, weights: dict, step: int = 100_000) -> dict:
+    """Allocate money to positions so the total sums EXACTLY to `total`."""
+    total = max(0, int(total))
+    if total == 0:
+        return {p: 0 for p in POSITIONS}
+
+    # Normalize weights
+    w = {}
+    for p in POSITIONS:
+        try:
+            w[p] = max(0.0, float(weights.get(p, 0.0)))
+        except Exception:
+            w[p] = 0.0
+
+    s = sum(w.values())
+    if s <= 0:
+        w = {p: 1.0 for p in POSITIONS}
+        s = float(len(POSITIONS))
+
+    # First pass: floor to step
+    alloc = {}
+    for p in POSITIONS:
+        raw = total * (w[p] / s)
+        alloc[p] = int(raw // step) * step
+
+    # Distribute remainder to highest-weight positions
+    remainder = total - sum(alloc.values())
+    if remainder > 0:
+        order = sorted(POSITIONS, key=lambda p: w[p], reverse=True)
+        i = 0
+        while remainder > 0:
+            p = order[i % len(order)]
+            add = min(step, remainder)
+            alloc[p] += add
+            remainder -= add
+            i += 1
+
+    # Safety: if overshoot, remove from lowest-weight positions
+    remainder = total - sum(alloc.values())
+    if remainder < 0:
+        order = sorted(POSITIONS, key=lambda p: w[p])  # lowest first
+        i = 0
+        while remainder < 0:
+            p = order[i % len(order)]
+            take = min(alloc[p], step, abs(remainder))
+            alloc[p] -= take
+            remainder += take
+            i += 1
+
+    return alloc
+
+
+def sync_alloc_to_inputs(alloc: dict):
+    """Force the number_input widgets to reflect alloc[] on rerun."""
+    for p in POSITIONS:
+        st.session_state[f"input_{p}"] = int(alloc.get(p, 0) or 0)
+
 
 # ==============================================================================
 # ZONE 3: ENGINE
@@ -2523,19 +2580,20 @@ def show_offseason_hs_outreach():
     st.subheader("2) HS Outreach: The War Room")
     st.write("Set your total recruiting budget, then distribute it to position groups.")
 
-    # Context Data
     hot = st.session_state.hotspots.get(st.session_state.home_region, [])
     needs = st.session_state.get("team_needs", [])
-    
-    # 1. THE WALLET (Total Budget Input)
+
     max_budget = int(st.session_state.budget)
     current_cap = int(st.session_state.get("hs_total_spend", 0))
-    
+
     c1, c2 = st.columns([2, 1])
     with c1:
-        st.markdown(f"<div class='recruiting-intel'>Needs: <b>{', '.join(needs)}</b> | Pipeline: <b>{', '.join(hot)}</b></div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='recruiting-intel'>Needs: <b>{', '.join(needs)}</b> | "
+            f"Pipeline: <b>{', '.join(hot)}</b></div>",
+            unsafe_allow_html=True
+        )
     with c2:
-        # Step 1: User defines the CAP
         new_cap = st.number_input(
             "Total Recruiting Budget ($)",
             min_value=0,
@@ -2545,108 +2603,85 @@ def show_offseason_hs_outreach():
             help="How much total cash do you want to commit to High School recruiting?"
         )
 
+    new_cap = min(int(new_cap), max_budget)
     st.session_state.hs_total_spend = new_cap
 
-    # 2. STATE MANAGEMENT
+    # Ensure allocation dict exists
     if "hs_alloc_by_pos" not in st.session_state or not isinstance(st.session_state.hs_alloc_by_pos, dict):
         st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
-    
+
     alloc = st.session_state.hs_alloc_by_pos
-    
-    # V19: Quick Buttons
+
+    # Ensure widget keys exist (first run)
+    for p in POSITIONS:
+        k = f"input_{p}"
+        if k not in st.session_state:
+            st.session_state[k] = int(alloc.get(p, 0) or 0)
+
+    # Quick buttons
     colA, colB, colC = st.columns(3)
+
     if colA.button("⚖️ Balanced"):
-        share = int(new_cap / 7)
-        for p in POSITIONS: alloc[p] = share
+        weights = {p: 1.0 for p in POSITIONS}
+        alloc.update(distribute_exact(new_cap, weights, step=100_000))
+        sync_alloc_to_inputs(alloc)
         st.rerun()
+
     if colB.button("🎯 Needs Heavy"):
-        if not needs:
-            share = int(new_cap / 7)
-            for p in POSITIONS: alloc[p] = share
-        else:
-            need_share = int((new_cap * 0.7) / len(needs))
-            other_share = int((new_cap * 0.3) / (7 - len(needs))) if (7 - len(needs)) > 0 else 0
-            for p in POSITIONS:
-                alloc[p] = need_share if p in needs else other_share
+        weights = {p: (3.0 if p in needs else 1.0) for p in POSITIONS}
+        alloc.update(distribute_exact(new_cap, weights, step=100_000))
+        sync_alloc_to_inputs(alloc)
         st.rerun()
+
     if colC.button("🔥 Pipeline Focus"):
-        if not hot:
-            share = int(new_cap / 7)
-            for p in POSITIONS: alloc[p] = share
-        else:
-            hot_share = int((new_cap * 0.6) / len(hot))
-            other_share = int((new_cap * 0.4) / (7 - len(hot))) if (7 - len(hot)) > 0 else 0
-            for p in POSITIONS:
-                alloc[p] = hot_share if p in hot else other_share
+        weights = {p: (3.0 if p in hot else 1.0) for p in POSITIONS}
+        alloc.update(distribute_exact(new_cap, weights, step=100_000))
+        sync_alloc_to_inputs(alloc)
         st.rerun()
 
-    # Auto-Clamp: If user lowered the cap, shrink allocations proportionally to fit
-    total_allocated = sum(alloc.values())
-    if total_allocated > new_cap:
-        # Simple clamp
-        while total_allocated > new_cap:
-            for p in POSITIONS:
-                if alloc[p] > 0:
-                    deduct = min(alloc[p], 250_000)
-                    alloc[p] -= deduct
-                    total_allocated -= deduct
-                    if total_allocated <= new_cap: break
-    
-    remaining = new_cap - total_allocated
-    
-    # 3. THE DASHBOARD (Visual Feedback)
-    if remaining == 0 and new_cap > 0:
-        st.success(f"✅ Fully Allocated: {helper_format_cash(new_cap)}")
-    elif remaining > 0:
-        st.warning(f"⚠️ Unassigned Funds: {helper_format_cash(remaining)}")
-    elif remaining < 0:
-        st.error(f"🚫 Over Budget: {helper_format_cash(remaining)}")
-    else:
-        st.info("Set a budget above to begin.")
-
+    # Allocator grid (number inputs)
     st.divider()
-
-    # 4. THE ALLOCATOR (Grid UI)
-    # V19 Change: Number Inputs instead of buttons
     cols = st.columns(2)
-    
     for idx, pos in enumerate(POSITIONS):
         with cols[idx % 2]:
-            current_amt = alloc.get(pos, 0)
-            
-            # Badge logic
             badges = ""
-            if pos in needs: badges += " 🔴"
-            if pos in hot: badges += " 🔥"
-            
+            if pos in needs:
+                badges += " 🔴"
+            if pos in hot:
+                badges += " 🔥"
+
             val = st.number_input(
-                f"{pos} {badges}",
+                f"{pos}{badges}",
                 min_value=0,
                 max_value=max_budget,
-                value=current_amt,
+                value=int(st.session_state.get(f"input_{pos}", 0) or 0),
                 step=100_000,
                 key=f"input_{pos}"
             )
-            alloc[pos] = val
+            alloc[pos] = int(val)
 
-    # 5. EXECUTION
+    allocated = sum(int(alloc.get(p, 0) or 0) for p in POSITIONS)
+    remaining = int(new_cap) - int(allocated)
+
     st.divider()
-    
-    # Sync data for engine
+    if new_cap == 0:
+        st.info("Set a budget above to begin.")
+    elif remaining == 0:
+        st.success(f"✅ Fully Allocated: {helper_format_cash(new_cap)}")
+    elif remaining > 0:
+        st.warning(f"⚠️ Unassigned Funds: {helper_format_cash(remaining)}")
+    else:
+        st.error(f"🚫 Over Budget: {helper_format_cash(abs(remaining))}")
+
+    # Save for engine
     st.session_state.hs_alloc_by_pos = alloc
-    spend_by_pos = {p: int(alloc.get(p, 0)) for p in POSITIONS}
+    spend_by_pos = {p: int(alloc.get(p, 0) or 0) for p in POSITIONS}
     st.session_state.hs_spend_by_pos = spend_by_pos
 
-    # Re-calc remaining for button state
-    final_allocated = sum(alloc.values())
-    final_remaining = new_cap - final_allocated
+    st.divider()
+    disabled_confirm = (new_cap == 0) or (remaining != 0)
 
-    if st.button("Confirm & Run Recruiting 🚀", type="primary", disabled=(new_cap == 0)):
-        if final_remaining != 0:
-            st.error(f"You must allocate exactly {helper_format_cash(new_cap)}. Current variance: {helper_format_cash(final_remaining)}")
-            return
-
-        # Engine Call
+    if st.button("Confirm & Run Recruiting 🚀", type="primary", disabled=disabled_confirm):
         res = process_hs_outreach(
             new_cap,
             normalize_shares({p: (spend_by_pos[p] / max(1, new_cap)) * 100 for p in POSITIONS}),
@@ -2658,8 +2693,8 @@ def show_offseason_hs_outreach():
             needs
         )
 
-        # Apply Results
         st.session_state.budget -= res["spent"]
+
         if res["booster_bonus"] > 0:
             st.session_state.budget += res["booster_bonus"]
             st.toast(f"💎 Booster Bonus: {helper_format_cash(res['booster_bonus'])}")
@@ -2675,7 +2710,7 @@ def show_offseason_hs_outreach():
 
         st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
         add_news("Signing Day complete. New rankings released.")
-        
+
         sync_team_ratings()
         st.success("Class Signed! Roster Updated.")
         st.rerun()
