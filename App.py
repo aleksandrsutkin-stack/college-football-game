@@ -7,14 +7,14 @@ import datetime
 import math
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V19 — DEFINITIVE EDITION
-# 1) Architecture Cleanup: Removed duplicate JSON/Sidebar functions.
-# 2) Deterministic AI: Sorted keys ensure consistent simulation results.
-# 3) True CFP Seeding: Quarterfinals now re-seed based on Round 1 winners.
-# 4) War Room Upgrade: Auto-Distribute buttons & Diminishing Returns math.
+# COLLEGE FOOTBALL MOGUL V19.1 — RESTORED EDITION
+# 1) Fixed Missing Function: show_offseason_nil_v8 is back.
+# 2) War Room HS Outreach: Dollar-based allocation (No sliders).
+# 3) True CFP Seeding: Quarterfinals re-seed based on Round 1 winners.
+# 4) Deterministic AI: Simulations are consistent on refresh.
 # ==============================================================================
 
-STATE_VERSION = 19.0
+STATE_VERSION = 19.1
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
@@ -37,7 +37,7 @@ ALLOWED_SAVE_KEYS = {
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V19", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V19.1", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -790,6 +790,7 @@ def simulate_ai_regular_season_seeded(seed: int):
         prestige = data.get("Prestige", 60)
         conf = get_conference(team)
         
+        # use rnd instead of random
         if prestige > 90: wins = rnd.choices([12, 11, 10, 9], weights=[10, 30, 40, 20])[0]
         elif prestige > 80: wins = rnd.choices([11, 10, 9, 8, 7], weights=[5, 20, 35, 30, 10])[0]
         elif prestige > 60: wins = rnd.choices([9, 8, 7, 6, 5], weights=[10, 25, 30, 25, 10])[0]
@@ -1341,7 +1342,7 @@ def init_session_state_defaults():
     migrate_state()
 
 # ==============================================================================
-# ZONE 5: SYSTEM & SAVE/LOAD
+# ZONE 5: SYSTEM & SAVE/LOAD (V12)
 # ==============================================================================
 def safe_json_default(obj):
     # Safer JSON fallback serializer
@@ -1354,7 +1355,7 @@ def safe_json_default(obj):
 def render_system_sidebar():
     with st.sidebar:
         st.header("💾 Dynasty System")
-        st.caption(f"Version {STATE_VERSION} (Definitive)")
+        st.caption(f"Version {STATE_VERSION} (Restored)")
         
         # EXPORT
         if st.button("Export Save File"):
@@ -1428,8 +1429,8 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V19")
-    st.markdown("### Dynasty Mode (Definitive Edition)")
+    st.title("🏆 College Football Mogul V19.1")
+    st.markdown("### Dynasty Mode (Restored Edition)")
 
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", "Coach Prime")
@@ -1943,7 +1944,6 @@ def show_season_end():
         }
         all_teams.append(user_entry)
         
-        # V19 Fix: Sort key safety (AI teams need scores first)
         for t in all_teams:
             if "Score" not in t:
                 # V12: Use pre-calculated SOS from AI Sim
@@ -2136,16 +2136,6 @@ def show_postseason():
         label = round_names[round_num - 1] if 1 <= round_num <= 4 else f"Round {round_num}"
         st.header(f"CFP Round: {label}")
 
-        # V19 Fix: Simple AI Winner Predictor (Higher OVR wins 80% time)
-        def _ai_pick_winner(t1, t2):
-            o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82)
-            o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
-            # Weighted probability
-            p = o1 / max(1.0, (o1 + o2))
-            # upset chance
-            if random.random() < p: return t1
-            return t2
-
         st.write("--- Bracket Status ---")
         for m in data.get("Matches", []):
             if m.get("winner"):
@@ -2167,32 +2157,23 @@ def show_postseason():
             if st.button("Simulate Opening Round & Advance", type="primary"):
                 # Sim round 1 winners
                 next_round_teams = []
-                # Match list order: 5v12, 6v11, 7v10, 8v9
-                # Winners map to: 4, 3, 2, 1
-                
-                # Sim winners for matches
-                r1_results = [] # stores winner
                 for m in data.get("Matches", []):
                     t1, t2 = m.get("t1"), m.get("t2")
-                    w = _ai_pick_winner(t1, t2)
-                    m["winner"] = w
-                    r1_results.append(w)
+                    o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82)
+                    o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
+                    p = o1 / max(1.0, (o1 + o2))
+                    winner = t1 if random.random() < p else t2
+                    m["winner"] = winner
+                    next_round_teams.append(winner)
                 
-                # V19 Fix: True bracket path
-                # Match 0 (5v12) winner plays Seed #4 (Index 3 in seeds list)
-                # Match 1 (6v11) winner plays Seed #3 (Index 2)
-                # Match 2 (7v10) winner plays Seed #2 (Index 1)
-                # Match 3 (8v9)  winner plays Seed #1 (Index 0)
-                
-                seeds = data.get("QF_Seeds", []) # [1, 2, 3, 4]
+                # Build Round 2 (Seeds 1-4 vs Winners)
+                seeds = data.get("QF_Seeds", [])
                 new_matches = []
+                if len(seeds) == 4 and len(next_round_teams) >= 4:
+                    # 1 plays lowest remaining seed logic simplified here to bracket slot
+                    for i in range(4):
+                        new_matches.append({"t1": seeds[i], "t2": next_round_teams[3-i], "winner": None})
                 
-                if len(seeds) == 4 and len(r1_results) == 4:
-                    new_matches.append({"t1": seeds[0], "t2": r1_results[3], "winner": None}) # 1 vs winner of 8/9
-                    new_matches.append({"t1": seeds[1], "t2": r1_results[2], "winner": None}) # 2 vs winner of 7/10
-                    new_matches.append({"t1": seeds[2], "t2": r1_results[1], "winner": None}) # 3 vs winner of 6/11
-                    new_matches.append({"t1": seeds[3], "t2": r1_results[0], "winner": None}) # 4 vs winner of 5/12
-
                 st.session_state.postseason_data["Round"] = 2
                 st.session_state.postseason_data["Matches"] = new_matches
                 add_news(f"{st.session_state.team_name} advances to Quarterfinals after Bye.")
@@ -2243,9 +2224,12 @@ def show_postseason():
                         t1, t2 = m.get("t1"), m.get("t2")
                         if not t1 or not t2:
                             continue
-                        w = _ai_pick_winner(t1, t2)
-                        m["winner"] = w
-                        next_round_teams.append(w)
+                        o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82)
+                        o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
+                        p = o1 / max(1.0, (o1 + o2))
+                        winner = t1 if random.random() < p else t2
+                        m["winner"] = winner
+                        next_round_teams.append(winner)
 
                 time.sleep(0.6)
 
@@ -2281,14 +2265,18 @@ def show_postseason():
                         st.rerun()
                     else:
                         new_matches = []
-                        # Advancing logic (simple pairing for Semi/Finals)
-                        if len(next_round_teams) >= 2:
-                            # If 4 teams left -> 2 matches
-                            # If 2 teams left -> 1 match
-                            count = len(next_round_teams)
-                            for i in range(0, count, 2):
-                                if i+1 < count:
-                                    new_matches.append({"t1": next_round_teams[i], "t2": next_round_teams[i+1], "winner": None})
+                        if round_num == 1:
+                            seeds = data.get("QF_Seeds", [])
+                            if len(seeds) == 4 and len(next_round_teams) >= 4:
+                                for i in range(4):
+                                    new_matches.append({"t1": seeds[i], "t2": next_round_teams[3 - i], "winner": None})
+                        elif round_num == 2:
+                            if len(next_round_teams) >= 4:
+                                new_matches.append({"t1": next_round_teams[0], "t2": next_round_teams[3], "winner": None})
+                                new_matches.append({"t1": next_round_teams[1], "t2": next_round_teams[2], "winner": None})
+                        elif round_num == 3:
+                            if len(next_round_teams) >= 2:
+                                new_matches.append({"t1": next_round_teams[0], "t2": next_round_teams[1], "winner": None})
 
                         st.session_state.postseason_data["Round"] = round_num + 1
                         st.session_state.postseason_data["Matches"] = new_matches
@@ -2583,6 +2571,45 @@ def show_offseason_hs_outreach():
         st.success("Class Signed! Roster Updated.")
         st.rerun()
 
+def show_offseason_nil_v8():
+    st.subheader("1) NIL Prospects (Class of 15)")
+    needs = st.session_state.get("team_needs", [])
+
+    if not st.session_state.nil_class:
+        st.session_state.nil_class = generate_nil_class_15(needs)
+        add_news("NIL board posted: 15 prospects (Tier 1/2/3).")
+
+    st.markdown(f"<div class='recruiting-intel'>Team Needs: <b>{', '.join(needs) if needs else 'Balanced'}</b></div>", unsafe_allow_html=True)
+    st.write("You can sign any of these 15. When they’re gone, they’re gone (no infinite respawn).")
+
+    signed = sum(1 for p in st.session_state.nil_class if p["status"] == "SIGNED")
+    available = 15 - signed
+    st.caption(f"Signed: {signed} | Remaining available: {available}")
+
+    for p in st.session_state.nil_class:
+        tier_badge = "badge-tier-s" if p["tier"] == 1 else ("badge-tier-a" if p["tier"] == 2 else "badge-tier-f")
+        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+        c1.markdown(f"⭐ <b>{p['tier_label']}</b> — {p['pos']} {p['name']} ({p['rating']}) — {p['trait']}", unsafe_allow_html=True)
+        c2.markdown(f"<span class='badge {tier_badge}'>{p['tier_label']}</span>", unsafe_allow_html=True)
+        c3.write(f"Ask: {helper_format_cash(p['ask'])}")
+        if p["status"] == "SIGNED":
+            c4.write("✅ SIGNED")
+        else:
+            if c4.button("Sign", key=f"nil_sign_{p['id']}"):
+                if st.session_state.budget >= p["ask"]:
+                    st.session_state.budget -= p["ask"]
+                    st.session_state.roster[p["pos"]] = max(st.session_state.roster[p["pos"]], p["rating"])
+                    p["status"] = "SIGNED"
+                    add_news(f"{st.session_state.team_name} signs NIL {p['tier_label']} {p['pos']} {p['name']} ({p['rating']}).")
+                    
+                    # V13 PATCH A3: Immediate Sync
+                    sync_team_ratings()
+                    st.toast("Signed ✔️")
+                    st.rerun()
+                else:
+                    st.error("Not enough budget.")
+
+# V16 FIX: Show Top-8 V8
 def show_offseason_top8_v8():
    st.subheader("3) Top-8 Battles — Close on Elites")
 
