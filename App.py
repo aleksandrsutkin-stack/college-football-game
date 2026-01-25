@@ -6,11 +6,11 @@ import datetime
 import math
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V22.1 — IRONCLAD FINAL
-# 1) Type Safety: Strict int coercion for budget/allocations.
-# 2) History Guard: Idempotent finalize_season prevents duplicate entries.
-# 3) CFP Loop: Auto-advance reruns immediately for smooth UX.
-# 4) Data Sanitization: Deep normalization of record/career stats on load.
+# COLLEGE FOOTBALL MOGUL V22.1 — FINAL PLATINUM
+# 1) Critical Fixes: Cleaned Smart Quotes & Syntax Errors.
+# 2) Engine Safety: Defensive dict access in play_game (no KeyErrors).
+# 3) CFP Logic: Auto-advance rounds when matches complete + True Reseeding.
+# 4) Budget Guard: Strict checks prevent negative spending.
 # ==============================================================================
 
 STATE_VERSION = 22.1
@@ -458,7 +458,7 @@ def cfp_advance_if_ready():
            st.session_state.trophies.append({"Name": "National Title", "Year": st.session_state.year, "Icon": "🏆"})
            st.session_state.career_stats["titles"] += 1
        else:
-           st.session_state.last_postseason_result = f"CFP_LOSS" 
+           st.session_state.last_postseason_result = f"CFP_LOSS" # Simplified
        
        finalize_season(rank="#1" if champ == st.session_state.team_name else "#2", bowl="National Title")
        st.session_state.game_state = "SEASON_RECAP"
@@ -573,13 +573,10 @@ def process_hs_outreach(total_spend, shares_pct, staff, prestige, inflation, hot
     # V19: Diminishing Returns Logic (using math.exp)
     cap = 900000 * 2.0
     effective_spend = cap * (1 - math.exp(-spent / cap)) if spent > 0 else 0
-    # V22.1 FIX: Scale upgrades by spending
-    spend_factor = min(1.0, effective_spend / cap)
     
     for p in POSITIONS:
         pct = shares_pct.get(p, 0)
-        # Scaled updates
-        updates[p] = random.randint(1, 3) if pct > 10 and random.random() < (0.3 + 0.7*spend_factor) else 0
+        updates[p] = random.randint(1, 3) if pct > 10 else 0
         if pct > 15 and random.random() < 0.1:
             gems.append({"name": "Gem Recruit", "pos": p, "rating": 85, "year": "Fr", "trait": "Gem"})
             
@@ -623,21 +620,18 @@ def show_offseason_top8_v8():
         if r['status'] == "OPEN":
             key = f"pitch_{r.get('id')}"
             if st.button(f"Pitch {r['name']} (${r['ask']:,})", key=key):
-                if st.session_state.budget < int(r['ask']):
+                if st.session_state.budget < r['ask']:
                     st.error("Not enough budget!")
-                    st.stop() # V22.1 Guard
-                
-                st.session_state.budget -= int(r['ask'])
-                if random.random() > 0.4:
-                    r['status'] = "COMMITTED"
-                    st.session_state.roster[r['pos']] = max(st.session_state.roster[r['pos']], r['rating'])
-                    st.balloons()
                 else:
-                    r['status'] = "LOST"
-                    st.error("Missed!")
-                
-                sync_team_ratings()
-                st.rerun()
+                    st.session_state.budget -= r['ask']
+                    if random.random() > 0.4:
+                        r['status'] = "COMMITTED"
+                        st.session_state.roster[r['pos']] = max(st.session_state.roster[r['pos']], r['rating'])
+                        st.balloons()
+                    else:
+                        r['status'] = "LOST"
+                        st.error("Missed!")
+                    st.rerun()
         else:
             st.write(f"{r['name']}: {r['status']}")
 
@@ -655,7 +649,7 @@ def show_offseason_hs_outreach():
         for p in POSITIONS: alloc[p] = share
         st.rerun()
     if c2.button("Needs Heavy"):
-        # V21.1: Fix missing team_needs (Use defensive get)
+        # V21.1: Fix missing team_needs
         needs = st.session_state.get("team_needs", [])
         for p in POSITIONS: alloc[p] = 500000 if p in needs else 100000
         st.rerun()
@@ -683,11 +677,7 @@ def show_offseason_hs_outreach():
                 st.stop()
             
             res = process_hs_outreach(total_alloc, normalize_shares(alloc), {}, 60, 1.0, [], "South", [])
-            
-            # V22.1: Safe Spend
-            spend = min(int(res.get("spent", 0)), int(st.session_state.budget))
-            st.session_state.budget -= spend
-            
+            st.session_state.budget -= res["spent"]
             # Apply updates
             for p, val in res["roster_updates"].items():
                 st.session_state.roster[p] += val
@@ -761,6 +751,7 @@ def show_season_recap():
         st.rerun()
 
 def show_postseason():
+    sync_team_ratings()
     st.title("Postseason Hub")
     data = st.session_state.postseason_data
     
@@ -784,10 +775,9 @@ def show_postseason():
                 for m in data["Matches"]:
                     w = m["t1"] if random.random() > 0.5 else m["t2"] # Sim logic
                     m["winner"] = w
-                    # V22.1 FIX: Track seeds for re-seeding
-                    # Fixed seed tracking (was m.get in dict, fixed to direct winner seed check)
-                    seed = m.get("seed_high", 99) if w == m.get("t1") else m.get("seed_low", 99)
-                    winners.append({"team": w, "seed": seed})
+                    # V21.4 FIX: Track Winner Seed Correctly
+                    seed_val = m.get("seed_high", 99) if w == m.get("t1") else m.get("seed_low", 99)
+                    winners.append({"team": w, "seed": seed_val})
                 
                 # Re-seed QFs: Seeds 1-4 vs Winners (Lowest Seed plays 1)
                 seeds = data.get("QF_Seeds", [])
@@ -818,9 +808,6 @@ def show_postseason():
                     user_match["winner"] = opp
                     st.session_state.postseason_data["UserAlive"] = False
                     st.session_state.last_postseason_result = "CFP_LOSS"
-                    finalize_season(rank=str(st.session_state.postseason_data.get("Rank", "Unranked")), bowl="CFP")
-                    st.session_state.game_state = "SEASON_RECAP"
-                    st.rerun()
                 
                 # V22.1 Fix: Auto-Advance Logic with Rerun
                 matches_done = all(m.get("winner") for m in data["Matches"])
