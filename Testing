@@ -586,7 +586,67 @@ def show_offseason():
         if st.button("Continue to Top-8 Battles →", type="primary"):
             st.session_state.offseason_step = 3
             st.rerun()
-    
+    def distribute_exact(total: int, weights: dict, step: int = 100_000) -> dict:
+    """
+    Returns allocations that:
+    - sum EXACTLY to total
+    - follow weights (percent or relative)
+    - snap to `step` increments
+    """
+    total = max(0, int(total))
+    if total == 0:
+        return {p: 0 for p in POSITIONS}
+
+    # Normalize weights
+    w = {}
+    for p in POSITIONS:
+        try:
+            w[p] = max(0.0, float(weights.get(p, 0.0)))
+        except Exception:
+            w[p] = 0.0
+    s = sum(w.values())
+    if s <= 0:
+        w = {p: 1.0 for p in POSITIONS}
+        s = float(len(POSITIONS))
+
+    # First pass: floor to step
+    alloc = {}
+    for p in POSITIONS:
+        raw = total * (w[p] / s)
+        snapped = int(raw // step) * step
+        alloc[p] = snapped
+
+    # Distribute remainder in step units to highest-weight positions
+    remainder = total - sum(alloc.values())
+    if remainder > 0:
+        order = sorted(POSITIONS, key=lambda p: w[p], reverse=True)
+        i = 0
+        while remainder > 0:
+            p = order[i % len(order)]
+            add = min(step, remainder)
+            alloc[p] += add
+            remainder -= add
+            i += 1
+
+    # Safety: if we somehow overshoot, remove from lowest-weight positions
+    remainder = total - sum(alloc.values())
+    if remainder < 0:
+        order = sorted(POSITIONS, key=lambda p: w[p])  # lowest first
+        i = 0
+        while remainder < 0:
+            p = order[i % len(order)]
+            take = min(alloc[p], step, abs(remainder))
+            alloc[p] -= take
+            remainder += take
+            i += 1
+
+    return alloc
+
+def sync_alloc_to_inputs(alloc: dict):
+    """Force the number_input widgets to reflect alloc[] on rerun."""
+    for p in POSITIONS:
+        st.session_state[f"input_{p}"] = int(alloc.get(p, 0) or 0)
+
     # Step 3: Top-8 Battles
     elif step == 3:
         show_offseason_top8_v8()
@@ -2545,54 +2605,40 @@ def show_offseason_hs_outreach():
             help="How much total cash do you want to commit to High School recruiting?"
         )
 
-    st.session_state.hs_total_spend = new_cap
+new_cap = min(int(new_cap), max_budget)
+st.session_state.hs_total_spend = new_cap
 
     # 2. STATE MANAGEMENT
     if "hs_alloc_by_pos" not in st.session_state or not isinstance(st.session_state.hs_alloc_by_pos, dict):
         st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
     
     alloc = st.session_state.hs_alloc_by_pos
-    
-    # V19: Quick Buttons
-    colA, colB, colC = st.columns(3)
-    if colA.button("⚖️ Balanced"):
-        share = int(new_cap / 7)
-        for p in POSITIONS: alloc[p] = share
-        st.rerun()
-    if colB.button("🎯 Needs Heavy"):
-        if not needs:
-            share = int(new_cap / 7)
-            for p in POSITIONS: alloc[p] = share
-        else:
-            need_share = int((new_cap * 0.7) / len(needs))
-            other_share = int((new_cap * 0.3) / (7 - len(needs))) if (7 - len(needs)) > 0 else 0
-            for p in POSITIONS:
-                alloc[p] = need_share if p in needs else other_share
-        st.rerun()
-    if colC.button("🔥 Pipeline Focus"):
-        if not hot:
-            share = int(new_cap / 7)
-            for p in POSITIONS: alloc[p] = share
-        else:
-            hot_share = int((new_cap * 0.6) / len(hot))
-            other_share = int((new_cap * 0.4) / (7 - len(hot))) if (7 - len(hot)) > 0 else 0
-            for p in POSITIONS:
-                alloc[p] = hot_share if p in hot else other_share
-        st.rerun()
+    # Ensure widget keys exist and match alloc the first time
+for p in POSITIONS:
+    k = f"input_{p}"
+    if k not in st.session_state:
+        st.session_state[k] = int(alloc.get(p, 0) or 0)
 
-    # Auto-Clamp: If user lowered the cap, shrink allocations proportionally to fit
-    total_allocated = sum(alloc.values())
-    if total_allocated > new_cap:
-        # Simple clamp
-        while total_allocated > new_cap:
-            for p in POSITIONS:
-                if alloc[p] > 0:
-                    deduct = min(alloc[p], 250_000)
-                    alloc[p] -= deduct
-                    total_allocated -= deduct
-                    if total_allocated <= new_cap: break
-    
-    remaining = new_cap - total_allocated
+# V19: Quick Buttons (exact-sum + widget sync)
+colA, colB, colC = st.columns(3)
+
+if colA.button("⚖️ Balanced"):
+    weights = {p: 1.0 for p in POSITIONS}
+    alloc.update(distribute_exact(new_cap, weights, step=100_000))
+    sync_alloc_to_inputs(alloc)
+    st.rerun()
+
+if colB.button("🎯 Needs Heavy"):
+    weights = {p: (3.0 if p in needs else 1.0) for p in POSITIONS}
+    alloc.update(distribute_exact(new_cap, weights, step=100_000))
+    sync_alloc_to_inputs(alloc)
+    st.rerun()
+
+if colC.button("🔥 Pipeline Focus"):
+    weights = {p: (3.0 if p in hot else 1.0) for p in POSITIONS}
+    alloc.update(distribute_exact(new_cap, weights, step=100_000))
+    sync_alloc_to_inputs(alloc)
+    st.rerun()
     
     # 3. THE DASHBOARD (Visual Feedback)
     if remaining == 0 and new_cap > 0:
