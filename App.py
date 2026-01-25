@@ -6,14 +6,13 @@ import json
 import datetime
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V17 — COMPLETE GOLD EDITION
-# 1) "War Room" HS Outreach (Dollar steps, no sliders).
-# 2) All missing functions restored (Top 8, Conference moves, Bracket init).
-# 3) Expanded Runtime Guard (prevents NameError crashes).
-# 4) Full Dynasty Features (Timeline, Achievements, Recruiting Grades).
+# COLLEGE FOOTBALL MOGUL V18 — ORDER OF OPERATIONS FIX
+# 1) Moved show_fired/show_retirement to Zone 2 (Early Definition).
+# 2) Ensures Runtime Guard runs strictly LAST.
+# 3) Includes all previous features (War Room, Recruiting Grades, Timeline).
 # ==============================================================================
 
-STATE_VERSION = 17.0
+STATE_VERSION = 18.0
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
@@ -36,7 +35,7 @@ ALLOWED_SAVE_KEYS = {
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V17", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V18", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -268,7 +267,7 @@ def role_rating(cand: dict, role: str) -> int:
     return int(cand.get("off", 1))
 
 def compute_team_needs(roster: dict, k: int = 3) -> list:
-    # Safe getter for roster dict
+    # V15 FIX: Safe getter for roster dict
     r = {p: int((roster or {}).get(p, 75) or 75) for p in POSITIONS}
     sorted_pos = sorted(r.items(), key=lambda x: x[1])
     return [p for p, _ in sorted_pos[:k]]
@@ -491,8 +490,12 @@ def build_season_summary_dict():
     }
 
 def render_dynasty_timeline(max_items: int = 25):
+    # Legacy tab timeline, sorted newest first.
     st.subheader("🕰️ Dynasty Timeline")
+
     items = []
+
+    # NEWS entries often look like: "2028: Some headline"
     for n in (st.session_state.get("news", []) or []):
         year = 0
         try:
@@ -501,6 +504,7 @@ def render_dynasty_timeline(max_items: int = 25):
             year = int(st.session_state.get("year", 0) or 0)
         items.append({"year": year, "kind": "NEWS", "text": str(n).strip()})
 
+    # HISTORY rows
     for h in (st.session_state.get("history", []) or []):
         yr = int(h.get("Year", 0) or 0)
         rec = h.get("Record", "?")
@@ -514,6 +518,7 @@ def render_dynasty_timeline(max_items: int = 25):
         st.markdown("<div class='news-box'><div class='news-item'>• No timeline events yet.</div></div>", unsafe_allow_html=True)
         return
 
+    # Sort newest first; for same year, show NEWS (0) before HIST (1)
     kind_order = {"NEWS": 0, "HIST": 1}
     items.sort(key=lambda x: (-x["year"], kind_order.get(x["kind"], 9)))
 
@@ -522,6 +527,25 @@ def render_dynasty_timeline(max_items: int = 25):
         st.markdown(f"<div class='news-item'>• {it['text']}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+# V18 FIX: Defined EARLY so Router doesn't crash on name lookup
+def show_fired():
+    st.error("FIRED! Your tenure has ended.")
+    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
+    st.write(f"Final Legacy (Saban) Score: **{saban}**")
+    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
+    if st.button("Restart Career"):
+        st.session_state.clear()
+        st.rerun()
+
+def show_retirement():
+    st.title("Retirement")
+    st.write("Thanks for playing!")
+    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
+    st.write(f"Final Legacy (Saban) Score: **{saban}**")
+    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
+    if st.button("Restart Career"):
+        st.session_state.clear()
+        st.rerun()
 
 # ==============================================================================
 # ZONE 3: ENGINE
@@ -593,8 +617,9 @@ def home_field_points(stadium_level: int, is_home: bool) -> float:
         if lvl >= 9 and random.random() < 0.25: return -1.5
         return 0.0
 
+# V15 PATCH: Safe Getters + Fixed Syntax
 def compute_team_unit_ratings(roster: dict, staff: dict, facilities: dict):
-    # SAFE GETTERS
+    # SAFE GETTERS (prevents KeyError if a position is missing)
     r = {p: int((roster or {}).get(p, 75) or 75) for p in POSITIONS}
 
     oc = int(staff.get("OC", {"off": 3}).get("off", 3) or 3)
@@ -610,6 +635,7 @@ def compute_team_unit_ratings(roster: dict, staff: dict, facilities: dict):
     off += training * 0.8
     deff += training * 0.8
 
+    # V15 Fix: Correct Tuple Return
     return (
        int(max(40, min(99, round(off)))),
        int(max(40, min(99, round(deff)))),
@@ -698,7 +724,7 @@ def engine_play_game_v8(
         "plan": game_plan
     }
 
-    # Safe QB
+    # V15 PATCH: Safe QB
     stats = {
         "qb_duel": [int((st.session_state.get("roster", {}) or {}).get("QB", 75)), int(max(60, min(99, opp_off)))],
         "off_vs_def": [int(my_off), int(opp_def)],
@@ -716,6 +742,7 @@ def engine_play_game_v8(
 
 def engine_evolve_universe(opponents_db):
     for team, data in opponents_db.items():
+        # This is for off-season evolution (progression), NOT for W-L record gen
         wins = int((data.get("OVR", 75) / 100) * 12) + random.randint(-2, 2)
         wins = max(0, min(12, wins))
 
@@ -737,6 +764,7 @@ def engine_evolve_universe(opponents_db):
             data.pop("DefOVR", None)
     return opponents_db
 
+# V12.1: SEEDED AI GENERATION (Deterministic)
 def simulate_ai_regular_season_seeded(seed: int):
     rnd = random.Random(seed)
     results = []
@@ -763,6 +791,7 @@ def simulate_ai_regular_season_seeded(seed: int):
     return results
 
 def calculate_committee_score(team_name, wins, losses, conf, sos_score):
+    # V12: Enhanced Resume Logic
     score = (wins * 100)
     score -= (losses * 90) # Punish losses slightly more in V12
     
@@ -853,7 +882,7 @@ def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige:
 
     return max(0.05, min(0.80, chance))
 
-# HS outreach logic
+# HS outreach
 def process_hs_outreach(total_spend: int, shares_pct: dict, staff: dict, prestige: int, inflation: float, hotspots: dict, home_region: str, team_needs: list):
     results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(total_spend)}
     total_spend = max(0, int(total_spend))
@@ -1950,7 +1979,7 @@ def show_postseason():
                 st.session_state.budget += delta * 1_000_000
             elif delta < 0:
                 st.session_state.budget -= abs(delta) * 500_000
-            
+
             # V15 Patch: Clamp Budget
             st.session_state.budget = max(0, int(st.session_state.budget))
 
