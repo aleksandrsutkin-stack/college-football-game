@@ -6,10 +6,11 @@ import json
 import datetime
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V18 — ORDER OF OPERATIONS FIX
-# 1) Moved show_fired/show_retirement to Zone 2 (Early Definition).
-# 2) Ensures Runtime Guard runs strictly LAST.
-# 3) Includes all previous features (War Room, Recruiting Grades, Timeline).
+# COLLEGE FOOTBALL MOGUL V18 — REALIGNMENT & PLAYOFF FIX
+# 1) Fixed CFP Bug: Top 4 seeds now see a "BYE" button instead of getting stuck.
+# 2) Dynamic Conferences: Teams can actually move conferences now.
+# 3) Conference Invites: Logic implemented to offer user promotions.
+# 4) Schedule Engine: Now respects dynamic conference membership.
 # ==============================================================================
 
 STATE_VERSION = 18.0
@@ -28,7 +29,7 @@ ALLOWED_SAVE_KEYS = {
     "selection_sunday_results", "ad_name", "team_name", "team_color",
     "team_conf", "team_rival", "home_region", "school_tier",
     "team_off", "team_def", "team_rating", "last_postseason_result",
-    "achievements", "milestone_log"
+    "achievements", "milestone_log", "conferences_map"
 }
 
 # ==============================================================================
@@ -251,9 +252,17 @@ def get_bowl_name(rank):
     elif rank <= 80: return random.choice(BOWL_MAPPING["Mid"])
     else: return random.choice(BOWL_MAPPING["Low"])
 
+def get_conferences_map() -> dict:
+    """Return the mutable conferences map stored in session_state."""
+    if "conferences_map" not in st.session_state or not isinstance(st.session_state.conferences_map, dict):
+        st.session_state.conferences_map = {k: list(v) for k, v in CONFERENCES.items()}
+    return st.session_state.conferences_map
+
 def get_conference(team: str) -> str:
-    for conf, teams in CONFERENCES.items():
-        if team in teams:
+    """Dynamic lookup for V18."""
+    conf_map = get_conferences_map()
+    for conf, teams in conf_map.items():
+        if team in (teams or []):
             return conf
     return "G5"
 
@@ -356,7 +365,6 @@ def generate_hotspots():
    """
    regions = list(REGION_STRENGTH.keys()) or ["South", "Midwest", "West", "North"]
 
-   # Weighted tendencies by region (flavor + slight gameplay identity)
    weighted = {
        "South":  ["RB", "WR", "DL", "LB", "QB", "DB", "OL"],
        "Midwest":["OL", "LB", "DL", "RB", "QB", "DB", "WR"],
@@ -379,7 +387,7 @@ def generate_hotspots():
 
 def compute_recruiting_class_grade():
     """
-    Grade based on NIL signed tiers, Top-8 commits, and Gems found.
+    V13: Grade based on NIL signed tiers, Top-8 commits, and Gems found.
     Returns: (grade_letter, numeric_score, breakdown_dict)
     """
     nil = st.session_state.get("nil_class", []) or []
@@ -586,10 +594,13 @@ def engine_generate_roster(tier, base_ovr=None):
     return roster
 
 def engine_generate_schedule(my_team, my_conf, rival):
-    conf_foes = [t for t in CONFERENCES.get(my_conf, CONFERENCES["G5"]) if t != my_team]
+    conf_map = get_conferences_map()
+    # Dynamic conf foes
+    conf_foes = [t for t in conf_map.get(my_conf, conf_map.get('G5', [])) if t != my_team]
+    
     schedule = random.sample(conf_foes, min(8, len(conf_foes)))
     needed = 12 - len(schedule)
-    non_conf = [t for t in ALL_TEAMS if t not in CONFERENCES.get(my_conf, []) and t != my_team]
+    non_conf = [t for t in ALL_TEAMS if t not in conf_map.get(my_conf, []) and t != my_team]
     schedule += random.sample(non_conf, min(len(non_conf), needed))
     if rival in ALL_TEAMS:
         if rival in schedule:
@@ -957,17 +968,81 @@ def init_playoff_bracket(user_rank, user_team_name):
     return {"Type": "CFP", "Round": 1, "Matches": r1_matches, "Seeds": top_12, "QF_Seeds": qf_seeds, "UserAlive": True, "Rank": user_rank}
 
 def apply_conference_move(to_conf: str, boost_mult: float):
+    conf_map = get_conferences_map()
+    team = st.session_state.team_name
+    cur_conf = st.session_state.team_conf
+
+    # Remove from old
+    if cur_conf in conf_map and team in conf_map[cur_conf]:
+        conf_map[cur_conf].remove(team)
+
+    # Add to new
+    if to_conf not in conf_map:
+        conf_map[to_conf] = []
+    if team not in conf_map[to_conf]:
+        conf_map[to_conf].append(team)
+
     st.session_state.team_conf = to_conf
     st.session_state.conf_revenue_boost_mult = float(boost_mult)
-    add_news(f"{st.session_state.team_name} joins the {to_conf}.")
+    add_news(f"{team} joins the {to_conf}.")
 
 def maybe_generate_conference_invite():
-    # Placeholder stub to prevent crashes
-    return None
+    if st.session_state.get("pending_invite"):
+        return st.session_state.pending_invite
+
+    conf_map = get_conferences_map()
+    team = st.session_state.team_name
+    cur_conf = st.session_state.team_conf
+    prestige = int(st.session_state.get("prestige", 60) or 60)
+    booster = int(st.session_state.get("booster_rating", 50) or 50)
+    wins = int((st.session_state.get("record") or {}).get("w", 0) or 0)
+
+    chance = 0.05
+    if wins >= 9: chance += 0.08
+    if wins >= 11: chance += 0.10
+    if booster >= 80: chance += 0.06
+    if prestige >= 80: chance += 0.06
+
+    targets = []
+    if cur_conf == "G5":
+        if prestige >= 74 or wins >= 10: targets += ["Big 12", "ACC"]
+        if prestige >= 84 or wins >= 11: targets += ["Big Ten", "SEC"]
+    elif cur_conf in ["ACC", "Big 12"]:
+        if prestige >= 86 or wins >= 11: targets += ["Big Ten", "SEC"]
+    
+    # Filter
+    targets = [t for t in targets if t in conf_map and t != cur_conf]
+    if not targets: return None
+    
+    if random.random() > min(0.35, chance): return None
+    
+    to_conf = random.choice(targets)
+    base_mult = 1.10
+    if to_conf == "SEC": base_mult = 1.18
+    elif to_conf == "Big Ten": base_mult = 1.16
+    
+    note = "Blue-blood TV deal + tougher road games." if to_conf in ["SEC", "Big Ten"] else "New media deal."
+    
+    st.session_state.pending_invite = {"to_conf": to_conf, "boost_mult": base_mult, "note": note}
+    add_news(f"{team} receives a conference invite to the {to_conf}.")
+    return st.session_state.pending_invite
 
 def ai_conference_swap_lightweight():
-    # Placeholder stub to prevent crashes
-    return None
+    conf_map = get_conferences_map()
+    user_team = st.session_state.team_name
+    if random.random() > 0.10: return None
+    
+    pools = [("ACC", "Big 12"), ("Big Ten", "SEC"), ("G5", "Big 12")]
+    from_conf, to_conf = random.choice(pools)
+    
+    from_list = [t for t in conf_map.get(from_conf, []) if t != user_team]
+    if not from_list: return None
+    
+    team = random.choice(from_list)
+    conf_map[from_conf].remove(team)
+    conf_map.setdefault(to_conf, []).append(team)
+    
+    add_news(f"Realignment: {team} moves from {from_conf} to {to_conf}.")
 
 # ==============================================================================
 # V15: ACHIEVEMENTS CATALOG & HELPERS
@@ -1066,7 +1141,7 @@ def render_achievements_panel():
        st.markdown("</div>", unsafe_allow_html=True)
 
 # ==============================================================================
-# ZONE 4: STATE MANAGEMENT (V17 GOLD)
+# ZONE 4: STATE MANAGEMENT (V18 GOLD)
 # ==============================================================================
 def sync_team_ratings():
     """Recalculate team off/def/ovr globally so it never disappears."""
@@ -1159,6 +1234,14 @@ def migrate_state():
            st.session_state.facilities[k] = default_val
 
     st.session_state.record = st.session_state.get("record", {}) or {"w": 0, "l": 0}
+    
+    # V18: Ensure conference map exists
+    get_conferences_map()
+    tc = st.session_state.team_conf
+    if tc not in st.session_state.conferences_map:
+        st.session_state.conferences_map[tc] = []
+    if st.session_state.team_name not in st.session_state.conferences_map[tc]:
+        st.session_state.conferences_map[tc].append(st.session_state.team_name)
 
     sync_team_ratings()
     st.session_state.state_version = STATE_VERSION
@@ -1220,6 +1303,9 @@ def init_session_state_defaults():
     # V15: Achievements
     st.session_state.setdefault("achievements", [])
     st.session_state.setdefault("milestone_log", [])
+    
+    # V18: Dynamic Conf Map
+    st.session_state.setdefault("conferences_map", {k: list(v) for k,v in CONFERENCES.items()})
 
     migrate_state()
 
@@ -1311,7 +1397,7 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V17")
+    st.title("🏆 College Football Mogul V18")
     st.markdown("### Dynasty Mode (Gold Edition)")
 
     c1, c2 = st.columns(2)
@@ -1379,6 +1465,15 @@ def run_setup():
                     "Coaches": {"OC": 5, "DC": 5},
                     "Stadium": random.randint(4, 10)
                 }
+        
+        # V18: Dynamic Conf Map
+        if "conferences_map" not in st.session_state:
+             st.session_state.conferences_map = {k: list(v) for k,v in CONFERENCES.items()}
+        # Ensure user is in conf map
+        if conf not in st.session_state.conferences_map:
+             st.session_state.conferences_map[conf] = []
+        if team not in st.session_state.conferences_map[conf]:
+             st.session_state.conferences_map[conf].append(team)
 
         st.session_state.hotspots = generate_hotspots()
         st.session_state.schedule = engine_generate_schedule(team, conf, rival)
@@ -2018,7 +2113,37 @@ def show_postseason():
                 user_match = m
                 break
 
-        if data.get("UserAlive") and user_match:
+        # V18: BYE Logic for Top 4 Seeds
+        if not user_match and data.get("UserAlive") and round_num == 1:
+             st.success(f"🎉 You have a BYE in Round {round_num}!")
+             st.info("Sit back and watch the opening round unfold.")
+             
+             if st.button("Simulate Round to Advance", type="primary"):
+                 next_round_teams = []
+                 # Sim round 1 matches
+                 for m in data.get("Matches", []):
+                     t1, t2 = m.get("t1"), m.get("t2")
+                     o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82)
+                     o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
+                     p = o1 / max(1.0, (o1 + o2))
+                     winner = t1 if random.random() < p else t2
+                     m["winner"] = winner
+                     next_round_teams.append(winner)
+                     
+                 # Prepare Round 2 Matches (Seeds 1-4 vs Winners)
+                 seeds = data.get("QF_Seeds", [])
+                 new_matches = []
+                 # Standard bracket mapping: 1 vs 8/9, 2 vs 7/10, etc.
+                 if len(seeds) == 4 and len(next_round_teams) >= 4:
+                      for i in range(4):
+                          new_matches.append({"t1": seeds[i], "t2": next_round_teams[3-i], "winner": None})
+                 
+                 st.session_state.postseason_data["Round"] = 2
+                 st.session_state.postseason_data["Matches"] = new_matches
+                 add_news(f"{st.session_state.team_name} advances to Quarterfinals after BYE.")
+                 st.rerun()
+                 
+        elif data.get("UserAlive") and user_match:
             opp = user_match["t2"] if user_match["t1"] == st.session_state.team_name else user_match["t1"]
             fallback = {"OVR": 88, "Off": "Pro Style", "Def": "Man Coverage", "Coaches": {"OC": 5, "DC": 5}, "Stadium": 9}
             opp_data = ensure_opp_units(st.session_state.opponents_db.get(opp, fallback) or fallback)
@@ -2105,10 +2230,8 @@ def show_postseason():
                     else:
                         new_matches = []
                         if round_num == 1:
-                            seeds = data.get("QF_Seeds", [])
-                            if len(seeds) == 4 and len(next_round_teams) >= 4:
-                                for i in range(4):
-                                    new_matches.append({"t1": seeds[i], "t2": next_round_teams[3 - i], "winner": None})
+                            # Already handled in BYE logic or normal
+                            pass 
                         elif round_num == 2:
                             if len(next_round_teams) >= 4:
                                 new_matches.append({"t1": next_round_teams[0], "t2": next_round_teams[3], "winner": None})
@@ -2136,7 +2259,7 @@ def show_postseason():
                     st.session_state.offseason_step = 1
                     st.rerun()
         else:
-            st.info("You are no longer alive in the bracket (or you had a BYE).")
+            st.info("You are no longer alive in the bracket.")
             # V13 PATCH A1: Forced Recap Flow
             if st.button("Close Season → Recap", type="primary"):
                 st.session_state.game_state = "SEASON_RECAP"
@@ -2677,6 +2800,42 @@ if _missing:
 init_session_state_defaults()
 
 # 2) Render Sidebar
+def safe_json_default(obj):
+    if isinstance(obj, set):
+        return list(obj)
+    if isinstance(obj, (datetime.date, datetime.datetime)):
+        return obj.isoformat()
+    return str(obj)
+
+def render_system_sidebar():
+    with st.sidebar:
+        st.header("💾 Dynasty System")
+        st.caption(f"Version {STATE_VERSION} (Gold)")
+        if st.button("Export Save File"):
+            state_copy = dict(st.session_state)
+            if "top8_resolved" in state_copy:
+                state_copy["top8_resolved"] = list(state_copy["top8_resolved"])
+            export_data = {k: v for k, v in state_copy.items() if k in ALLOWED_SAVE_KEYS}
+            json_str = json.dumps(export_data, default=safe_json_default)
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+            st.download_button(label="📥 Download JSON", data=json_str, file_name=f"CFB_Mogul_Save_{timestamp}.json", mime="application/json")
+        uploaded_file = st.file_uploader("Import Save File", type=["json"])
+        if uploaded_file is not None:
+            try:
+                data = json.load(uploaded_file)
+                for k, v in data.items():
+                    if k not in ALLOWED_SAVE_KEYS: continue
+                    if k == "top8_resolved": st.session_state[k] = set(v) if isinstance(v, list) else set()
+                    else: st.session_state[k] = v
+                migrate_state() 
+                st.session_state.candidates = {}
+                sync_team_ratings()
+                st.success("Save Loaded Successfully! Reloading...")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error loading save: {e}")
+
 render_system_sidebar()
 
 # 3) Route
