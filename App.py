@@ -6,15 +6,13 @@ import json
 import datetime
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V15 — PLATINUM EDITION
-# 1) Runtime Guard moved to bottom (Fixes startup crash).
-# 2) Safe Roster Math & Integer Safety (Prevents KeyErrors/AttributeErrors).
-# 3) Budget Clamping (No negative money).
-# 4) HS Outreach Option A (Dollar Steps instead of % sliders).
-# 5) Dynasty Milestones (Achievements system).
+# COLLEGE FOOTBALL MOGUL V15.1 (HOTFIX)
+# 1) Restored missing functions (generate_hotspots, init_playoff_bracket).
+# 2) Fixed NameError in Setup.
+# 3) Contains all V15 Platinum features (Safe Roster, Budget Clamping).
 # ==============================================================================
 
-STATE_VERSION = 15.0
+STATE_VERSION = 15.1
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
@@ -37,7 +35,7 @@ ALLOWED_SAVE_KEYS = {
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V15", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V15.1", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -318,6 +316,7 @@ def award_trophy(trophy_name: str):
 
 def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
     # Render a simple trophy gallery from st.session_state.trophies.
+    # Safe if trophies is missing/empty.
     st.subheader(title_text)
     trophies = st.session_state.get("trophies", []) or []
     
@@ -325,7 +324,10 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
         st.info("No trophies yet. Win a bowl or a title to start your case.")
         return
 
+    # Newest first
     trophies_sorted = sorted(trophies, key=lambda x: int(x.get("Year", 0)), reverse=True)
+
+    # Render as tiles (up to 24)
     cols = st.columns(4)
     for i, t in enumerate(trophies_sorted[:24]):
         with cols[i % 4]:
@@ -350,6 +352,7 @@ def normalize_shares(shares: dict):
         return {p: 100.0 / len(POSITIONS) for p in POSITIONS}
     return {p: (_val(p) / total) * 100.0 for p in POSITIONS}
 
+# V13 HELPERS: RECRUITING GRADE, TIMELINE, SUMMARY
 def compute_recruiting_class_grade():
     """
     V13: Grade based on NIL signed tiers, Top-8 commits, and Gems found.
@@ -889,6 +892,98 @@ def process_hs_outreach(total_spend: int, shares_pct: dict, staff: dict, prestig
 
     return results
 
+def generate_hotspots():
+    hotspots = {}
+    for reg in REGION_STRENGTH.keys():
+        hotspots[reg] = random.sample(POSITIONS, 2)
+    return hotspots
+
+def init_playoff_bracket(user_rank, user_team_name):
+    ranked_ai = [t["Team"] for t in st.session_state.selection_sunday_results if t["Team"] != user_team_name]
+    top_12 = []
+    ai_idx = 0
+    for r in range(1, 13):
+        if r == user_rank:
+            top_12.append(user_team_name)
+        else:
+            if ai_idx < len(ranked_ai):
+                top_12.append(ranked_ai[ai_idx])
+                ai_idx += 1
+            else:
+                top_12.append("FCS East")
+
+    r1_matches = [
+        {"high": 5, "low": 12, "t1": top_12[4], "t2": top_12[11], "winner": None},
+        {"high": 6, "low": 11, "t1": top_12[5], "t2": top_12[10], "winner": None},
+        {"high": 7, "low": 10, "t1": top_12[6], "t2": top_12[9], "winner": None},
+        {"high": 8, "low": 9,  "t1": top_12[7], "t2": top_12[8], "winner": None}
+    ]
+    qf_seeds = [top_12[0], top_12[1], top_12[2], top_12[3]]
+    return {"Type": "CFP", "Round": 1, "Matches": r1_matches, "Seeds": top_12, "QF_Seeds": qf_seeds, "UserAlive": True, "Rank": user_rank}
+
+def maybe_generate_conference_invite():
+    if st.session_state.tenure % 5 != 0: return
+    curr_conf = st.session_state.team_conf
+    prestige = int(st.session_state.prestige)
+    titles = int(st.session_state.career_stats.get("titles", 0))
+
+    invite = None
+    if curr_conf == "G5" and (prestige >= 82 or titles >= 1):
+        invite = {"to_conf": "Big 12", "boost_mult": 1.25, "note": "Major TV deal + recruiting bump, tougher schedules."}
+    elif curr_conf == "Big 12" and (prestige >= 88 or titles >= 2):
+        invite = random.choice([
+            {"to_conf": "Big Ten", "boost_mult": 1.35, "note": "National brand."},
+            {"to_conf": "SEC", "boost_mult": 1.38, "note": "Massive revenue."}
+        ])
+    elif curr_conf == "ACC" and (prestige >= 90 or titles >= 2):
+        invite = random.choice([
+            {"to_conf": "Big Ten", "boost_mult": 1.30, "note": "Stability."},
+            {"to_conf": "SEC", "boost_mult": 1.34, "note": "Huge money."}
+        ])
+
+    if invite:
+        st.session_state.pending_invite = invite
+        add_news(f"{st.session_state.team_name} receives a conference invite to the {invite['to_conf']}!")
+
+def apply_conference_move(to_conf: str, boost_mult: float):
+    team = st.session_state.team_name
+    from_conf = st.session_state.team_conf
+    for conf, teams in CONFERENCES.items():
+        if team in teams:
+            teams.remove(team)
+    CONFERENCES.setdefault(to_conf, [])
+    if team not in CONFERENCES[to_conf]:
+        CONFERENCES[to_conf].append(team)
+    st.session_state.team_conf = to_conf
+    st.session_state.conf_revenue_boost_mult = max(st.session_state.conf_revenue_boost_mult, float(boost_mult))
+    st.session_state.prestige = min(99, st.session_state.prestige + 3)
+    add_news(f"{team} officially joins the {to_conf}! Revenue permanently increases.")
+    st.toast(f"Conference Move: {from_conf} -> {to_conf}")
+
+def ai_conference_swap_lightweight():
+    if st.session_state.tenure % 5 != 0: return
+    g5_teams = CONFERENCES.get("G5", [])[:]
+    b12_teams = CONFERENCES.get("Big 12", [])[:]
+    if not g5_teams or not b12_teams: return
+
+    def pres(team):
+        if team == st.session_state.team_name:
+            return st.session_state.prestige
+        return st.session_state.opponents_db.get(team, {}).get("Prestige", 60)
+
+    g5_sorted = sorted(g5_teams, key=pres, reverse=True)
+    b12_sorted = sorted(b12_teams, key=pres)
+
+    promote = g5_sorted[0]
+    relegate = b12_sorted[0]
+    if promote == st.session_state.team_name or relegate == st.session_state.team_name: return
+
+    CONFERENCES["G5"].remove(promote)
+    CONFERENCES["Big 12"].append(promote)
+    CONFERENCES["Big 12"].remove(relegate)
+    CONFERENCES["G5"].append(relegate)
+    add_news(f"Conference realignment: {promote} promoted to Big 12; {relegate} relegated to G5.")
+
 # ==============================================================================
 # V15: ACHIEVEMENTS CATALOG & HELPERS
 # ==============================================================================
@@ -986,7 +1081,7 @@ def render_achievements_panel():
        st.markdown("</div>", unsafe_allow_html=True)
 
 # ==============================================================================
-# ZONE 4: STATE MANAGEMENT (V15 STABLE)
+# ZONE 4: STATE MANAGEMENT (V13.2 STABLE)
 # ==============================================================================
 def sync_team_ratings():
     """Recalculate team off/def/ovr globally so it never disappears."""
@@ -1137,7 +1232,6 @@ def init_session_state_defaults():
     st.session_state.setdefault("conf_revenue_boost_mult", 1.0)
     st.session_state.setdefault("last_postseason_result", "NONE")
     
-    # V15: Achievements
     st.session_state.setdefault("achievements", [])
     st.session_state.setdefault("milestone_log", [])
 
@@ -1231,8 +1325,8 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V15")
-    st.markdown("### Dynasty Mode (Platinum Edition)")
+    st.title("🏆 College Football Mogul V15.1")
+    st.markdown("### Dynasty Mode (Platinum)")
 
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", "Coach Prime")
@@ -2013,7 +2107,7 @@ def show_postseason():
                             "Year": st.session_state.year, 
                             "Record": "CHAMPS", 
                             "Rank": "#1", 
-                            "Bowl": "National Title",
+                            "Bowl": "National Title", 
                             "PostseasonResult": "TITLE"
                         }
                         st.session_state.history.append(hist)
@@ -2046,7 +2140,7 @@ def show_postseason():
                         "Year": st.session_state.year, 
                         "Record": "Playoff Loss", 
                         "Rank": f"#{data.get('Rank','?')}", 
-                        "Bowl": "CFP",
+                        "Bowl": "CFP", 
                         "PostseasonResult": "CFP_LOSS"
                     }
                     st.session_state.history.append(hist)
