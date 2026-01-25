@@ -37,7 +37,7 @@ ALLOWED_SAVE_KEYS = {
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V19.1", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V20", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -556,7 +556,7 @@ def render_dynasty_timeline(max_items: int = 25):
 
 # V18 FIX: Defined EARLY so Router doesn't crash on name lookup
 def show_offseason():
-    """V20 FIX: This function was completely missing in V19.1"""
+    """V20 FIX: This function was completely missing in V20"""
     sync_team_ratings()
     year = safe_int(st.session_state.get("year", 2026), 2026)
     st.title(f"🏈 Offseason {year}")
@@ -1538,7 +1538,7 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V19.1")
+    st.title("🏆 College Football Mogul V20")
     st.markdown("### Dynasty Mode (Restored Edition)")
 
     c1, c2 = st.columns(2)
