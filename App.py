@@ -7,14 +7,14 @@ import datetime
 import math
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V19.1 — RESTORED EDITION
+# COLLEGE FOOTBALL MOGUL V20
 # 1) Fixed Missing Function: show_offseason_nil_v8 is back.
 # 2) War Room HS Outreach: Dollar-based allocation (No sliders).
 # 3) True CFP Seeding: Quarterfinals re-seed based on Round 1 winners.
 # 4) Deterministic AI: Simulations are consistent on refresh.
 # ==============================================================================
 
-STATE_VERSION = 19.1
+STATE_VERSION = 20
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
@@ -224,6 +224,24 @@ def helper_format_cash(amount: int) -> str:
     except Exception:
         amount = 0
     return f"${amount/1_000_000:.1f}M" if amount >= 1_000_000 else f"${int(amount/1_000)}K"
+
+def safe_int(value, default=0):
+    """Safely convert any value to int with fallback"""
+    try:
+        if value is None or value == "":
+            return default
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(value, default=0.0):
+    """Safely convert any value to float with fallback"""
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 def generate_name():
     first = ["Marcus", "Trey", "Deion", "Caleb", "Jalen", "Bo", "Ty", "Zay", "Kool-Aid", "Tank", "Arch", "Shedeur", "Quinn", "Travis", "Ashton"]
@@ -537,6 +555,97 @@ def render_dynasty_timeline(max_items: int = 25):
     st.markdown("</div>", unsafe_allow_html=True)
 
 # V18 FIX: Defined EARLY so Router doesn't crash on name lookup
+def show_offseason():
+    """V20 FIX: This function was completely missing in V19.1"""
+    sync_team_ratings()
+    year = safe_int(st.session_state.get("year", 2026), 2026)
+    st.title(f"🏈 Offseason {year}")
+    
+    budget = safe_int(st.session_state.get("budget", 0), 0)
+    prestige = safe_int(st.session_state.get("prestige", 60), 60)
+    st.markdown(
+        f"<div class='nil-alert'>Budget: <b>{helper_format_cash(budget)}</b> | "
+        f"Prestige: <b>{prestige}</b></div>",
+        unsafe_allow_html=True
+    )
+    
+    step = safe_int(st.session_state.get("offseason_step", 1), 1)
+    
+    # Step 1: NIL Prospects
+    if step == 1:
+        show_offseason_nil_v8()
+        st.divider()
+        if st.button("Continue to HS Outreach →", type="primary"):
+            st.session_state.offseason_step = 2
+            st.rerun()
+    
+    # Step 2: HS Outreach
+    elif step == 2:
+        show_offseason_hs_outreach()
+        st.divider()
+        if st.button("Continue to Top-8 Battles →", type="primary"):
+            st.session_state.offseason_step = 3
+            st.rerun()
+    
+    # Step 3: Top-8 Battles
+    elif step == 3:
+        show_offseason_top8_v8()
+        st.divider()
+        if st.button("Finish Recruiting & Advance Season →", type="primary"):
+            # Calculate recruiting grade
+            grade, score, breakdown = compute_recruiting_class_grade()
+            
+            # Record in history
+            last_hist = st.session_state.history[-1] if st.session_state.history else None
+            if last_hist and safe_int(last_hist.get("Year", 0), 0) == year:
+                last_hist["RecruitingGrade"] = grade
+            
+            add_news(f"Recruiting class grade: {grade} ({score} pts)")
+            
+            # Year advancement
+            st.session_state.year += 1
+            st.session_state.tenure += 1
+            st.session_state.inflation = safe_float(st.session_state.get("inflation", 1.0), 1.0) * 1.02
+            
+            # Evolve universe
+            st.session_state.opponents_db = engine_evolve_universe(st.session_state.opponents_db)
+            
+            # Conference realignment
+            invite = maybe_generate_conference_invite()
+            if not invite:
+                ai_conference_swap_lightweight()
+            
+            # Reset season state
+            st.session_state.schedule = engine_generate_schedule(
+                st.session_state.team_name, 
+                st.session_state.team_conf, 
+                st.session_state.team_rival
+            )
+            st.session_state.week_index = 0
+            st.session_state.record = {"w": 0, "l": 0}
+            st.session_state.season_logs = []
+            st.session_state.season_simulated = False
+            st.session_state.season_end_ready = False
+            st.session_state.revenue_report = None
+            
+            # Reset recruiting
+            st.session_state.nil_class = []
+            st.session_state.hs_total_spend = 0
+            st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
+            st.session_state.top8 = []
+            st.session_state.top8_resolved = set()
+            st.session_state.offseason_step = 1
+            
+            # Update needs and hotspots
+            st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
+            st.session_state.hotspots = generate_hotspots()
+            
+            sync_team_ratings()
+            
+            st.session_state.game_state = "DASHBOARD"
+            add_news(f"Year {st.session_state.year} begins!")
+            st.rerun()
+
 def show_fired():
     st.error("FIRED! Your tenure has ended.")
     saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
