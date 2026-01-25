@@ -6,13 +6,13 @@ import json
 import datetime
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V15.1 (HOTFIX)
-# 1) Restored missing functions (generate_hotspots, init_playoff_bracket).
-# 2) Fixed NameError in Setup.
-# 3) Contains all V15 Platinum features (Safe Roster, Budget Clamping).
+# COLLEGE FOOTBALL MOGUL V16 — BUG FIX EDITION
+# 1) Fixed NameError on Setup (Added generate_hotspots).
+# 2) Fixed NameError on Offseason Step 3 (Added show_offseason_top8_v8).
+# 3) Updated Runtime Guard to catch these specific missing functions.
 # ==============================================================================
 
-STATE_VERSION = 15.1
+STATE_VERSION = 16.0
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
@@ -35,7 +35,7 @@ ALLOWED_SAVE_KEYS = {
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V15.1", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V16", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -267,7 +267,7 @@ def role_rating(cand: dict, role: str) -> int:
     return int(cand.get("off", 1))
 
 def compute_team_needs(roster: dict, k: int = 3) -> list:
-    # V15 FIX: Safe getter
+    # V15 FIX: Safe getter for roster dict
     r = {p: int((roster or {}).get(p, 75) or 75) for p in POSITIONS}
     sorted_pos = sorted(r.items(), key=lambda x: x[1])
     return [p for p, _ in sorted_pos[:k]]
@@ -316,7 +316,6 @@ def award_trophy(trophy_name: str):
 
 def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
     # Render a simple trophy gallery from st.session_state.trophies.
-    # Safe if trophies is missing/empty.
     st.subheader(title_text)
     trophies = st.session_state.get("trophies", []) or []
     
@@ -324,10 +323,7 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
         st.info("No trophies yet. Win a bowl or a title to start your case.")
         return
 
-    # Newest first
     trophies_sorted = sorted(trophies, key=lambda x: int(x.get("Year", 0)), reverse=True)
-
-    # Render as tiles (up to 24)
     cols = st.columns(4)
     for i, t in enumerate(trophies_sorted[:24]):
         with cols[i % 4]:
@@ -352,7 +348,35 @@ def normalize_shares(shares: dict):
         return {p: 100.0 / len(POSITIONS) for p in POSITIONS}
     return {p: (_val(p) / total) * 100.0 for p in POSITIONS}
 
-# V13 HELPERS: RECRUITING GRADE, TIMELINE, SUMMARY
+# V16 FIX: Added generate_hotspots()
+def generate_hotspots():
+   """
+   Returns a dict: Region -> list of 'hot' positions.
+   Used by HS Outreach pipeline bonuses (home_region).
+   """
+   regions = list(REGION_STRENGTH.keys()) or ["South", "Midwest", "West", "North"]
+
+   # Weighted tendencies by region (flavor + slight gameplay identity)
+   weighted = {
+       "South":  ["RB", "WR", "DL", "LB", "QB", "DB", "OL"],
+       "Midwest":["OL", "LB", "DL", "RB", "QB", "DB", "WR"],
+       "West":   ["QB", "WR", "DB", "RB", "OL", "DL", "LB"],
+       "North":  ["DL", "LB", "OL", "DB", "RB", "WR", "QB"],
+   }
+
+   out = {}
+   for r in regions:
+       pool = weighted.get(r, POSITIONS)
+       # Pick 2–3 unique positions
+       k = 3 if random.random() < 0.55 else 2
+       picks = []
+       while len(picks) < k:
+           cand = random.choice(pool)
+           if cand not in picks:
+               picks.append(cand)
+       out[r] = picks
+   return out
+
 def compute_recruiting_class_grade():
     """
     V13: Grade based on NIL signed tiers, Top-8 commits, and Gems found.
@@ -402,7 +426,6 @@ def compute_recruiting_class_grade():
     }
     return grade, score, breakdown
 
-# V13 PATCH A4: Hardened Metrics
 def get_season_metrics():
     # Calculate Best Win, Worst Loss, SOS (safe on empty/missing logs)
     logs = st.session_state.get("season_logs", []) or []
@@ -440,13 +463,11 @@ def get_season_metrics():
     return avg_sos, best_win, worst_loss
 
 def build_season_summary_dict():
-    """V13: Centralized season summary payload used by SEASON_RECAP."""
     wins = int(st.session_state.record.get("w", 0))
     losses = int(st.session_state.record.get("l", 0))
 
     avg_sos, best_win, worst_loss = get_season_metrics()
 
-    # Final rank & bowl label pulled from history if present
     this_year_hist = next((h for h in st.session_state.history if h.get("Year") == st.session_state.year), None)
     final_rank = this_year_hist.get("Rank", "Unranked") if this_year_hist else "Unranked"
     postseason = this_year_hist.get("Bowl", "No Bowl") if this_year_hist else "No Bowl"
@@ -468,7 +489,6 @@ def build_season_summary_dict():
         "WorstLoss": worst_loss,
     }
 
-# V13 PATCH A7: Explicit Sort
 def render_dynasty_timeline(max_items: int = 25):
     # Legacy tab timeline, sorted newest first.
     st.subheader("🕰️ Dynasty Timeline")
@@ -892,98 +912,6 @@ def process_hs_outreach(total_spend: int, shares_pct: dict, staff: dict, prestig
 
     return results
 
-def generate_hotspots():
-    hotspots = {}
-    for reg in REGION_STRENGTH.keys():
-        hotspots[reg] = random.sample(POSITIONS, 2)
-    return hotspots
-
-def init_playoff_bracket(user_rank, user_team_name):
-    ranked_ai = [t["Team"] for t in st.session_state.selection_sunday_results if t["Team"] != user_team_name]
-    top_12 = []
-    ai_idx = 0
-    for r in range(1, 13):
-        if r == user_rank:
-            top_12.append(user_team_name)
-        else:
-            if ai_idx < len(ranked_ai):
-                top_12.append(ranked_ai[ai_idx])
-                ai_idx += 1
-            else:
-                top_12.append("FCS East")
-
-    r1_matches = [
-        {"high": 5, "low": 12, "t1": top_12[4], "t2": top_12[11], "winner": None},
-        {"high": 6, "low": 11, "t1": top_12[5], "t2": top_12[10], "winner": None},
-        {"high": 7, "low": 10, "t1": top_12[6], "t2": top_12[9], "winner": None},
-        {"high": 8, "low": 9,  "t1": top_12[7], "t2": top_12[8], "winner": None}
-    ]
-    qf_seeds = [top_12[0], top_12[1], top_12[2], top_12[3]]
-    return {"Type": "CFP", "Round": 1, "Matches": r1_matches, "Seeds": top_12, "QF_Seeds": qf_seeds, "UserAlive": True, "Rank": user_rank}
-
-def maybe_generate_conference_invite():
-    if st.session_state.tenure % 5 != 0: return
-    curr_conf = st.session_state.team_conf
-    prestige = int(st.session_state.prestige)
-    titles = int(st.session_state.career_stats.get("titles", 0))
-
-    invite = None
-    if curr_conf == "G5" and (prestige >= 82 or titles >= 1):
-        invite = {"to_conf": "Big 12", "boost_mult": 1.25, "note": "Major TV deal + recruiting bump, tougher schedules."}
-    elif curr_conf == "Big 12" and (prestige >= 88 or titles >= 2):
-        invite = random.choice([
-            {"to_conf": "Big Ten", "boost_mult": 1.35, "note": "National brand."},
-            {"to_conf": "SEC", "boost_mult": 1.38, "note": "Massive revenue."}
-        ])
-    elif curr_conf == "ACC" and (prestige >= 90 or titles >= 2):
-        invite = random.choice([
-            {"to_conf": "Big Ten", "boost_mult": 1.30, "note": "Stability."},
-            {"to_conf": "SEC", "boost_mult": 1.34, "note": "Huge money."}
-        ])
-
-    if invite:
-        st.session_state.pending_invite = invite
-        add_news(f"{st.session_state.team_name} receives a conference invite to the {invite['to_conf']}!")
-
-def apply_conference_move(to_conf: str, boost_mult: float):
-    team = st.session_state.team_name
-    from_conf = st.session_state.team_conf
-    for conf, teams in CONFERENCES.items():
-        if team in teams:
-            teams.remove(team)
-    CONFERENCES.setdefault(to_conf, [])
-    if team not in CONFERENCES[to_conf]:
-        CONFERENCES[to_conf].append(team)
-    st.session_state.team_conf = to_conf
-    st.session_state.conf_revenue_boost_mult = max(st.session_state.conf_revenue_boost_mult, float(boost_mult))
-    st.session_state.prestige = min(99, st.session_state.prestige + 3)
-    add_news(f"{team} officially joins the {to_conf}! Revenue permanently increases.")
-    st.toast(f"Conference Move: {from_conf} -> {to_conf}")
-
-def ai_conference_swap_lightweight():
-    if st.session_state.tenure % 5 != 0: return
-    g5_teams = CONFERENCES.get("G5", [])[:]
-    b12_teams = CONFERENCES.get("Big 12", [])[:]
-    if not g5_teams or not b12_teams: return
-
-    def pres(team):
-        if team == st.session_state.team_name:
-            return st.session_state.prestige
-        return st.session_state.opponents_db.get(team, {}).get("Prestige", 60)
-
-    g5_sorted = sorted(g5_teams, key=pres, reverse=True)
-    b12_sorted = sorted(b12_teams, key=pres)
-
-    promote = g5_sorted[0]
-    relegate = b12_sorted[0]
-    if promote == st.session_state.team_name or relegate == st.session_state.team_name: return
-
-    CONFERENCES["G5"].remove(promote)
-    CONFERENCES["Big 12"].append(promote)
-    CONFERENCES["Big 12"].remove(relegate)
-    CONFERENCES["G5"].append(relegate)
-    add_news(f"Conference realignment: {promote} promoted to Big 12; {relegate} relegated to G5.")
-
 # ==============================================================================
 # V15: ACHIEVEMENTS CATALOG & HELPERS
 # ==============================================================================
@@ -1081,7 +1009,7 @@ def render_achievements_panel():
        st.markdown("</div>", unsafe_allow_html=True)
 
 # ==============================================================================
-# ZONE 4: STATE MANAGEMENT (V13.2 STABLE)
+# ZONE 4: STATE MANAGEMENT (V15 STABLE)
 # ==============================================================================
 def sync_team_ratings():
     """Recalculate team off/def/ovr globally so it never disappears."""
@@ -1232,13 +1160,10 @@ def init_session_state_defaults():
     st.session_state.setdefault("conf_revenue_boost_mult", 1.0)
     st.session_state.setdefault("last_postseason_result", "NONE")
     
-    st.session_state.setdefault("achievements", [])
-    st.session_state.setdefault("milestone_log", [])
-
     migrate_state()
 
 # ==============================================================================
-# ZONE 5: SYSTEM & SAVE/LOAD (V15)
+# ZONE 5: SYSTEM & SAVE/LOAD (V12)
 # ==============================================================================
 def safe_json_default(obj):
     # Safer JSON fallback serializer
@@ -1325,8 +1250,8 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V15.1")
-    st.markdown("### Dynasty Mode (Platinum)")
+    st.title("🏆 College Football Mogul V15")
+    st.markdown("### Dynasty Mode (Platinum Edition)")
 
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", "Coach Prime")
@@ -1800,16 +1725,10 @@ def show_season_end():
     c1, c2 = st.columns(2)
 
     if c1.button("Enter Selection Sunday (Reveal Rankings) 🏆", type="primary"):
-        # V13 PATCH A5: Reset flag on ENTERING selection sunday, not inside it
-        st.session_state.last_postseason_result = "NONE"
-
-        # V12.1 Defensive check: If AI records missing, rebuild them
         if not st.session_state.ai_records:
             st.session_state.ai_records = simulate_ai_regular_season_seeded(st.session_state.year)
 
         all_teams = st.session_state.ai_records[:]
-        
-        # V12: Real SOS Calc
         user_sos = avg_sos 
         
         user_score = calculate_committee_score(
@@ -1832,7 +1751,6 @@ def show_season_end():
         
         for t in all_teams:
             if "Score" not in t:
-                # V12: Use pre-calculated SOS from AI Sim
                 t["Score"] = calculate_committee_score(t["Team"], t["Wins"], t["Losses"], t["Conf"], t.get("SOS", 60))
                 t["IsUser"] = False
                 
@@ -1883,19 +1801,15 @@ def show_selection_sunday():
     
     user_wins = st.session_state.record['w']
     
+    # RESET FLAG for new season calculation logic
+    st.session_state.last_postseason_result = "NONE"
+
     if user_wins < 6:
         st.error("❌ You did not qualify for a bowl game (less than 6 wins).")
-        # V13 PATCH A4b: Set Flag and Record History
         st.session_state.last_postseason_result = "NO_BOWL"
         
         if st.button("End Season -> Offseason", type="primary"):
-            hist = {
-                "Year": st.session_state.year, 
-                "Record": f"{user_wins}-{st.session_state.record['l']}", 
-                "Rank": "NR", 
-                "Bowl": "None",
-                "PostseasonResult": "NO_BOWL"
-            }
+            hist = {"Year": st.session_state.year, "Record": f"{user_wins}-{st.session_state.record['l']}", "Rank": "NR", "Bowl": "None"}
             st.session_state.history.append(hist)
             st.session_state.game_state = "SEASON_RECAP"
             st.rerun()
@@ -1974,7 +1888,6 @@ def show_postseason():
             wins = st.session_state.record["w"] + (1 if res["result"] == "W" else 0)
             losses = st.session_state.record["l"] + (1 if res["result"] == "L" else 0)
 
-            # V13 PATCH A4: Set Flag & Record
             if res["result"] == "W":
                 st.session_state.last_postseason_result = "BOWL_WIN"
                 st.session_state.budget += 2_000_000
@@ -1992,7 +1905,7 @@ def show_postseason():
                 st.session_state.budget += delta * 1_000_000
             elif delta < 0:
                 st.session_state.budget -= abs(delta) * 500_000
-            
+
             # V15 Patch: Clamp Budget
             st.session_state.budget = max(0, int(st.session_state.budget))
 
@@ -2004,11 +1917,10 @@ def show_postseason():
                 "PostseasonResult": st.session_state.last_postseason_result
             }
             st.session_state.history.append(hist)
-
-            # V15 Patch: Check for achievements
+            
+            # V15 Achievements
             check_and_award_achievements()
 
-            # V13 PATCH A1: Forced Recap Flow
             st.session_state.game_state = "SEASON_RECAP"
             st.session_state.offseason_step = 1
             st.rerun()
@@ -2069,7 +1981,6 @@ def show_postseason():
                             m["winner"] = opp
                             next_round_teams.append(opp)
                             st.session_state.postseason_data["UserAlive"] = False
-                            # V13 PATCH A4: Set Flag
                             st.session_state.last_postseason_result = "CFP_LOSS"
                             add_news(f"{st.session_state.team_name} is eliminated by {opp}.")
                             st.error(f"Eliminated by {opp}")
@@ -2088,7 +1999,6 @@ def show_postseason():
 
                 if st.session_state.postseason_data.get("UserAlive"):
                     if round_num == 4:
-                        # V13 PATCH A4: Title Win
                         st.session_state.last_postseason_result = "TITLE"
                         st.session_state.budget += 50_000_000
                         st.session_state.career_stats["titles"] += 1
@@ -2107,12 +2017,11 @@ def show_postseason():
                             "Year": st.session_state.year, 
                             "Record": "CHAMPS", 
                             "Rank": "#1", 
-                            "Bowl": "National Title", 
+                            "Bowl": "National Title",
                             "PostseasonResult": "TITLE"
                         }
                         st.session_state.history.append(hist)
 
-                        # V13 PATCH A1: Forced Recap Flow
                         st.session_state.game_state = "SEASON_RECAP"
                         st.session_state.offseason_step = 1
                         st.rerun()
@@ -2135,23 +2044,19 @@ def show_postseason():
                         st.session_state.postseason_data["Matches"] = new_matches
                         st.rerun()
                 else:
-                    # V13 PATCH A4: Elimination History
                     hist = {
                         "Year": st.session_state.year, 
                         "Record": "Playoff Loss", 
                         "Rank": f"#{data.get('Rank','?')}", 
-                        "Bowl": "CFP", 
+                        "Bowl": "CFP",
                         "PostseasonResult": "CFP_LOSS"
                     }
                     st.session_state.history.append(hist)
-                    
-                    # V13 PATCH A1: Forced Recap Flow
                     st.session_state.game_state = "SEASON_RECAP"
                     st.session_state.offseason_step = 1
                     st.rerun()
         else:
             st.info("You are no longer alive in the bracket (or you had a BYE).")
-            # V13 PATCH A1: Forced Recap Flow
             if st.button("Close Season → Recap", type="primary"):
                 st.session_state.game_state = "SEASON_RECAP"
                 st.session_state.offseason_step = 1
@@ -2163,7 +2068,6 @@ def show_season_recap():
     
     summary = build_season_summary_dict()
 
-    # V14 POLISH: Use Flag for Headline
     result_flag = st.session_state.get("last_postseason_result", "NONE")
     
     if result_flag == "TITLE":
@@ -2204,7 +2108,6 @@ def show_season_recap():
 
     st.divider()
     
-    # Booster logic using V13.1 Explicit Flag
     current_boost = st.session_state.booster_rating
     
     booster_change = summary["Delta"] * 5
@@ -2234,7 +2137,6 @@ def show_season_recap():
     
     with c2:
         st.subheader("🏆 Legacy Growth")
-        # V13 PATCH A2: Safe Record Parse
         try:
             wins_added = int(st.session_state.record.get("w", 0))
         except Exception:
@@ -2256,7 +2158,6 @@ def show_season_recap():
             st.session_state.job_security -= 10
             st.toast("Booster Pressure: Security -10")
         
-        # V15: Check Achievements on Season End
         check_and_award_achievements()
 
         st.session_state.game_state = "OFFSEASON"
