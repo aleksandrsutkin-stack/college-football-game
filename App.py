@@ -7,14 +7,10 @@ import datetime
 import math
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V20
-# 1) Fixed Missing Function: show_offseason_nil_v8 is back.
-# 2) War Room HS Outreach: Dollar-based allocation (No sliders).
-# 3) True CFP Seeding: Quarterfinals re-seed based on Round 1 winners.
-# 4) Deterministic AI: Simulations are consistent on refresh.
+# COLLEGE FOOTBALL MOGUL V21
 # ==============================================================================
 
-STATE_VERSION = 20
+STATE_VERSION = 21
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
@@ -37,7 +33,7 @@ ALLOWED_SAVE_KEYS = {
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V20", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V21", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -556,7 +552,7 @@ def render_dynasty_timeline(max_items: int = 25):
 
 # V18 FIX: Defined EARLY so Router doesn't crash on name lookup
 def show_offseason():
-    """V20 FIX: This function was completely missing in V20"""
+    """V21 FIX: This function was completely missing in V21"""
     sync_team_ratings()
     year = safe_int(st.session_state.get("year", 2026), 2026)
     st.title(f"🏈 Offseason {year}")
@@ -1595,7 +1591,7 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V20")
+    st.title("🏆 College Football Mogul V21")
     st.markdown("### Dynasty Mode (Restored Edition)")
 
     c1, c2 = st.columns(2)
