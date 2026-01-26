@@ -12,7 +12,7 @@ import math
 # UI Updates:
 # 1) HS Outreach Results Panel (Immediate feedback on gems/spending)
 # 2) Recruiting Wrap-Up Screen (Shows Grade A-F before Dashboard)
-STATE_VERSION = 24.0
+STATE_VERSION = 24.1
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
