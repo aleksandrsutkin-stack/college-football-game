@@ -1172,58 +1172,69 @@ def process_hs_outreach(total_spend: int, shares_pct: dict, staff: dict, prestig
 
 # Conference / Postseason Helpers
 def init_playoff_bracket(user_rank, user_team_name):
-   """
-   Build a CFP bracket with correct Top-12 seeding and Top-4 BYEs.
-   Key behavior:
-   - Top-12 seeds come directly from selection_sunday_results[:12] (committee order).
-   - Seeds 1-4 receive BYEs to the Quarterfinals.
-   - Opening Round matches: 5v12, 6v11, 7v10, 8v9.
-   """
-   results = st.session_state.get("selection_sunday_results", []) or []
+    """
+    Build a CFP bracket with correct Top-12 seeding and Top-4 BYEs.
+    - Top-12 seeds come directly from selection_sunday_results[:12] (committee order).
+    - Seeds 1-4 receive BYEs to the Quarterfinals.
+    - Opening Round matches: 5v12, 6v11, 7v10, 8v9.
+    """
+    results = st.session_state.get("selection_sunday_results", []) or []
 
-   # Pull the committee Top-12 in order; fall back to filler if needed.
-   top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
+    # Pull the committee Top-12 in order; fall back to filler if needed.
+    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
 
-   # Ensure list length 12 (pad if needed)
-   while len(top12) < 12:
-       top12.append("FCS East")
+    # Ensure list length 12 (pad if needed)
+    while len(top12) < 12:
+        top12.append("FCS East")
 
-   # Build a seed map for later reseeding logic
-   seed_map = {}
-   for idx, tm in enumerate(top12, start=1):
-       seed_map[tm] = idx
+    # Ensure uniqueness (committee/save/load edge cases)
+    seen = set()
+    for i in range(len(top12)):
+        nm = top12[i]
+        if nm in seen:
+            top12[i] = "FCS East"
+        else:
+            seen.add(nm)
 
-   # Ensure user appears in the Top-12 at the correct rank (if rank 1-12)
-   if 1 <= int(user_rank) <= 12:
-       target_idx = int(user_rank) - 1
-       top12[target_idx] = user_team_name
-       seed_map[user_team_name] = int(user_rank)
+    # Build a seed map for later reseeding logic
+    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
 
-       # Remove duplicates of the user elsewhere (save/load or committee edge cases)
-       for i in range(len(top12)):
-           if i != target_idx and top12[i] == user_team_name:
-               top12[i] = "FCS East
+    # Ensure user appears in the Top-12 at the correct rank (if rank 1-12)
+    try:
+        ur = int(user_rank)
+    except Exception:
+        ur = 999
 
-   r1_matches = [
-       {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
-       {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
-       {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
-       {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
-   ]
+    if 1 <= ur <= 12:
+        target_idx = ur - 1
+        top12[target_idx] = user_team_name
+        seed_map[user_team_name] = ur
 
-   # Seeds 1-4 get BYEs into Quarterfinals
-   qf_seeds = top12[:4]
+        # Remove duplicates of the user elsewhere (save/load or committee edge cases)
+        for i in range(len(top12)):
+            if i != target_idx and top12[i] == user_team_name:
+                top12[i] = "FCS East"
 
-   return {
-       "Type": "CFP",
-       "Round": 1,
-       "Seeds": top12,
-       "QF_Seeds": qf_seeds,
-       "Matches": r1_matches,
-       "UserAlive": True,
-       "Rank": int(user_rank),
-       "SeedMap": seed_map
-   }
+    r1_matches = [
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
+        {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
+    ]
+
+    # Seeds 1-4 get BYEs into Quarterfinals
+    qf_seeds = top12[:4]
+
+    return {
+        "Type": "CFP",
+        "Round": 1,
+        "Seeds": top12,
+        "QF_Seeds": qf_seeds,
+        "Matches": r1_matches,
+        "UserAlive": True,
+        "Rank": int(ur),
+        "SeedMap": seed_map
+    }
 
 def apply_conference_move(to_conf: str, boost_mult: float):
     conf_map = get_conferences_map()
