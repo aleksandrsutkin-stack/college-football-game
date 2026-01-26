@@ -2150,10 +2150,11 @@ def show_dashboard():
         st.divider()
         render_dynasty_timeline()
 
+```python
 def show_season_end():
     sync_team_ratings()
     st.title("📊 Season End — Results Hub")
-   st.markdown(f"<div class='nil-alert'>Regular season complete. Record: <b>{st.session_state.record['w']}-{st.session_state.record['l']}</b> | Budget: <b>{helper_format_cash(st.session_state.budget)}</b></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='nil-alert'>Regular season complete. Record: <b>{st.session_state.record['w']}-{st.session_state.record['l']}</b> | Budget: <b>{helper_format_cash(st.session_state.budget)}</b></div>", unsafe_allow_html=True)
 
     render_news_box()
     
@@ -2233,7 +2234,7 @@ def show_season_end():
         st.session_state.selection_sunday_results = all_teams
         st.session_state.game_state = "SELECTION_SUNDAY"
         st.rerun()
-
+```
 def show_selection_sunday():
     sync_team_ratings()
     st.title("🏆 SELECTION SUNDAY")
