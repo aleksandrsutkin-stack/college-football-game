@@ -680,6 +680,8 @@ def show_offseason():
             st.session_state.nil_class = []
             st.session_state.hs_total_spend = 0
             st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
+            # Clear all position input widgets
+            for p in POSITIONS:
             st.session_state.pop(f"input_{p}", None)
             st.session_state.top8 = []
             st.session_state.top8_resolved = set()
@@ -2615,20 +2617,21 @@ def show_postseason():
                         new_matches = []
                         if round_num == 1:
                             # reseed next_round_teams by seed
-                            next_round_teams.sort(key=lambda ts: ts[1], reverse=True)
+                            next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                             winners_only = [ts[0] for ts in next_round_teams]
                             seeds = data.get("QF_Seeds", [])
                             if len(seeds) == 4 and len(winners_only) >= 4:
                                 for i in range(4):
                                     new_matches.append({"t1": seeds[i], "t2": winners_only[i], "winner": None})
-                 # --- V24.1 PATCH: Stable ordering by seed each round ---
-                        next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                         elif round_num == 2:
+                            # --- V24.1 PATCH: Stable ordering by seed each round ---
+                            next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                             if len(next_round_teams) >= 4:
                                 # simple bracket for semis
                                 new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[3][0], "winner": None})
                                 new_matches.append({"t1": next_round_teams[1][0], "t2": next_round_teams[2][0], "winner": None})
                         elif round_num == 3:
+                            next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                             if len(next_round_teams) >= 2:
                                 new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[1][0], "winner": None})
 
