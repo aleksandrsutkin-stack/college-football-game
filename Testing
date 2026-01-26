@@ -681,8 +681,8 @@ def show_offseason():
             st.session_state.hs_total_spend = 0
             st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
             # Clear all position input widgets
-        for p in POSITIONS:
-            st.session_state.pop(f"input_{p}", None)
+            for p in POSITIONS:
+                st.session_state.pop(f"input_{p}", None)
             st.session_state.top8 = []
             st.session_state.top8_resolved = set()
             st.session_state.offseason_step = 1
