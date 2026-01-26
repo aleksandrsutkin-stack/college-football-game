@@ -1825,9 +1825,9 @@ def show_dashboard():
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Budget", helper_format_cash(st.session_state.budget))
     # V15: Handle dict or int for ratings safely
-    ovr_val = _safe_rating(st.session_state.get("team_rating"), key="raw", default=75)
-    off_val = _safe_rating(st.session_state.get("team_off"),    key="off", default=75)
-    def_val = _safe_rating(st.session_state.get("team_def"),    key="def", default=75)
+    ovr_val = safe_int(st.session_state.get("team_rating", 75), 75)
+    off_val = safe_int(st.session_state.get("team_off", 75), 75)
+    def_val = safe_int(st.session_state.get("team_def", 75), 75)
 
     c2.metric("OVR", ovr_val)
     c3.metric("OFF", off_val, f"Raw: {raw_roster_val}")
@@ -2962,7 +2962,7 @@ def show_offseason_hs_outreach():
             "gems": list(res.get("gems", []) or []),
         }
 
-        st.toast("HS Outreach complete! See results above.")
+        safe_toast("HS Outreach complete! See results above.")
         st.rerun()
 
 def show_offseason_nil_v8():
