@@ -2153,11 +2153,7 @@ def show_dashboard():
 def show_season_end():
     sync_team_ratings()
     st.title("📊 Season End — Results Hub")
-   st.markdown(
-    f"<div class='nil-alert'>Regular season complete. Record: <b>{st.session_state.record['w']}-{st.session_state.record['l']}</b> | "
-    f"Budget: <b>{helper_format_cash(st.session_state.budget)}</b></div>",
-    unsafe_allow_html=True
-)
+   st.markdown(f"<div class='nil-alert'>Regular season complete. Record: <b>{st.session_state.record['w']}-{st.session_state.record['l']}</b> | Budget: <b>{helper_format_cash(st.session_state.budget)}</b></div>", unsafe_allow_html=True)
 
     render_news_box()
     
