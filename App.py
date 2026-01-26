@@ -2150,7 +2150,6 @@ def show_dashboard():
         st.divider()
         render_dynasty_timeline()
 
-```python
 def show_season_end():
     sync_team_ratings()
     st.title("📊 Season End — Results Hub")
@@ -2234,7 +2233,7 @@ def show_season_end():
         st.session_state.selection_sunday_results = all_teams
         st.session_state.game_state = "SELECTION_SUNDAY"
         st.rerun()
-```
+        
 def show_selection_sunday():
     sync_team_ratings()
     st.title("🏆 SELECTION SUNDAY")
