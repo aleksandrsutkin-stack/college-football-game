@@ -7,7 +7,7 @@ import datetime
 import math
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V24
+# COLLEGE FOOTBALL MOGUL V24.1
 # ==============================================================================
 # UI Updates:
 # 1) HS Outreach Results Panel (Immediate feedback on gems/spending)
@@ -29,7 +29,7 @@ ALLOWED_SAVE_KEYS = {
     "team_conf", "team_rival", "home_region", "school_tier",
     "team_off", "team_def", "team_rating", "last_postseason_result",
     "achievements", "milestone_log", "conferences_map",
-    # V24 New Keys
+    # V24.1 New Keys
     "hs_last_results", "recruiting_summary"
 }
 
@@ -37,7 +37,7 @@ ALLOWED_SAVE_KEYS = {
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V24", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V24.1", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -680,6 +680,7 @@ def show_offseason():
             st.session_state.nil_class = []
             st.session_state.hs_total_spend = 0
             st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
+            st.session_state.pop(f"input_{p}", None)
             st.session_state.top8 = []
             st.session_state.top8_resolved = set()
             st.session_state.offseason_step = 1
@@ -690,7 +691,7 @@ def show_offseason():
             
             sync_team_ratings()
             
-            # --- V24 CHANGE: Store summary and route to Wrap Screen instead of Dashboard ---
+            # --- V24.1 CHANGE: Store summary and route to Wrap Screen instead of Dashboard ---
             st.session_state.recruiting_summary = {
                 "grade": grade,
                 "score": score,
@@ -1194,14 +1195,14 @@ def init_playoff_bracket(user_rank, user_team_name):
 
    # Ensure user appears in the Top-12 at the correct rank (if rank 1-12)
    if 1 <= int(user_rank) <= 12:
-       top12[int(user_rank) - 1] = user_team_name
+       target_idx = int(user_rank) - 1
+       top12[target_idx] = user_team_name
        seed_map[user_team_name] = int(user_rank)
 
-   # Avoid accidental duplicates of the user
-   for i, name in enumerate(top12):
-       if 1 <= int(user_rank) <= 12:
-           if i != (int(user_rank) - 1) and name == user_team_name:
-               top12[i] = "FCS East"
+       # Remove duplicates of the user elsewhere (save/load or committee edge cases)
+       for i in range(len(top12)):
+           if i != target_idx and top12[i] == user_team_name:
+               top12[i] = "FCS East
 
    r1_matches = [
        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
@@ -1458,7 +1459,7 @@ def migrate_state():
         # V15: Achievements
         "achievements": [],
         "milestone_log": [],
-        # V24: UI Summaries
+        # V24.1: UI Summaries
         "hs_last_results": None,
         "recruiting_summary": None
     }
@@ -1569,7 +1570,7 @@ def init_session_state_defaults():
     # V18: Dynamic Conf Map
     st.session_state.setdefault("conferences_map", {k: list(v) for k,v in CONFERENCES.items()})
 
-    # V24: UI summaries
+    # V24.1: UI summaries
     st.session_state.setdefault("hs_last_results", None)
     st.session_state.setdefault("recruiting_summary", None)
 
@@ -1663,7 +1664,7 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V24")
+    st.title("🏆 College Football Mogul V24.1")
     st.markdown("### Dynasty Mode")
 
     c1, c2 = st.columns(2)
@@ -2304,10 +2305,16 @@ def show_selection_sunday():
         is_user = t.get("IsUser", False)
         bg_class = "rank-row-user" if is_user else "rank-row"
         
+        wins = safe_int(t.get("Wins", 0), 0)
+        losses = safe_int(t.get("Losses", 0), 0)
+
         status = ""
-        if rank <= 12: status = "🏆 CFP"
-        elif t["Wins"] >= 6: status = "🎳 BOWL"
-        else: status = "❌ OUT"
+        if rank <= 12:
+            status = "🏆 CFP"
+        elif wins >= 6:
+            status = "🎳 BOWL"
+        else:
+            status = "❌ OUT"
         
         st.markdown(f"""
         <div class='{bg_class}'>
@@ -2490,7 +2497,7 @@ def show_postseason():
                     winner_seed = seed_map.get(winner, 99)
                     next_round_teams.append((winner, winner_seed))
                 
-                # Reseed winners by seed (highest numeric seed last -> we sort reverse so lowest quality first)
+                # Reseed winners by seed (higher numeric seed = weaker; reverse=True puts weaker first)
                 next_round_teams.sort(key=lambda ts: ts[1], reverse=True)
                 winners_only = [ts[0] for ts in next_round_teams]
                 
@@ -2603,6 +2610,8 @@ def show_postseason():
                             if len(seeds) == 4 and len(winners_only) >= 4:
                                 for i in range(4):
                                     new_matches.append({"t1": seeds[i], "t2": winners_only[i], "winner": None})
+                 # --- V24.1 PATCH: Stable ordering by seed each round ---
+                        next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                         elif round_num == 2:
                             if len(next_round_teams) >= 4:
                                 # simple bracket for semis
