@@ -7,13 +7,12 @@ import datetime
 import math
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V22.1 (patched)
+# COLLEGE FOOTBALL MOGUL V24.1
 # ==============================================================================
-# This build (V22.1) applies three critical fixes:
-# 1) Error boundary around single-week simulation to avoid app crash on engine errors
-# 2) validate_budget_input() helper to validate spending prior to deduction
-# 3) Auto-fix / rescale HS Outreach position allocations when user inputs exceed budget
-STATE_VERSION = 22.1
+# UI Updates:
+# 1) HS Outreach Results Panel (Immediate feedback on gems/spending)
+# 2) Recruiting Wrap-Up Screen (Shows Grade A-F before Dashboard)
+STATE_VERSION = 24.1
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
 ALLOWED_SAVE_KEYS = {
@@ -29,14 +28,16 @@ ALLOWED_SAVE_KEYS = {
     "selection_sunday_results", "ad_name", "team_name", "team_color",
     "team_conf", "team_rival", "home_region", "school_tier",
     "team_off", "team_def", "team_rating", "last_postseason_result",
-    "achievements", "milestone_log", "conferences_map"
+    "achievements", "milestone_log", "conferences_map",
+    # V24.1 New Keys
+    "hs_last_results", "recruiting_summary"
 }
 
 # ==============================================================================
 # ZONE 1: CONFIGURATION & STATIC DATA
 # ==============================================================================
 try:
-    st.set_page_config(page_title="CFB Mogul V22.1", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V24.1", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -57,19 +58,17 @@ st.markdown("""
 .security-hot { color: #dc3545; font-weight: bold; }
 
 .finance-alert { background-color: #d1e7dd; color: #0f5132 !important; border: 1px solid #badbcc; padding: 15px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-weight: bold; }
-.nil-alert { background-color: #cff4fc; color: #055160 !important; border: 1px solid #b6effb; padding: 18px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-size: 1.1em; font-weight:[...]
+.nil-alert { background-color: #cff4fc; color: #055160 !important; border: 1px solid #b6effb; padding: 18px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-size: 1.1em; font-weight: bold; }
 
 /* GAME CARDS */
-.game-card { padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-.game-card-win { border-left: 5px solid #28a745; }
-.game-card-loss { border-left: 5px solid #dc3545; }
-.game-card-pending { border-left: 5px solid #6c757d; background: #f8f9fa; }
-.game-card-rival { border: 2px solid #ffc107 !important; background-color: #fffbf0 !important; }
-
-.card-header { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 5px;}
-.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.85em; }
-.stat-row { display: flex; justify-content: space-between; }
-
+/* GAME CARDS */
+.game-card { padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; background: white !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #111111 !important; }
+.game-card-win { border-left: 5px solid #28a745; background: #f8fff9 !important; }
+.game-card-loss { border-left: 5px solid #dc3545; background: #fff8f8 !important; }
+.card-header { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px; color: #111111 !important; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85em; color: #111111 !important; }
+.stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #eee; color: #111111 !important; }
+.stat-row:last-child { border-bottom: none; }
 /* STAFF CARDS */
 .staff-card { background: white; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
 .staff-role { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
@@ -97,7 +96,7 @@ st.markdown("""
 .trophy-strip { font-size: 1.4em; line-height: 1.6em; }
 .trophy-tile { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 10px; }
 
-.newspaper-head { font-family: 'Georgia', serif; font-size: 2em; text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 20px; color: #2c3e50; background: #fdfbf7; pad[...]
+.newspaper-head { font-family: 'Georgia', serif; font-size: 2em; text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 20px; color: #2c3e50; background: #fdfbf7; padding-top: 20px; }
 .newspaper-sub { font-family: 'Georgia', serif; font-style: italic; text-align: center; color: #555; margin-bottom: 20px; }
 
 .booster-meter-container { background: #eee; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden; border: 1px solid #ccc; }
@@ -223,6 +222,15 @@ def helper_format_cash(amount: int) -> str:
     except Exception:
         amount = 0
     return f"${amount/1_000_000:.1f}M" if amount >= 1_000_000 else f"${int(amount/1_000)}K"
+
+def _format_pos_delta(d: float) -> str:
+    """Tiny helper to format + / - for position improvements."""
+    try:
+        d = float(d)
+    except Exception:
+        d = 0.0
+    sign = "+" if d >= 0 else ""
+    return f"{sign}{int(round(d))}"
 
 def safe_int(value, default=0):
     """Safely convert any value to int with fallback"""
@@ -672,6 +680,9 @@ def show_offseason():
             st.session_state.nil_class = []
             st.session_state.hs_total_spend = 0
             st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
+            # Clear all position input widgets
+            for p in POSITIONS:
+                st.session_state.pop(f"input_{p}", None)
             st.session_state.top8 = []
             st.session_state.top8_resolved = set()
             st.session_state.offseason_step = 1
@@ -682,8 +693,13 @@ def show_offseason():
             
             sync_team_ratings()
             
-            st.session_state.game_state = "DASHBOARD"
-            add_news(f"Year {st.session_state.year} begins!")
+            # --- V24.1 CHANGE: Store summary and route to Wrap Screen instead of Dashboard ---
+            st.session_state.recruiting_summary = {
+                "grade": grade,
+                "score": score,
+                "breakdown": breakdown
+            }
+            st.session_state.game_state = "RECRUITING_WRAP"
             st.rerun()
 
 def show_fired():
@@ -1158,58 +1174,69 @@ def process_hs_outreach(total_spend: int, shares_pct: dict, staff: dict, prestig
 
 # Conference / Postseason Helpers
 def init_playoff_bracket(user_rank, user_team_name):
-   """
-   Build a CFP bracket with correct Top-12 seeding and Top-4 BYEs.
-   Key behavior:
-   - Top-12 seeds come directly from selection_sunday_results[:12] (committee order).
-   - Seeds 1-4 receive BYEs to the Quarterfinals.
-   - Opening Round matches: 5v12, 6v11, 7v10, 8v9.
-   """
-   results = st.session_state.get("selection_sunday_results", []) or []
+    """
+    Build a CFP bracket with correct Top-12 seeding and Top-4 BYEs.
+    - Top-12 seeds come directly from selection_sunday_results[:12] (committee order).
+    - Seeds 1-4 receive BYEs to the Quarterfinals.
+    - Opening Round matches: 5v12, 6v11, 7v10, 8v9.
+    """
+    results = st.session_state.get("selection_sunday_results", []) or []
 
-   # Pull the committee Top-12 in order; fall back to filler if needed.
-   top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
+    # Pull the committee Top-12 in order; fall back to filler if needed.
+    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
 
-   # Ensure list length 12 (pad if needed)
-   while len(top12) < 12:
-       top12.append("FCS East")
+    # Ensure list length 12 (pad if needed)
+    while len(top12) < 12:
+        top12.append("FCS East")
 
-   # Build a seed map for later reseeding logic
-   seed_map = {}
-   for idx, tm in enumerate(top12, start=1):
-       seed_map[tm] = idx
+    # Ensure uniqueness (committee/save/load edge cases)
+    seen = set()
+    for i in range(len(top12)):
+        nm = top12[i]
+        if nm in seen:
+            top12[i] = "FCS East"
+        else:
+            seen.add(nm)
 
-   # Ensure user appears in the Top-12 at the correct rank (if rank 1-12)
-   if 1 <= int(user_rank) <= 12:
-       top12[int(user_rank) - 1] = user_team_name
-       seed_map[user_team_name] = int(user_rank)
+    # Build a seed map for later reseeding logic
+    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
 
-   # Avoid accidental duplicates of the user
-   for i, name in enumerate(top12):
-       if 1 <= int(user_rank) <= 12:
-           if i != (int(user_rank) - 1) and name == user_team_name:
-               top12[i] = "FCS East"
+    # Ensure user appears in the Top-12 at the correct rank (if rank 1-12)
+    try:
+        ur = int(user_rank)
+    except Exception:
+        ur = 999
 
-   r1_matches = [
-       {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
-       {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
-       {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
-       {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
-   ]
+    if 1 <= ur <= 12:
+        target_idx = ur - 1
+        top12[target_idx] = user_team_name
+        seed_map[user_team_name] = ur
 
-   # Seeds 1-4 get BYEs into Quarterfinals
-   qf_seeds = top12[:4]
+        # Remove duplicates of the user elsewhere (save/load or committee edge cases)
+        for i in range(len(top12)):
+            if i != target_idx and top12[i] == user_team_name:
+                top12[i] = "FCS East"
 
-   return {
-       "Type": "CFP",
-       "Round": 1,
-       "Seeds": top12,
-       "QF_Seeds": qf_seeds,
-       "Matches": r1_matches,
-       "UserAlive": True,
-       "Rank": int(user_rank),
-       "SeedMap": seed_map
-   }
+    r1_matches = [
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
+        {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
+    ]
+
+    # Seeds 1-4 get BYEs into Quarterfinals
+    qf_seeds = top12[:4]
+
+    return {
+        "Type": "CFP",
+        "Round": 1,
+        "Seeds": top12,
+        "QF_Seeds": qf_seeds,
+        "Matches": r1_matches,
+        "UserAlive": True,
+        "Rank": int(ur),
+        "SeedMap": seed_map
+    }
 
 def apply_conference_move(to_conf: str, boost_mult: float):
     conf_map = get_conferences_map()
@@ -1292,13 +1319,13 @@ def ai_conference_swap_lightweight():
 # V15: ACHIEVEMENTS CATALOG & HELPERS
 # ==============================================================================
 ACHIEVEMENTS_CATALOG = [
-   {"id": "WIN_10",  "title": "First 10 Wins",        "icon": "✅", "desc": "Reach 10 career wins."},
-   {"id": "WIN_50",  "title": "50 Career Wins",       "icon": "🔥", "desc": "Reach 50 career wins."},
-   {"id": "WIN_100", "title": "100 Career Wins",      "icon": "👑", "desc": "Reach 100 career wins."},
-   {"id": "BOWL_1",  "title": "First Bowl Win",       "icon": "🎳", "desc": "Win your first bowl game."},
-   {"id": "BOWL_10", "title": "10 Bowl Wins",         "icon": "🏅", "desc": "Win 10 bowl games."},
-   {"id": "TITLE_1", "title": "National Champion",    "icon": "🏆", "desc": "Win the National Title."},
-   {"id": "TITLE_3", "title": "Dynasty Mode",         "icon": "💎", "desc": "Win 3 National Titles."},
+   {"id": "WIN_10",  "title": "First 10 Wins",         "icon": "✅", "desc": "Reach 10 career wins."},
+   {"id": "WIN_50",  "title": "50 Career Wins",        "icon": "🔥", "desc": "Reach 50 career wins."},
+   {"id": "WIN_100", "title": "100 Career Wins",       "icon": "👑", "desc": "Reach 100 career wins."},
+   {"id": "BOWL_1",  "title": "First Bowl Win",        "icon": "🎳", "desc": "Win your first bowl game."},
+   {"id": "BOWL_10", "title": "10 Bowl Wins",          "icon": "🏅", "desc": "Win 10 bowl games."},
+   {"id": "TITLE_1", "title": "National Champion",     "icon": "🏆", "desc": "Win the National Title."},
+   {"id": "TITLE_3", "title": "Dynasty Mode",          "icon": "💎", "desc": "Win 3 National Titles."},
    {"id": "PRESTIGE_80", "title": "Blue Blood Status", "icon": "💰", "desc": "Reach 80 prestige."},
    {"id": "BOOST_90",    "title": "Booster Darling",   "icon": "🤑", "desc": "Reach 90 booster confidence."},
 ]
@@ -1444,7 +1471,10 @@ def migrate_state():
         "school_tier": 3,
         # V15: Achievements
         "achievements": [],
-        "milestone_log": []
+        "milestone_log": [],
+        # V24.1: UI Summaries
+        "hs_last_results": None,
+        "recruiting_summary": None
     }
 
     # Ensure identity keys exist even if a save file didn't include them
@@ -1553,6 +1583,10 @@ def init_session_state_defaults():
     # V18: Dynamic Conf Map
     st.session_state.setdefault("conferences_map", {k: list(v) for k,v in CONFERENCES.items()})
 
+    # V24.1: UI summaries
+    st.session_state.setdefault("hs_last_results", None)
+    st.session_state.setdefault("recruiting_summary", None)
+
     migrate_state()
 
 # ==============================================================================
@@ -1569,7 +1603,7 @@ def safe_json_default(obj):
 def render_system_sidebar():
     with st.sidebar:
         st.header("💾 Dynasty System")
-        st.caption(f"Version {STATE_VERSION} (Patched)")
+        st.caption(f"Version {STATE_VERSION}")
         
         # EXPORT
         if st.button("Export Save File"):
@@ -1643,8 +1677,8 @@ def render_news_box():
 # ---------------------------- VIEWS -------------------------------------------
 
 def run_setup():
-    st.title("🏆 College Football Mogul V22.1")
-    st.markdown("### Dynasty Mode (Patched Edition)")
+    st.title("🏆 College Football Mogul V24.1")
+    st.markdown("### Dynasty Mode")
 
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", "Coach Prime")
@@ -1797,15 +1831,17 @@ def show_dashboard():
             return int(default)
         except Exception:
             return 75
-
-    raw_roster_val = _safe_rating(st.session_state.get("team_rating"), key="raw", default=75)
-
+    try:
+        rv = st.session_state.get("roster", {}) or {}
+        raw_roster_val = int(sum(int(v) for v in rv.values()) / max(1, len(rv)))
+    except Exception:
+        raw_roster_val = 75
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Budget", helper_format_cash(st.session_state.budget))
     # V15: Handle dict or int for ratings safely
-    ovr_val = _safe_rating(st.session_state.get("team_rating"), key="raw", default=75)
-    off_val = _safe_rating(st.session_state.get("team_off"),    key="off", default=75)
-    def_val = _safe_rating(st.session_state.get("team_def"),    key="def", default=75)
+    ovr_val = safe_int(st.session_state.get("team_rating", 75), 75)
+    off_val = safe_int(st.session_state.get("team_off", 75), 75)
+    def_val = safe_int(st.session_state.get("team_def", 75), 75)
 
     c2.metric("OVR", ovr_val)
     c3.metric("OFF", off_val, f"Raw: {raw_roster_val}")
@@ -2096,10 +2132,19 @@ def show_dashboard():
             if colB.button("⏩ SIM REST OF SEASON"):
                 while not st.session_state.season_simulated:
                     wk2 = st.session_state.week_index
-                    if wk2 >= 12: break
-                    opp2 = st.session_state.schedule[wk2]
-                    opp_data2 = ensure_opp_units(st.session_state.opponents_db.get(opp2, {"OVR": 80, "Off": "Pro Style", "Def": "Man Coverage", "Coaches": {"OC": 5, "DC": 5}, "Stadium": 7}))
-                    
+                    sched2 = st.session_state.schedule or []
+                    if wk2 >= len(sched2) or wk2 >= 12:
+                        break
+
+                    opp2 = sched2[wk2]
+                    opp_data2 = ensure_opp_units(
+                        st.session_state.opponents_db.get(
+                            opp2,
+                            {"OVR": 80, "Off": "Pro Style", "Def": "Man Coverage",
+                             "Coaches": {"OC": 5, "DC": 5}, "Stadium": 7}
+                        )
+                    )
+
                     is_riv2 = (opp2 == st.session_state.team_rival)
                     is_home2 = (wk2 % 2 == 0)
                     loc_str2 = "HOME" if is_home2 else "@AWAY"
@@ -2115,15 +2160,18 @@ def show_dashboard():
                         my_stadium_level=st.session_state.facilities["Stadium"],
                         opp_stadium_level=opp_data2.get("Stadium", 7)
                     )
+
                     st.session_state.season_logs.append({
                         "Week": wk2 + 1, "Opponent": opp2, "Score": f"{res2['result']} {res2['score']}",
-                        "Stats": res2["stats"], "Explain": res2["explain"], "OppOVR": int(opp_data2.get("OVR", 80)),
+                        "Stats": res2["stats"], "Explain": res2["explain"],
+                        "OppOVR": int(opp_data2.get("OVR", 80)),
                         "Loc": loc_str2
                     })
+
                     if res2["result"] == "W":
                         st.session_state.record["w"] += 1
                         st.session_state.career_stats["w"] += 1
-                        st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv else 2))
+                        st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv2 else 2))
                     else:
                         st.session_state.record["l"] += 1
                         st.session_state.career_stats["l"] += 1
@@ -2131,7 +2179,6 @@ def show_dashboard():
                         st.session_state.job_security = max(0, st.session_state.job_security - pen)
 
                     st.session_state.week_index += 1
-                    if st.session_state.week_index >= 12: break
 
                 end_regular_season_and_stay_on_results()
                 st.rerun()
@@ -2271,10 +2318,16 @@ def show_selection_sunday():
         is_user = t.get("IsUser", False)
         bg_class = "rank-row-user" if is_user else "rank-row"
         
+        wins = safe_int(t.get("Wins", 0), 0)
+        losses = safe_int(t.get("Losses", 0), 0)
+
         status = ""
-        if rank <= 12: status = "🏆 CFP"
-        elif t["Wins"] >= 6: status = "🎳 BOWL"
-        else: status = "❌ OUT"
+        if rank <= 12:
+            status = "🏆 CFP"
+        elif wins >= 6:
+            status = "🎳 BOWL"
+        else:
+            status = "❌ OUT"
         
         st.markdown(f"""
         <div class='{bg_class}'>
@@ -2457,7 +2510,7 @@ def show_postseason():
                     winner_seed = seed_map.get(winner, 99)
                     next_round_teams.append((winner, winner_seed))
                 
-                # Reseed winners by seed (highest numeric seed last -> we sort reverse so lowest quality first)
+                # Reseed winners by seed (higher numeric seed = weaker; reverse=True puts weaker first)
                 next_round_teams.sort(key=lambda ts: ts[1], reverse=True)
                 winners_only = [ts[0] for ts in next_round_teams]
                 
@@ -2564,18 +2617,21 @@ def show_postseason():
                         new_matches = []
                         if round_num == 1:
                             # reseed next_round_teams by seed
-                            next_round_teams.sort(key=lambda ts: ts[1], reverse=True)
+                            next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                             winners_only = [ts[0] for ts in next_round_teams]
                             seeds = data.get("QF_Seeds", [])
                             if len(seeds) == 4 and len(winners_only) >= 4:
                                 for i in range(4):
                                     new_matches.append({"t1": seeds[i], "t2": winners_only[i], "winner": None})
                         elif round_num == 2:
+                            # --- V24.1 PATCH: Stable ordering by seed each round ---
+                            next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                             if len(next_round_teams) >= 4:
                                 # simple bracket for semis
                                 new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[3][0], "winner": None})
                                 new_matches.append({"t1": next_round_teams[1][0], "t2": next_round_teams[2][0], "winner": None})
                         elif round_num == 3:
+                            next_round_teams.sort(key=lambda ts: ts[1])  # seed 1 (best) first
                             if len(next_round_teams) >= 2:
                                 new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[1][0], "winner": None})
 
@@ -2713,6 +2769,37 @@ def show_season_recap():
 
 # V19: The "War Room" Allocation System
 def show_offseason_hs_outreach():
+    # --- NEW: Show results from the last HS Outreach run (if any) ---
+    last = st.session_state.get("hs_last_results", None)
+    if last:
+        st.success("✅ HS Outreach Complete — Results Summary")
+        cA, cB, cC = st.columns(3)
+        cA.metric("Spent", helper_format_cash(last.get("spent", 0)))
+        cB.metric("Booster Bonus", helper_format_cash(last.get("booster_bonus", 0)))
+        cC.metric("Hidden Gems", int(last.get("gem_count", 0)))
+
+        # Position changes table
+        st.markdown("### 📈 Position Improvements")
+        pos_changes = last.get("pos_changes", {}) or {}
+        for p in POSITIONS:
+            st.write(f"{p}: **{_format_pos_delta(pos_changes.get(p, 0))}**")
+
+        # Gems list
+        gems = last.get("gems", []) or []
+        if gems:
+            st.markdown("### 💎 Hidden Gems Found")
+            for g in gems[:8]:
+                st.write(f"• {g.get('pos','?')} {g.get('name','Player')} ({g.get('rating','?')})")
+        else:
+            st.caption("No gems this time. (They’re rare!)")
+
+        # Button to clear so it doesn't show forever
+        if st.button("Dismiss Results"):
+            st.session_state.hs_last_results = None
+            st.rerun()
+
+        st.divider()
+
     st.subheader("2) HS Outreach: The War Room")
     st.write("Set your total recruiting budget, then distribute it to position groups.")
 
@@ -2888,7 +2975,17 @@ def show_offseason_hs_outreach():
 
         sync_team_ratings()
         clamp_budget()
-        st.success("Class Signed! Roster Updated.")
+
+        # --- NEW: Save a simple UI summary so player sees what happened ---
+        st.session_state.hs_last_results = {
+            "spent": int(res.get("spent", 0) or 0),
+            "booster_bonus": int(res.get("booster_bonus", 0) or 0),
+            "pos_changes": dict(res.get("roster_updates", {}) or {}),
+            "gem_count": len(res.get("gems", []) or []),
+            "gems": list(res.get("gems", []) or []),
+        }
+
+        safe_toast("HS Outreach complete! See results above.")
         st.rerun()
 
 def show_offseason_nil_v8():
@@ -3071,6 +3168,43 @@ def show_offseason_top8_v8():
        sync_team_ratings()
        st.rerun()
 
+def show_recruiting_wrap():
+    """Simple one-screen summary of the offseason recruiting outcome."""
+    st.title("📦 Recruiting Wrap-Up")
+
+    summary = st.session_state.get("recruiting_summary", None)
+    if not summary:
+        st.warning("Recruiting summary missing. Returning to Dashboard.")
+        st.session_state.game_state = "DASHBOARD"
+        st.rerun()
+
+    grade = summary.get("grade", "N/A")
+    score = summary.get("score", 0)
+    bd = summary.get("breakdown", {}) or {}
+
+    st.success(f"Recruiting Grade: **{grade}**")
+    st.write(f"Score: **{score}** points")
+    st.caption("Tip: Strong recruiting improves next season’s OFF/DEF and keeps boosters happy.")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("NIL Signed", int(bd.get("nil_signed", 0)))
+    c2.metric("Top-8 Commits", int(bd.get("top8_commits", 0)))
+    c3.metric("Gems Found", int(bd.get("gems_found", 0)))
+
+    pts = bd.get("points", {}) or {}
+    st.markdown("### 📊 Points Breakdown")
+    st.write(f"• NIL points: **{int(pts.get('nil', 0))}**")
+    st.write(f"• Top-8 points: **{int(pts.get('top8', 0))}**")
+    st.write(f"• Gems points: **{int(pts.get('gems', 0))}**")
+
+    st.divider()
+
+    if st.button("Begin New Season →", type="primary"):
+        # Clear so it doesn't show again
+        st.session_state.recruiting_summary = None
+        st.session_state.game_state = "DASHBOARD"
+        st.rerun()
+
 # ==============================================================================
 # REQUIRED FUNCTION GUARD (PLACE BELOW FUNCTION DEFINITIONS)
 # ==============================================================================
@@ -3088,14 +3222,14 @@ REQUIRED_FUNCS = [
    "show_offseason_nil_v8",
    "show_offseason_hs_outreach",
    "show_offseason_top8_v8",
-
+   "show_recruiting_wrap",
    # recruiting / HS
    "generate_nil_class_15",
    "process_hs_outreach",
    "generate_top8_prospects",
    "top8_commit_chance",
 
-   # conf / routing
+# conf / routing
    "apply_conference_move",
    "maybe_generate_conference_invite",
    "ai_conference_swap_lightweight",
@@ -3134,9 +3268,10 @@ elif st.session_state.game_state == "SEASON_RECAP":
     show_season_recap()
 elif st.session_state.game_state == "OFFSEASON":
     show_offseason()
+elif st.session_state.game_state == "RECRUITING_WRAP":
+    show_recruiting_wrap()
 elif st.session_state.game_state == "RETIREMENT":
     show_retirement()
 else:
     st.session_state.game_state = "DASHBOARD"
     st.rerun()
-
