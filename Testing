@@ -8,11 +8,14 @@ import math
 from typing import Tuple
 
 # ==============================================================================
-# COLLEGE FOOTBALL MOGUL V26.9 (PATCHED FINAL)
+# COLLEGE FOOTBALL MOGUL V26.9 (STABLE GOLD MASTER)
 # ==============================================================================
-# - Logic: V25.x (Safe Math, Chunking, Migration)
-# - UI: V24.1 (Full Screens, Legacy/Trophy Views)
-# - Safety: Expanded REQUIRED_FUNCS, Safe Dictionaries, Capped Inputs, Explicit Logic
+# - Core: V26.5 (Deterministic Schedule, Safe Math)
+# - Patches Applied:
+#   1. Safe Staff Lookups (Prevents NoneType crashes in recruiting/sim)
+#   2. AI Sim Hardening (Prevents crash if Opponent DB is empty)
+#   3. Identity Persistence (Saves last known team for "Unknown U" fix)
+#   4. Safe Color Lookups (Prevents KeyError on custom teams)
 STATE_VERSION = 26.9
 
 # Strict Save Whitelist
@@ -30,7 +33,8 @@ ALLOWED_SAVE_KEYS = {
     "team_conf", "team_rival", "home_region", "school_tier",
     "team_off", "team_def", "team_rating", "last_postseason_result",
     "achievements", "milestone_log", "conferences_map",
-    "hs_last_results", "recruiting_summary", "postseason_flash"
+    "hs_last_results", "recruiting_summary", "postseason_flash",
+    "last_known_team_name", "last_known_team_color"
 }
 
 # ==============================================================================
@@ -275,9 +279,8 @@ def get_conference(team: str) -> str:
     return "G5"
 
 def compute_team_needs(roster: dict, k: int = 3) -> list:
-    # PATCH 3: Safe handling if roster is None
-    roster = roster or {}
-    vals = [(pos, safe_int(roster.get(pos, 75), 75)) for pos in POSITIONS]
+    r = roster or {}
+    vals = [(pos, safe_int(r.get(pos, 75), 75)) for pos in POSITIONS]
     vals.sort(key=lambda x: x[1])  # lowest first
     return [p for p, _ in vals[:max(1, int(k))]]
 
@@ -499,19 +502,6 @@ def home_field_points(stadium_level: int) -> float:
     if lvl <= 10: return 3.0
     return 4.0
 
-# PATCH 2: Safe Opponent Packet Fetcher
-def get_opp_packet(team_name: str) -> dict:
-    if "opponents_db" not in st.session_state or not isinstance(st.session_state.opponents_db, dict):
-        st.session_state.opponents_db = {}
-    if team_name not in st.session_state.opponents_db or not isinstance(st.session_state.opponents_db.get(team_name), dict):
-        st.session_state.opponents_db[team_name] = {"Prestige": 60, "OVR": 75}
-    d = st.session_state.opponents_db[team_name]
-    if "OVR" not in d or d.get("OVR") in [None, ""]:
-        d["OVR"] = 75
-    ensure_opp_units(d)
-    ensure_opp_coaches(d)
-    return d
-
 def compute_team_unit_ratings(roster: dict, staff: dict, facilities: dict):
     # FIX #3: Safe dict get for staff/facilities
     roster = roster or {}
@@ -587,13 +577,13 @@ def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_sc
     coaching_my = (get_tier_bonus(my_oc) - get_tier_bonus(opp_dc)) * 1.20
     coaching_opp = (get_tier_bonus(opp_oc) - get_tier_bonus(my_dc)) * 1.20
 
-    hc_trait = staff.get("HC", {}).get("trait", "None")
+    hc_trait = (staff.get("HC") or {}).get("trait", "None")
     if hc_trait == "Tactician":
         coaching_my += 0.9
     elif hc_trait == "Recruiter":
         coaching_my += 0.25
 
-    oc_trait = staff.get("OC", {}).get("trait", "None")
+    oc_trait = (staff.get("OC") or {}).get("trait", "None")
     if oc_trait in ["Air Raid", "Smashmouth", "Pro Style"] and oc_trait == my_off_s:
         scheme_bonus_my += 1.0
 
@@ -676,7 +666,7 @@ def simulate_ai_regular_season_seeded(seed: int):
     rnd = random.Random(seed)
     results = []
     
-    # Init opponents DB for ALL teams if missing
+    # Init opponents DB for ALL teams if missing (PATCH 2)
     if len(st.session_state.opponents_db) < len(ALL_TEAMS):
         for t in ALL_TEAMS:
             if t not in st.session_state.opponents_db:
@@ -729,7 +719,6 @@ def migrate_state():
         st.session_state.top8_resolved = set(st.session_state.top8_resolved)
 
     defaults = {
-        # FIX #6: Missing Core Keys Added to Defaults
         "year": 2026, "prestige": 60, "job_security": 75, "expected_wins": 6, "tenure": 1,
         "history": [], "schedule": [], "season_simulated": False, 
         "active_transfers": {p: False for p in POSITIONS},
@@ -749,7 +738,8 @@ def migrate_state():
         "hs_last_results": None, "recruiting_summary": None,
         "career_stats": {"w": 0, "l": 0, "bowl_w": 0, "bowl_l": 0, "titles": 0},
         "my_schemes": {"Off": "Pro Style", "Def": "Man Coverage"},
-        "candidates": {}, "opponents_db": {}, "season_logs": [], "budget": 0, "staff": {}, "stars": []
+        "candidates": {}, "opponents_db": {}, "season_logs": [], "budget": 0, "staff": {}, "stars": [],
+        "last_known_team_name": None, "last_known_team_color": None
     }
 
     for k, v in defaults.items():
@@ -827,6 +817,14 @@ def migrate_state():
 
     sync_team_ratings()
     st.session_state.state_version = STATE_VERSION
+
+    # PATCH 3: Identity Persistence
+    try:
+        tn = st.session_state.get("team_name")
+        if tn and tn != "Unknown U":
+            st.session_state["last_known_team_name"] = tn
+            st.session_state["last_known_team_color"] = st.session_state.get("team_color", "#333333")
+    except Exception: pass
     
     def _is_json_safe(x):
         if x is None or isinstance(x, (bool, int, float, str)): return True
@@ -964,8 +962,11 @@ def adjust_alloc_to_budget(alloc: dict, budget: int, step: int = 100_000) -> dic
 def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, prestige: int, inflation: float, hotspots: dict, home_region: str, team_needs: list, is_dollars: bool = False):
     results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(total_spend)}
     total_spend = max(0, int(total_spend))
-    scout = staff.get("Scout", {"recruit": 1}).get("recruit", 1)
-    hc_trait = staff.get("HC", {}).get("trait", "None")
+    # PATCH 1: Safe Staff Lookups
+    staff = staff or {}
+    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
+    hc_trait = (staff.get("HC") or {}).get("trait", "None")
+
     efficiency = 0.85 if scout >= 8 else (1.0 if scout >= 5 else 1.15)
     base_cost = 900_000 * float(inflation) * float(efficiency)
     hot_positions = hotspots.get(home_region, [])
@@ -1072,7 +1073,7 @@ def show_offseason_hs_outreach():
             if pos in hot: badges += " 🔥"
             saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
             
-            # FIX #4: Capped inputs to prevent loops
+            # PATCH 4: Capped inputs to prevent loops
             pos_max = int(new_cap)
             val = st.number_input(
                 f"{pos}{badges}",
@@ -1168,8 +1169,11 @@ def generate_top8_prospects(team_needs: list):
     recruits.sort(key=lambda x: x["rating"], reverse=True); return recruits
 
 def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige: int) -> float:
-    scout = staff.get("Scout", {"recruit": 1}).get("recruit", 1)
-    hc_trait = staff.get("HC", {}).get("trait", "None")
+    # PATCH 1: Safe Staff Lookups
+    staff = staff or {}
+    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
+    hc_trait = (staff.get("HC") or {}).get("trait", "None")
+
     chance = 0.18
     chance += (max(40, min(99, prestige)) - 60) * 0.004
     chance += (scout - 5) * 0.02
@@ -1373,7 +1377,7 @@ def show_offseason():
 # ==============================================================================
 # ZONE 7: INITIALIZATION & ROUTER
 # ==============================================================================
-# REQUIRED_FUNCS guard added to catch any future deletions
+# PATCH 7: Updated REQUIRED_FUNCS guard to include all UI screens
 REQUIRED_FUNCS = [
     "run_setup", "show_dashboard", "show_season_end", "show_selection_sunday",
     "show_postseason", "show_season_recap", "show_offseason", "show_recruiting_wrap",
@@ -1383,7 +1387,7 @@ REQUIRED_FUNCS = [
     "generate_hotspots"
 ]
 
-# PATCH 3: Diagnostic Helper for Missing Functions
+# Diagnostic helper
 def _similar(name: str):
     funcs = [k for k, v in globals().items() if callable(v)]
     key = name.lower().replace("_", "")
@@ -1423,6 +1427,7 @@ elif st.session_state.game_state == "SEASON_END":
                 st.rerun()
 
         c_fix1, c_fix2 = st.columns([3, 1])
+        # PATCH 4: Safe Color Lookup using .get()
         new_name_fix = c_fix1.selectbox("Restore Your Team:", sorted(ALL_TEAMS))
         if c_fix2.button("Restore Name"):
             st.session_state.team_name = new_name_fix
