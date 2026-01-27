@@ -2866,6 +2866,7 @@ def show_offseason_hs_outreach():
         sync_alloc_to_inputs(alloc)
         st.rerun()
 
+    # (This block must remain inside the function scope; do not dedent)
     # Allocator grid (number inputs)
     st.divider()
     cols = st.columns(2)
