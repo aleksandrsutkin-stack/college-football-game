@@ -15,6 +15,7 @@ import math
 STATE_VERSION = 24.1
 
 # Only allow these keys to be loaded from JSON (Security/Stability)
+# TODO: Follow-up PR - Reduce save key list and improve save/load schema versioning
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
     "expected_wins", "tenure", "roster", "active_transfers", "stars", "staff",
@@ -414,17 +415,6 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
                 unsafe_allow_html=True
             )
 
-def normalize_shares(shares: dict):
-    def _val(pos):
-        try:
-            return max(0.0, float(shares.get(pos, 0.0)))
-        except Exception:
-            return 0.0
-    total = sum(_val(p) for p in POSITIONS)
-    if total <= 0:
-        return {p: 100.0 / len(POSITIONS) for p in POSITIONS}
-    return {p: (_val(p) / total) * 100.0 for p in POSITIONS}
-
 # V16: Restored generate_hotspots
 def generate_hotspots():
    """
@@ -705,16 +695,6 @@ def show_offseason():
 
 def show_fired():
     st.error("FIRED! Your tenure has ended.")
-    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
-    st.write(f"Final Legacy (Saban) Score: **{saban}**")
-    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
-    if st.button("Restart Career"):
-        st.session_state.clear()
-        st.rerun()
-
-def show_retirement():
-    st.title("Retirement")
-    st.write("Thanks for playing!")
     saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
     st.write(f"Final Legacy (Saban) Score: **{saban}**")
     render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
@@ -1429,6 +1409,8 @@ def sync_team_ratings():
 
 def migrate_state():
     """Ensure session state has all keys and is valid."""
+    # TODO: Follow-up PR - Consolidate state migrations into a versioned migration system
+    # TODO: Follow-up PR - Reduce number of state keys and improve state organization
     if "state_version" not in st.session_state:
         st.session_state.state_version = 0.0
         
@@ -1439,6 +1421,7 @@ def migrate_state():
         st.session_state.top8_resolved = set(st.session_state.top8_resolved)
 
     # V13 PATCH A6: Defensive Coercion
+    # TODO: Follow-up PR - Consolidate recruiting keys (hs_*, nil_*, top8_*) into nested dict
     defaults = {
         "inflation": 1.0,
         "revenue_report": None,
@@ -1815,23 +1798,6 @@ def show_dashboard():
     st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{sec}%</span></div>", unsafe_allow_html=True)
     st.markdown(f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'><h2>{st.session_state.team_name}</h2></div>", unsafe_allow_html=True)
 
-    # V15 Fix: Safe getter for team rating
-    def _safe_rating(x, key=None, default=75):
-        """
-        Safely extract an integer rating from x which may be an int or dict.
-        If dict, attempt x.get(key) else fallback to default.
-        """
-        try:
-            if isinstance(x, (int, float)):
-                return int(x)
-            if isinstance(x, dict) and key:
-                return int(x.get(key, default) or default)
-        except Exception:
-            pass
-        try:
-            return int(default)
-        except Exception:
-            return 75
     try:
         rv = st.session_state.get("roster", {}) or {}
         raw_roster_val = int(sum(int(v) for v in rv.values()) / max(1, len(rv)))
@@ -2953,9 +2919,17 @@ def show_offseason_hs_outreach():
         if not validate_budget_input(new_cap, st.session_state.budget, "HS recruiting"):
             st.stop()
         
+        # Inline normalize_shares logic: compute percentage shares from spend_by_pos
+        shares_raw = {p: (spend_by_pos[p] / max(1, new_cap)) * 100 for p in POSITIONS}
+        shares_total = sum(max(0.0, float(shares_raw.get(p, 0.0))) for p in POSITIONS)
+        if shares_total <= 0:
+            shares_pct = {p: 100.0 / len(POSITIONS) for p in POSITIONS}
+        else:
+            shares_pct = {p: (max(0.0, float(shares_raw.get(p, 0.0))) / shares_total) * 100.0 for p in POSITIONS}
+        
         res = process_hs_outreach(
             new_cap,
-            normalize_shares({p: (spend_by_pos[p] / max(1, new_cap)) * 100 for p in POSITIONS}),
+            shares_pct,
             st.session_state.staff,
             st.session_state.prestige,
             st.session_state.inflation,
@@ -3242,7 +3216,6 @@ REQUIRED_FUNCS = [
    "maybe_generate_conference_invite",
    "ai_conference_swap_lightweight",
    "show_fired",
-   "show_retirement",
    "init_session_state_defaults"
 ]
 _missing = [f for f in REQUIRED_FUNCS if f not in globals()]
@@ -3260,26 +3233,23 @@ init_session_state_defaults()
 render_system_sidebar()
 
 # 3) Route
-if st.session_state.game_state == "SETUP":
-    run_setup()
-elif st.session_state.game_state == "FIRED":
-    show_fired()
-elif st.session_state.game_state == "DASHBOARD":
-    show_dashboard()
-elif st.session_state.game_state == "SEASON_END":
-    show_season_end()
-elif st.session_state.game_state == "SELECTION_SUNDAY":
-    show_selection_sunday()
-elif st.session_state.game_state == "POSTSEASON":
-    show_postseason()
-elif st.session_state.game_state == "SEASON_RECAP":
-    show_season_recap()
-elif st.session_state.game_state == "OFFSEASON":
-    show_offseason()
-elif st.session_state.game_state == "RECRUITING_WRAP":
-    show_recruiting_wrap()
-elif st.session_state.game_state == "RETIREMENT":
-    show_retirement()
+ROUTES = {
+    "SETUP": run_setup,
+    "FIRED": show_fired,
+    "RETIREMENT": show_fired,  # Map RETIREMENT to show_fired for backward compatibility
+    "DASHBOARD": show_dashboard,
+    "SEASON_END": show_season_end,
+    "SELECTION_SUNDAY": show_selection_sunday,
+    "POSTSEASON": show_postseason,
+    "SEASON_RECAP": show_season_recap,
+    "OFFSEASON": show_offseason,
+    "RECRUITING_WRAP": show_recruiting_wrap,
+}
+
+route_fn = ROUTES.get(st.session_state.game_state)
+if route_fn:
+    route_fn()
 else:
+    # Unknown state: fallback to dashboard
     st.session_state.game_state = "DASHBOARD"
     st.rerun()
