@@ -2920,12 +2920,23 @@ def show_offseason_hs_outreach():
             st.stop()
         
         # Inline normalize_shares logic: compute percentage shares from spend_by_pos
+        # First convert dollar amounts to raw percentages
         shares_raw = {p: (spend_by_pos[p] / max(1, new_cap)) * 100 for p in POSITIONS}
-        shares_total = sum(max(0.0, float(shares_raw.get(p, 0.0))) for p in POSITIONS)
+        
+        # Helper to safely extract and validate float values
+        def _safe_val(p):
+            try:
+                return max(0.0, float(shares_raw.get(p, 0.0)))
+            except Exception:
+                return 0.0
+        
+        shares_total = sum(_safe_val(p) for p in POSITIONS)
         if shares_total <= 0:
+            # Fallback to equal shares if no budget allocated
             shares_pct = {p: 100.0 / len(POSITIONS) for p in POSITIONS}
         else:
-            shares_pct = {p: (max(0.0, float(shares_raw.get(p, 0.0))) / shares_total) * 100.0 for p in POSITIONS}
+            # Normalize to ensure sum is exactly 100%
+            shares_pct = {p: (_safe_val(p) / shares_total) * 100.0 for p in POSITIONS}
         
         res = process_hs_outreach(
             new_cap,
