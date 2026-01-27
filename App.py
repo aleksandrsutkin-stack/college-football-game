@@ -61,10 +61,11 @@ st.markdown("""
 .nil-alert { background-color: #cff4fc; color: #055160 !important; border: 1px solid #b6effb; padding: 18px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-size: 1.1em; font-weight: bold; }
 
 /* GAME CARDS */
-/* GAME CARDS */
 .game-card { padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; background: white !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #111111 !important; }
 .game-card-win { border-left: 5px solid #28a745; background: #f8fff9 !important; }
 .game-card-loss { border-left: 5px solid #dc3545; background: #fff8f8 !important; }
+.game-card-pending { border-left: 5px solid #6c757d; background: #f8f9fa !important; }
+.game-card-rival { border-left: 5px solid #fd7e14; background: #fff4e6 !important; }
 .card-header { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px; color: #111111 !important; }
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85em; color: #111111 !important; }
 .stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #eee; color: #111111 !important; }
