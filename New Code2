@@ -1,12 +1,13 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 27.4 (Patched & Polished)
+Version 27.5 (Golden State)
 
 A comprehensive college football coaching simulation featuring:
 - Dynasty mode with multi-season careers
 - Recruiting system (NIL, HS Outreach, Top-8 battles)
 - Playoff simulation and bowl games
 - Conference realignment and staff management
+- Deterministic simulation engine
 """
 
 import streamlit as st
@@ -22,7 +23,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 27.4
+STATE_VERSION = 27.5
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -43,7 +44,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V27.4", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V27.5", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -982,17 +983,8 @@ def render_hs_position_allocators(budget: int, needs: List[str], hot: List[str])
             if pos in needs: badges += " 🔴"
             if pos in hot: badges += " 🔥"
             saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
-            
-            # PATCH 4: Capped inputs to prevent loops
-            pos_max = int(budget)
-            val = st.number_input(
-                f"{pos}{badges}",
-                min_value=0,
-                max_value=pos_max,
-                value=min(saved_val, pos_max),
-                step=100_000,
-                key=f"input_{pos}"
-            )
+            safe_val = min(saved_val, budget)
+            val = st.number_input(f"{pos}{badges}", min_value=0, max_value=budget, value=safe_val, step=100_000, key=f"input_{pos}")
             alloc[pos] = int(val)
     return alloc
 
@@ -1001,14 +993,9 @@ def validate_and_fix_allocation(alloc: dict, budget: int) -> Tuple[dict, bool]:
     remaining = budget - allocated
     if remaining < 0 and allocated > 0:
         st.warning(f"⚠️ Manual adjustments exceeded budget by {helper_format_cash(abs(remaining))}. Auto-fixing...")
-        # PATCH 3: Rounding fix for auto-correct
         scale = budget / allocated if allocated > 0 else 0.0
-        fixed_alloc = {p: int((alloc[p] * scale) // 100_000 * 100_000) for p in POSITIONS}
-        
-        # Sync inputs immediately
-        for p in POSITIONS:
-            st.session_state[f"input_{p}"] = fixed_alloc[p]
-            
+        fixed_alloc = {p: int(alloc[p] * scale) for p in POSITIONS}
+        sync_alloc_to_inputs(fixed_alloc)
         time.sleep(0.8)
         return fixed_alloc, True
     return alloc, False
@@ -1016,8 +1003,6 @@ def validate_and_fix_allocation(alloc: dict, budget: int) -> Tuple[dict, bool]:
 def execute_hs_outreach(budget: int, alloc: dict, needs: List[str]) -> None:
     if not BudgetManager.spend(budget, "HS recruiting", show_toast=False): return
     shares = normalize_shares({p: (alloc[p] / max(1, budget)) * 100 for p in POSITIONS})
-    
-    # PATCH: Pass is_dollars=True
     res = process_hs_outreach(budget, shares, st.session_state.staff, st.session_state.prestige, st.session_state.inflation, st.session_state.hotspots, st.session_state.home_region, needs, is_dollars=True)
     
     if res["booster_bonus"] > 0:
@@ -1126,7 +1111,6 @@ def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, pr
     base_cost = 900_000 * float(inflation) * float(efficiency)
     hot_positions = hotspots.get(home_region, [])
     
-    # PATCH: is_dollars logic for accurate spend tracking
     if is_dollars:
         allocated = 0
         for p in POSITIONS:
@@ -1140,7 +1124,6 @@ def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, pr
 
     for pos in POSITIONS:
         raw = float(shares_or_alloc.get(pos, 0.0) or 0.0)
-        # Check logic to support both % and $ if needed, but we force is_dollars=True in UI
         if is_dollars: amt = max(0.0, raw)
         else: pct = raw; amt = total_spend * (pct / 100.0)
         
@@ -1538,7 +1521,7 @@ def show_dashboard():
                         vis_trait = cand.get("trait") if cand.get("scouted") else "???"
                         st.markdown(f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>{cand.get('history','')}</div><div style='margin:5px 0'><span class='badge badge-trait'>{role} OVR: {vis_rate}</span><span class='badge badge-trait'>Trait: {vis_trait}</span></div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>", unsafe_allow_html=True)
                         b1, b2 = st.columns(2)
-                        if b1.button("Hire", key=f"h_{role}_{j}"):
+                        if b1.button("Hire", key=f"hire_{role}_{j}"):
                             if BudgetManager.spend(cand["salary"], f"hire {role}"):
                                 st.session_state.staff[role] = cand
                                 add_news(f"{st.session_state.team_name} hires {cand['name']} as {role}.")
