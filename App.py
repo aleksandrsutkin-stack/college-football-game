@@ -2868,7 +2868,7 @@ def show_offseason_hs_outreach():
     # Allocator grid (number inputs)
     st.divider()
     cols = st.columns(2)
-    for idx, pos in enumerate(POSITIONS):
+        for idx, pos in enumerate(POSITIONS):
         with cols[idx % 2]:
             badges = ""
             if pos in needs:
@@ -2876,7 +2876,7 @@ def show_offseason_hs_outreach():
             if pos in hot:
                 badges += " 🔥"
 
-           # FIX: Clamp the saved value to the current max_budget
+            # FIX: Clamp the saved value to the current max_budget
             saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
             safe_val = min(saved_val, max_budget)
 
@@ -2884,7 +2884,7 @@ def show_offseason_hs_outreach():
                 f"{pos}{badges}",
                 min_value=0,
                 max_value=max_budget,
-                value=safe_val, # <--- FIXED
+                value=safe_val,
                 step=100_000,
                 key=f"input_{pos}"
             )
