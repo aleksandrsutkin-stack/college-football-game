@@ -2825,7 +2825,7 @@ def show_offseason_hs_outreach():
             "Total Recruiting Budget ($)",
             min_value=0,
             max_value=max_budget,
-            value=safe_current_cap, # <--- FIXED
+            value=safe_current_cap,
             step=250_000,
             help="How much total cash do you want to commit to High School recruiting?"
         )
@@ -2867,29 +2867,29 @@ def show_offseason_hs_outreach():
         st.rerun()
 
     # Allocator grid (number inputs)
-st.divider()
-cols = st.columns(2)
-for idx, pos in enumerate(POSITIONS):
-    with cols[idx % 2]:
-        badges = ""
-        if pos in needs:
-            badges += " 🔴"
-        if pos in hot:
-            badges += " 🔥"
+    st.divider()
+    cols = st.columns(2)
+    for idx, pos in enumerate(POSITIONS):
+        with cols[idx % 2]:
+            badges = ""
+            if pos in needs:
+                badges += " 🔴"
+            if pos in hot:
+                badges += " 🔥"
 
-        # Clamp saved value so Streamlit never crashes
-        saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
-        safe_val = min(saved_val, max_budget)
+            # Clamp saved value so Streamlit never crashes
+            saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
+            safe_val = min(saved_val, max_budget)
 
-        val = st.number_input(
-            f"{pos}{badges}",
-            min_value=0,
-            max_value=max_budget,
-            value=safe_val,
-            step=100_000,
-            key=f"input_{pos}"
-        )
-        alloc[pos] = int(val)
+            val = st.number_input(
+                f"{pos}{badges}",
+                min_value=0,
+                max_value=max_budget,
+                value=safe_val,
+                step=100_000,
+                key=f"input_{pos}"
+            )
+            alloc[pos] = int(val)
 
     # --- BEGIN AUTO-FIX PATCH: widget desync auto-correct ---
     # Sync widgets to alloc (in case user manually changed them)
@@ -2995,7 +2995,6 @@ for idx, pos in enumerate(POSITIONS):
 
         safe_toast("HS Outreach complete! See results above.")
         st.rerun()
-
 def show_offseason_nil_v8():
     st.subheader("1) NIL Prospects (Class of 15)")
     needs = st.session_state.get("team_needs", [])
