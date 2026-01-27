@@ -2867,6 +2867,7 @@ def show_offseason_hs_outreach():
         st.rerun()
 
     # Allocator grid (number inputs)
+    # (This block must remain inside the function scope; do not dedent)
     st.divider()
     cols = st.columns(2)
     for idx, pos in enumerate(POSITIONS):
