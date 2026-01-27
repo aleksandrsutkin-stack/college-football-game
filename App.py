@@ -2867,29 +2867,29 @@ def show_offseason_hs_outreach():
         st.rerun()
 
     # Allocator grid (number inputs)
-    st.divider()
-    cols = st.columns(2)
-        for idx, pos in enumerate(POSITIONS):
-        with cols[idx % 2]:
-            badges = ""
-            if pos in needs:
-                badges += " 🔴"
-            if pos in hot:
-                badges += " 🔥"
+st.divider()
+cols = st.columns(2)
+for idx, pos in enumerate(POSITIONS):
+    with cols[idx % 2]:
+        badges = ""
+        if pos in needs:
+            badges += " 🔴"
+        if pos in hot:
+            badges += " 🔥"
 
-            # FIX: Clamp the saved value to the current max_budget
-            saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
-            safe_val = min(saved_val, max_budget)
+        # Clamp saved value so Streamlit never crashes
+        saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
+        safe_val = min(saved_val, max_budget)
 
-            val = st.number_input(
-                f"{pos}{badges}",
-                min_value=0,
-                max_value=max_budget,
-                value=safe_val,
-                step=100_000,
-                key=f"input_{pos}"
-            )
-            alloc[pos] = int(val)
+        val = st.number_input(
+            f"{pos}{badges}",
+            min_value=0,
+            max_value=max_budget,
+            value=safe_val,
+            step=100_000,
+            key=f"input_{pos}"
+        )
+        alloc[pos] = int(val)
 
     # --- BEGIN AUTO-FIX PATCH: widget desync auto-correct ---
     # Sync widgets to alloc (in case user manually changed them)
