@@ -2817,11 +2817,14 @@ def show_offseason_hs_outreach():
             unsafe_allow_html=True
         )
     with c2:
+        # FIX: Ensure default value never exceeds the max_budget
+        safe_current_cap = min(current_cap, max_budget)
+        
         new_cap = st.number_input(
             "Total Recruiting Budget ($)",
             min_value=0,
             max_value=max_budget,
-            value=current_cap,
+            value=safe_current_cap, # <--- FIXED
             step=250_000,
             help="How much total cash do you want to commit to High School recruiting?"
         )
@@ -2873,11 +2876,15 @@ def show_offseason_hs_outreach():
             if pos in hot:
                 badges += " 🔥"
 
+           # FIX: Clamp the saved value to the current max_budget
+            saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
+            safe_val = min(saved_val, max_budget)
+
             val = st.number_input(
                 f"{pos}{badges}",
                 min_value=0,
                 max_value=max_budget,
-                value=int(st.session_state.get(f"input_{pos}", 0) or 0),
+                value=safe_val, # <--- FIXED
                 step=100_000,
                 key=f"input_{pos}"
             )
