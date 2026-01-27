@@ -1,6 +1,6 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 27.0 (Patched)
+Version 27.1 (Final Polish)
 
 A comprehensive college football coaching simulation featuring:
 - Dynasty mode with multi-season careers
@@ -22,7 +22,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 27.0
+STATE_VERSION = 27.1
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -43,7 +43,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V27.0", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V27.1", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -521,6 +521,70 @@ def end_regular_season_and_stay_on_results():
     st.session_state.ai_records = simulate_ai_regular_season_seeded(st.session_state.year)
     st.session_state.game_state = "SEASON_END"
 
+def normalize_shares(shares: dict):
+    """Normalize recruiting shares to sum to 100."""
+    def _val(pos):
+        try:
+            return max(0.0, float(shares.get(pos, 0.0)))
+        except Exception:
+            return 0.0
+    total = sum(_val(p) for p in POSITIONS)
+    if total <= 0:
+        return {p: 100.0 / len(POSITIONS) for p in POSITIONS}
+    return {p: (_val(p) / total) * 100.0 for p in POSITIONS}
+
+def render_achievements_panel():
+    """Display achievements list."""
+    st.subheader("🎖️ Achievements")
+    ach = st.session_state.get("achievements", []) or []
+    if not ach:
+        st.info("No achievements yet.")
+        return
+    for a in ach[-20:][::-1]:
+        st.write(f"• {a}")
+
+def render_dynasty_timeline(max_items=25):
+    """Display dynasty history timeline."""
+    st.subheader("🧾 Dynasty Timeline")
+    hist = st.session_state.get("history", []) or []
+    if not hist:
+        st.info("No seasons logged yet.")
+        return
+    for h in hist[-12:][::-1]:
+        st.write(f"Year {h.get('Year','?')}: {h.get('Record','?')} | Rank {h.get('Rank','NR')} | {h.get('PostseasonResult','')}")
+
+def check_and_award_achievements():
+    """Check for and award achievements."""
+    if "achievements" not in st.session_state or st.session_state.achievements is None:
+        st.session_state.achievements = []
+    if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
+        st.session_state.achievements.append("First Bowl Win")
+
+def init_playoff_bracket(user_rank, user_team_name):
+    results = st.session_state.get("selection_sunday_results", []) or []
+    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
+    while len(top12) < 12: top12.append("FCS East")
+    seen = set()
+    for i in range(len(top12)):
+        nm = top12[i]
+        if nm in seen: top12[i] = "FCS East"
+        else: seen.add(nm)
+    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
+    try: ur = int(user_rank)
+    except: ur = 999
+    if 1 <= ur <= 12:
+        target_idx = ur - 1; top12[target_idx] = user_team_name; seed_map[user_team_name] = ur
+        for i in range(len(top12)):
+            if i != target_idx and top12[i] == user_team_name: top12[i] = "FCS East"
+    r1_matches = [
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
+        {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
+    ]
+    qf_seeds = top12[:4]
+    return {"Type": "CFP", "Round": 1, "Seeds": top12, "QF_Seeds": qf_seeds, "Matches": r1_matches, "UserAlive": True, "Rank": int(ur), "SeedMap": seed_map}
+
 # ==============================================================================
 # ZONE 3: ENGINE
 # ==============================================================================
@@ -758,6 +822,52 @@ def migrate_state():
     if st.session_state.team_name not in st.session_state.conferences_map[tc]:
         st.session_state.conferences_map[tc].append(st.session_state.team_name)
 
+    # Recruiting migration logic
+    try:
+        alloc_map = st.session_state.get("hs_alloc_by_pos", {}) or {}
+        need_migrate_alloc = (not isinstance(alloc_map, dict)) or (sum(int(v or 0) for v in alloc_map.values()) == 0 and int(st.session_state.get("hs_total_spend", 0) or 0) > 0)
+        if need_migrate_alloc:
+            hs_total = int(st.session_state.get("hs_total_spend", 0) or 0)
+            hs_spend = st.session_state.get("hs_spend_by_pos", {}) or {}
+            hs_shares = st.session_state.get("hs_shares", {}) or {}
+            alloc = {p: 0 for p in POSITIONS}
+            if any(int(hs_spend.get(p, 0) or 0) > 0 for p in POSITIONS):
+                alloc = {p: int(hs_spend.get(p, 0) or 0) for p in POSITIONS}
+            elif hs_total > 0 and any(float(hs_shares.get(p, 0) or 0.0) > 0.0 for p in POSITIONS):
+                alloc = {p: int(round((float(hs_shares.get(p, 0) or 0.0) / 100.0) * hs_total)) for p in POSITIONS}
+            else:
+                alloc = {p: int(st.session_state.get("hs_alloc_by_pos", {}).get(p, 0) or 0) for p in POSITIONS}
+            
+            # Deterministic adjustment logic
+            total_alloc = sum(alloc.values())
+            if hs_total > 0 and total_alloc != hs_total:
+                remainder = hs_total - total_alloc
+                if remainder > 0:
+                    order = sorted(POSITIONS, key=lambda p: alloc.get(p, 0), reverse=True)
+                    i = 0
+                    while remainder > 0:
+                        p = order[i % len(order)]
+                        add = min(100_000, remainder) if remainder >= 100_000 else remainder
+                        alloc[p] += add; remainder -= add; i += 1
+                elif remainder < 0:
+                    order = sorted(POSITIONS, key=lambda p: alloc.get(p, 0))
+                    i = 0
+                    while remainder < 0:
+                        p = order[i % len(order)]
+                        take = min(100_000, alloc.get(p, 0), abs(remainder))
+                        if take <= 0: i += 1; continue
+                        alloc[p] -= take; remainder += take; i += 1
+            
+            st.session_state.hs_alloc_by_pos = alloc
+            st.session_state.hs_spend_by_pos = {p: int(alloc.get(p, 0) or 0) for p in POSITIONS}
+            total_alloc = sum(st.session_state.hs_spend_by_pos.values()) or 0
+            if total_alloc > 0: st.session_state.hs_shares = {p: (st.session_state.hs_spend_by_pos[p] / total_alloc) * 100.0 for p in POSITIONS}
+            else: st.session_state.hs_shares = {p: 100.0 / len(POSITIONS) for p in POSITIONS}
+    except Exception:
+        st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
+        st.session_state.hs_spend_by_pos = {p: 0 for p in POSITIONS}
+        st.session_state.hs_shares = {p: 100.0 / len(POSITIONS) for p in POSITIONS}
+
     sync_team_ratings()
     st.session_state.state_version = STATE_VERSION
     
@@ -782,564 +892,8 @@ def init_session_state_defaults():
     migrate_state()
 
 # ==============================================================================
-# ZONE 5: SAVE/LOAD UI
+# ZONE 9: VIEW FUNCTIONS - SCREENS (RESTORED FROM V26.9)
 # ==============================================================================
-def safe_json_default(obj):
-    if isinstance(obj, set): return list(obj)
-    if isinstance(obj, (datetime.date, datetime.datetime)): return obj.isoformat()
-    return str(obj)
-
-def render_system_sidebar():
-    with st.sidebar:
-        st.header("💾 Dynasty System"); st.caption(f"Version {STATE_VERSION}")
-        if st.button("Export Save File"):
-            state_copy = dict(st.session_state)
-            if "top8_resolved" in state_copy: state_copy["top8_resolved"] = list(state_copy["top8_resolved"])
-            export_data = {k: v for k, v in state_copy.items() if k in ALLOWED_SAVE_KEYS}
-            json_str = json.dumps(export_data, default=safe_json_default)
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-            st.download_button(label="📥 Download JSON", data=json_str, file_name=f"CFB_Mogul_Save_{timestamp}.json", mime="application/json")
-        
-        uploaded_file = st.file_uploader("Import Save File", type=["json"])
-        if uploaded_file is not None:
-            try:
-                data = json.load(uploaded_file)
-                for k, v in data.items():
-                    if k in ALLOWED_SAVE_KEYS:
-                        if k == "top8_resolved": st.session_state[k] = set(v) if isinstance(v, list) else set()
-                        else: st.session_state[k] = v
-                migrate_state(); st.session_state.candidates = {}; sync_team_ratings()
-                st.success("Save Loaded Successfully! Reloading..."); time.sleep(1); st.rerun()
-            except Exception as e:
-                st.error(f"Error loading save: {e}")
-
-# ==============================================================================
-# ZONE 6: UI - RECRUITING COMPONENTS
-# ==============================================================================
-
-def render_hs_results_summary() -> bool:
-    last = st.session_state.get("hs_last_results", None)
-    if not last: return False
-    st.success("✅ HS Outreach Complete — Results Summary")
-    cA, cB, cC = st.columns(3)
-    cA.metric("Spent", helper_format_cash(last.get("spent", 0)))
-    cB.metric("Booster Bonus", helper_format_cash(last.get("booster_bonus", 0)))
-    cC.metric("Hidden Gems", int(last.get("gem_count", 0)))
-    st.markdown("### 📈 Position Improvements")
-    pos_changes = last.get("pos_changes", {}) or {}
-    for p in POSITIONS:
-        delta = pos_changes.get(p, 0)
-        st.write(f"{p}: **{format_position_delta(delta)}**")
-    if st.button("Dismiss Results"):
-        st.session_state.hs_last_results = None; st.rerun()
-    st.divider()
-    return True
-
-def render_hs_budget_controls(max_budget: int, needs: List[str], hot: List[str]) -> int:
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        st.markdown(f"<div class='recruiting-intel'>Needs: <b>{', '.join(needs)}</b> | Pipeline: <b>{', '.join(hot)}</b></div>", unsafe_allow_html=True)
-    with c2:
-        current_cap = int(st.session_state.get("hs_total_spend", 0))
-        safe_current_cap = min(current_cap, max_budget)
-        new_cap = st.number_input("Total Recruiting Budget ($)", min_value=0, max_value=max_budget, value=safe_current_cap, step=250_000)
-    new_cap = min(int(new_cap), max_budget)
-    st.session_state.hs_total_spend = new_cap
-    return new_cap
-
-def render_hs_quick_allocations(budget: int, needs: List[str], hot: List[str]) -> Optional[dict]:
-    colA, colB, colC = st.columns(3)
-    clicked = None
-    if colA.button("⚖️ Balanced"):
-        weights = {p: 1.0 for p in POSITIONS}
-        clicked = distribute_exact(budget, weights, step=100_000)
-    if colB.button("🎯 Needs Heavy"):
-        weights = {p: (3.0 if p in needs else 1.0) for p in POSITIONS}
-        clicked = distribute_exact(budget, weights, step=100_000)
-    if colC.button("🔥 Pipeline Focus"):
-        weights = {p: (3.0 if p in hot else 1.0) for p in POSITIONS}
-        clicked = distribute_exact(budget, weights, step=100_000)
-    return clicked
-
-def render_hs_position_allocators(budget: int, needs: List[str], hot: List[str]) -> dict:
-    if "hs_alloc_by_pos" not in st.session_state: st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
-    alloc = st.session_state.hs_alloc_by_pos
-    for p in POSITIONS:
-        key = f"input_{p}"
-        if key not in st.session_state: st.session_state[key] = int(alloc.get(p, 0) or 0)
-    
-    st.divider(); cols = st.columns(2)
-    for idx, pos in enumerate(POSITIONS):
-        with cols[idx % 2]:
-            badges = ""
-            if pos in needs: badges += " 🔴"
-            if pos in hot: badges += " 🔥"
-            saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
-            safe_val = min(saved_val, budget)
-            val = st.number_input(f"{pos}{badges}", min_value=0, max_value=budget, value=safe_val, step=100_000, key=f"input_{pos}")
-            alloc[pos] = int(val)
-    return alloc
-
-def validate_and_fix_allocation(alloc: dict, budget: int) -> Tuple[dict, bool]:
-    allocated = sum(int(alloc.get(p, 0) or 0) for p in POSITIONS)
-    remaining = budget - allocated
-    if remaining < 0 and allocated > 0:
-        st.warning(f"⚠️ Manual adjustments exceeded budget by {helper_format_cash(abs(remaining))}. Auto-fixing...")
-        scale = budget / allocated if allocated > 0 else 0.0
-        fixed_alloc = {p: int(alloc[p] * scale) for p in POSITIONS}
-        sync_alloc_to_inputs(fixed_alloc)
-        time.sleep(0.8)
-        return fixed_alloc, True
-    return alloc, False
-
-def execute_hs_outreach(budget: int, alloc: dict, needs: List[str]) -> None:
-    if not BudgetManager.spend(budget, "HS recruiting", show_toast=False): return
-    shares = normalize_shares({p: (alloc[p] / max(1, budget)) * 100 for p in POSITIONS})
-    res = process_hs_outreach(budget, shares, st.session_state.staff, st.session_state.prestige, st.session_state.inflation, st.session_state.hotspots, st.session_state.home_region, needs, is_dollars=True)
-    
-    if res["booster_bonus"] > 0:
-        BudgetManager.add(res["booster_bonus"], "Boosters go wild over surprise recruits!", show_toast=True)
-    
-    for p, gain in res["roster_updates"].items():
-        loss = random.randint(1, 4)
-        current = safe_int(st.session_state.roster.get(p, 75), 75)
-        st.session_state.roster[p] = max(40, min(99, current - loss + int(gain)))
-    
-    if res["gems"]:
-        st.session_state.stars.extend(res["gems"])
-        add_news(f"Scouts found {len(res['gems'])} hidden gems!")
-    
-    st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
-    sync_team_ratings()
-    st.session_state.hs_last_results = {"spent": int(res.get("spent", 0) or 0), "booster_bonus": int(res.get("booster_bonus", 0) or 0), "pos_changes": dict(res.get("roster_updates", {}) or {}), "gem_count": len(res.get("gems", []) or [])}
-    safe_toast("HS Outreach complete! See results above."); st.rerun()
-
-def show_offseason_hs_outreach():
-    if render_hs_results_summary(): return
-    st.subheader("2) HS Outreach: The War Room")
-    st.write("Set your total recruiting budget, then distribute it to position groups.")
-    hot = st.session_state.hotspots.get(st.session_state.home_region, [])
-    needs = st.session_state.get("team_needs", [])
-    max_budget = BudgetManager.get_current()
-    new_cap = render_hs_budget_controls(max_budget, needs, hot)
-    
-    quick_alloc = render_hs_quick_allocations(new_cap, needs, hot)
-    if quick_alloc:
-        st.session_state.hs_alloc_by_pos = quick_alloc
-        sync_alloc_to_inputs(quick_alloc); st.rerun()
-    
-    alloc = render_hs_position_allocators(new_cap, needs, hot)
-    alloc, needs_rerun = validate_and_fix_allocation(alloc, new_cap)
-    if needs_rerun:
-        st.session_state.hs_alloc_by_pos = alloc; st.rerun()
-    
-    allocated = sum(int(alloc.get(p, 0) or 0) for p in POSITIONS)
-    remaining = new_cap - allocated
-    st.divider()
-    if new_cap == 0: st.info("Set a budget above to begin.")
-    elif remaining == 0: st.success(f"✅ Fully Allocated: {helper_format_cash(new_cap)}")
-    elif remaining > 0: st.warning(f"⚠️ Unassigned Funds: {helper_format_cash(remaining)}")
-    else: st.error(f"🚫 Over Budget: {helper_format_cash(abs(remaining))}")
-    
-    st.session_state.hs_alloc_by_pos = alloc
-    st.session_state.hs_spend_by_pos = {p: int(alloc.get(p, 0) or 0) for p in POSITIONS}
-    disabled_confirm = (new_cap == 0) or (remaining != 0)
-    if st.button("Confirm & Run Recruiting 🚀", type="primary", disabled=disabled_confirm):
-        execute_hs_outreach(new_cap, alloc, needs)
-
-# ==============================================================================
-# ZONE 6 CONTINUED: OFFSEASON LOGIC
-# ==============================================================================
-
-def generate_nil_class_15(team_needs: list):
-    def mk(tier: int, pos: str):
-        if tier == 1: rating = random.randint(90, 99); ask = int(random.randint(2_500_000, 9_000_000) * (1.0 + (rating - 90) / 25)); badge = "Tier 1"
-        elif tier == 2: rating = random.randint(84, 89); ask = int(random.randint(900_000, 3_500_000) * (1.0 + (rating - 84) / 35)); badge = "Tier 2"
-        else: rating = random.randint(76, 83); ask = int(random.randint(200_000, 1_200_000) * (1.0 + (rating - 76) / 40)); badge = "Tier 3"
-        return {"id": random.randint(10_000, 99_999), "tier": tier, "tier_label": badge, "name": generate_name(), "pos": pos, "rating": rating, "ask": ask, "trait": random.choice(TRAITS), "status": "AVAILABLE"}
-    needs = team_needs[:] if team_needs else POSITIONS[:]; pool=[]
-    for _ in range(5): pos = random.choice(needs if random.random() < 0.70 else POSITIONS); pool.append(mk(1, pos))
-    for _ in range(5): pos = random.choice(needs if random.random() < 0.60 else POSITIONS); pool.append(mk(2, pos))
-    for _ in range(5): pos = random.choice(needs if random.random() < 0.50 else POSITIONS); pool.append(mk(3, pos))
-    pool.sort(key=lambda x: (x["tier"], -x["rating"])); return pool
-
-def show_offseason_nil_v8():
-    st.subheader("1) NIL Prospects (Class of 15)")
-    needs = st.session_state.get("team_needs", [])
-    if not st.session_state.nil_class:
-        st.session_state.nil_class = generate_nil_class_15(needs)
-        add_news("NIL board posted: 15 prospects (Tier 1/2/3).")
-
-    st.markdown(f"<div class='recruiting-intel'>Team Needs: <b>{', '.join(needs) if needs else 'Balanced'}</b></div>", unsafe_allow_html=True)
-    st.write("You can sign any of these 15. When they’re gone, they’re gone (no infinite respawn).")
-    signed = sum(1 for p in st.session_state.nil_class if p["status"] == "SIGNED")
-    available = 15 - signed
-    st.caption(f"Signed: {signed} | Remaining available: {available}")
-
-    for p in st.session_state.nil_class:
-        tier_badge = "badge-tier-s" if p["tier"] == 1 else ("badge-tier-a" if p["tier"] == 2 else "badge-tier-f")
-        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-        c1.markdown(f"⭐ <b>{p['tier_label']}</b> — {p['pos']} {p['name']} ({p['rating']}) — {p['trait']}", unsafe_allow_html=True)
-        c2.markdown(f"<span class='badge {tier_badge}'>{p['tier_label']}</span>", unsafe_allow_html=True)
-        c3.write(f"Ask: {helper_format_cash(p['ask'])}")
-        if p["status"] == "SIGNED":
-            c4.write("✅ SIGNED")
-        else:
-            if c4.button("Sign", key=f"nil_sign_{p['id']}"):
-                if BudgetManager.spend(p["ask"], f"sign {p['pos']} {p['name']}"):
-                    st.session_state.roster[p["pos"]] = max(st.session_state.roster[p["pos"]], p["rating"])
-                    p["status"] = "SIGNED"
-                    add_news(f"{st.session_state.team_name} signs NIL {p['tier_label']} {p['pos']} {p['name']} ({p['rating']}).")
-                    sync_team_ratings(); safe_toast("Signed ✔️"); st.rerun()
-
-def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, prestige: int, inflation: float, hotspots: dict, home_region: str, team_needs: list, is_dollars: bool = False):
-    results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(total_spend)}
-    total_spend = max(0, int(total_spend))
-    staff = staff or {}
-    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
-    hc_trait = (staff.get("HC") or {}).get("trait", "None")
-
-    efficiency = 0.85 if scout >= 8 else (1.0 if scout >= 5 else 1.15)
-    base_cost = 900_000 * float(inflation) * float(efficiency)
-    hot_positions = hotspots.get(home_region, [])
-    
-    if is_dollars:
-        allocated = 0
-        for p in POSITIONS:
-            try: allocated += int(float(shares_or_alloc.get(p, 0) or 0))
-            except: pass
-        spent = max(0, min(total_spend, allocated))
-    else:
-        spent = total_spend
-    
-    results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(spent)}
-
-    for pos in POSITIONS:
-        raw = float(shares_or_alloc.get(pos, 0.0) or 0.0)
-        if is_dollars: amt = max(0.0, raw)
-        else: pct = raw; amt = total_spend * (pct / 100.0)
-        
-        if amt <= 0: results["roster_updates"][pos] = -random.randint(1, 3); continue
-        cap = base_cost * 2.0; effective_spend = cap * (1 - math.exp(-amt / cap))
-        spend_ratio = effective_spend / max(1.0, base_cost); dim = spend_ratio ** 0.85
-        pipeline_bonus = 1.15 if pos in hot_positions else 1.0
-        need_bonus = 1.25 if pos in team_needs else 1.0
-        prestige_factor = max(0.85, min(1.20, (prestige / 75) ** 0.35))
-        change = dim * pipeline_bonus * need_bonus * prestige_factor
-        change = max(-4, min(12, change))
-        if hc_trait == "Recruiter": change *= 1.08
-        gem_chance = 0.08
-        if pos in team_needs: gem_chance += 0.07
-        if pos in hot_positions: gem_chance += 0.05
-        if scout >= 8: gem_chance += 0.03
-        if hc_trait == "Recruiter": gem_chance += 0.02
-        if amt > base_cost * 1.25 and random.random() < gem_chance:
-            star = generate_star_player(pos, tier=1); star["name"] += " (GEM)"; results["gems"].append(star)
-            change += 5; results["booster_bonus"] += 250_000 + random.randint(0, 250_000)
-        results["roster_updates"][pos] = change
-    return results
-
-def generate_top8_prospects(team_needs: list):
-    recruits = []
-    for _ in range(8):
-        pos = random.choice(team_needs if team_needs and random.random() < 0.65 else POSITIONS)
-        rating = random.randint(90, 99)
-        ask = int(random.randint(2_000_000, 8_000_000) * (1.0 + (rating - 90) / 35))
-        recruits.append({"id": random.randint(10_000, 99_999), "name": generate_name(), "pos": pos, "rating": rating, "ask": ask, "trait": random.choice(TRAITS), "status": "OPEN", "note": ""})
-    recruits.sort(key=lambda x: x["rating"], reverse=True); return recruits
-
-def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige: int) -> float:
-    staff = staff or {}
-    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
-    hc_trait = (staff.get("HC") or {}).get("trait", "None")
-
-    chance = 0.18
-    chance += (max(40, min(99, prestige)) - 60) * 0.004
-    chance += (scout - 5) * 0.02
-    if hc_trait == "Recruiter": chance += 0.05
-    pos = recruit["pos"]; spend = float(spend_by_pos.get(pos, 0.0))
-    chance += min(0.20, spend / 10_000_000)
-    return max(0.05, min(0.80, chance))
-
-def show_offseason_top8_v8():
-    st.subheader("3) Top-8 Battles — Close on Elites")
-    needs = st.session_state.get("team_needs", [])
-    current_budget = int(st.session_state.get("budget", 0) or 0)
-    if not st.session_state.get("top8"):
-        st.session_state.top8 = generate_top8_prospects(needs)
-        add_news("Top-8 board posted: 8 elite prospects.")
-    if "top8_resolved" not in st.session_state: st.session_state.top8_resolved = set()
-
-    st.markdown(f"<div class='nil-alert'>Available: <b>{helper_format_cash(current_budget)}</b></div>", unsafe_allow_html=True)
-    
-    for r in st.session_state.top8:
-        rid = int(r["id"]); pos = r["pos"]; ask = int(r["ask"])
-        already = rid in st.session_state.top8_resolved
-        c1, c2, c3 = st.columns([4, 2, 2])
-        with c1: st.markdown(f"⭐ **{pos} {r['name']} ({r['rating']})**")
-        with c2:
-            row_budget = int(st.session_state.get("budget", 0) or 0)
-            max_offer = max(0, min(row_budget, max(ask * 2, 250_000)))
-            default_offer = int(r.get("offer", 0) or 0)
-            default_offer = max(0, min(default_offer, max_offer))
-            offer = st.slider("Offer", 0, max_offer, default_offer, step=250_000, key=f"offer_{rid}")
-            r["offer"] = int(offer)
-        with c3:
-            if r.get("status") == "COMMITTED": st.success("✅ COMMITTED")
-            elif r.get("status") == "LOST": st.error("❌ LOST")
-            else:
-                chance = top8_commit_chance(r, {p: 0 for p in POSITIONS}, st.session_state.staff, st.session_state.prestige)
-                st.write(f"Chance: **{int(chance*100)}%**")
-                if st.button("Pitch", key=f"pitch_{rid}", disabled=already or r["offer"]<=0):
-                    if BudgetManager.spend(r["offer"], "pitch"):
-                        if random.random() < chance:
-                            r["status"] = "COMMITTED"
-                            st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
-                            safe_toast("Committed!")
-                        else:
-                            r["status"] = "LOST"
-                            safe_toast("Lost recruit.")
-                        st.session_state.top8_resolved.add(rid)
-                        st.rerun()
-
-    st.divider()
-    if st.button("Simulate Remaining Pitches"):
-        for r in st.session_state.top8:
-            rid = int(r["id"])
-            if rid not in st.session_state.top8_resolved and r.get("status") == "OPEN":
-                st.session_state.top8_resolved.add(rid)
-                r["status"] = "LOST" 
-        st.rerun()
-
-def compute_recruiting_class_grade():
-    nil = st.session_state.get("nil_class", []) or []
-    top8 = st.session_state.get("top8", []) or []
-    stars = st.session_state.get("stars", []) or []
-    tier_points = 0; tier_counts = {1: 0, 2: 0, 3: 0}
-    for p in nil:
-        if p.get("status") == "SIGNED":
-            tier = int(p.get("tier", 3)); tier_counts[tier] = tier_counts.get(tier, 0) + 1; tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-    top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
-    top8_points = len(top8_commits) * 10
-    gem_count = 0
-    for s in stars:
-        if "(GEM)" in str(s.get("name", "")): gem_count += 1
-    gem_points = gem_count * 6
-    score = tier_points + top8_points + gem_points
-    if score >= 70: grade = "A+"
-    elif score >= 55: grade = "A"
-    elif score >= 42: grade = "B"
-    elif score >= 30: grade = "C"
-    elif score >= 18: grade = "D"
-    else: grade = "F"
-    breakdown = {"score": score, "nil_signed": sum(tier_counts.values()), "tier_counts": tier_counts, "top8_commits": len(top8_commits), "gems_found": gem_count, "points": {"nil": tier_points, "top8": top8_points, "gems": gem_points}}
-    return grade, score, breakdown
-
-def show_offseason():
-    sync_team_ratings()
-    year = safe_int(st.session_state.get("year", 2026), 2026)
-    st.title(f"🏈 Offseason {year}")
-    
-    budget = safe_int(st.session_state.get("budget", 0), 0)
-    prestige = safe_int(st.session_state.get("prestige", 60), 60)
-    st.markdown(
-        f"<div class='nil-alert'>Budget: <b>{helper_format_cash(budget)}</b> | "
-        f"Prestige: <b>{prestige}</b></div>",
-        unsafe_allow_html=True
-    )
-    
-    step = safe_int(st.session_state.get("offseason_step", 1), 1)
-    
-    if step == 1:
-        show_offseason_nil_v8()
-        st.divider()
-        if st.button("Continue to HS Outreach →", type="primary"):
-            st.session_state.offseason_step = 2
-            st.rerun()
-    elif step == 2:
-        show_offseason_hs_outreach()
-        st.divider()
-        if st.button("Continue to Top-8 Battles →", type="primary"):
-            st.session_state.offseason_step = 3
-            st.rerun()
-    elif step == 3:
-        show_offseason_top8_v8()
-        st.divider()
-        if st.button("Finish Recruiting & Advance Season →", type="primary"):
-            grade, score, breakdown = compute_recruiting_class_grade()
-            last_hist = st.session_state.history[-1] if st.session_state.history else None
-            if last_hist and safe_int(last_hist.get("Year", 0), 0) == year:
-                last_hist["RecruitingGrade"] = grade
-            
-            add_news(f"Recruiting class grade: {grade} ({score} pts)")
-            st.session_state.year += 1; st.session_state.tenure += 1
-            st.session_state.inflation = safe_float(st.session_state.get("inflation", 1.0), 1.0) * 1.02
-            OpponentManager.evolve_universe()
-            
-            invite = maybe_generate_conference_invite()
-            if not invite: ai_conference_swap_lightweight()
-            
-            st.session_state.schedule = engine_generate_schedule(
-                st.session_state.team_name, 
-                st.session_state.team_conf, 
-                st.session_state.team_rival
-            )
-            st.session_state.week_index = 0; st.session_state.record = {"w": 0, "l": 0}; st.session_state.season_logs = []
-            st.session_state.season_simulated = False; st.session_state.season_end_ready = False; st.session_state.revenue_report = None
-            st.session_state.nil_class = []; st.session_state.hs_total_spend = 0
-            st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}; st.session_state.top8 = []; st.session_state.top8_resolved = set()
-            st.session_state.offseason_step = 1
-            st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
-            st.session_state.hotspots = generate_hotspots()
-            sync_team_ratings()
-            
-            st.session_state.recruiting_summary = {"grade": grade, "score": score, "breakdown": breakdown}
-            st.session_state.game_state = "RECRUITING_WRAP"; st.rerun()
-
-def maybe_generate_conference_invite():
-    if st.session_state.get("pending_invite"): return st.session_state.pending_invite
-    conf_map = get_conferences_map(); team = st.session_state.team_name; cur_conf = st.session_state.team_conf
-    prestige = int(st.session_state.get("prestige", 60) or 60); booster = int(st.session_state.get("booster_rating", 50) or 50)
-    wins = int((st.session_state.get("record") or {}).get("w", 0) or 0)
-    chance = 0.05
-    if wins >= 9: chance += 0.08
-    if wins >= 11: chance += 0.10
-    if booster >= 80: chance += 0.06
-    if prestige >= 80: chance += 0.06
-    targets = []
-    if cur_conf == "G5":
-        if prestige >= 74 or wins >= 10: targets += ["Big 12", "ACC"]
-        if prestige >= 84 or wins >= 11: targets += ["Big Ten", "SEC"]
-    elif cur_conf in ["ACC", "Big 12"]:
-        if prestige >= 86 or wins >= 11: targets += ["Big Ten", "SEC"]
-    targets = [t for t in targets if t in conf_map and t != cur_conf]
-    if not targets: return None
-    if random.random() > min(0.35, chance): return None
-    to_conf = random.choice(targets)
-    base_mult = 1.10
-    if to_conf == "SEC": base_mult = 1.18
-    elif to_conf == "Big Ten": base_mult = 1.16
-    note = "Blue-blood TV deal + tougher road games." if to_conf in ["SEC", "Big Ten"] else "New media deal."
-    st.session_state.pending_invite = {"to_conf": to_conf, "boost_mult": base_mult, "note": note}
-    add_news(f"{team} receives a conference invite to the {to_conf}.")
-    return st.session_state.pending_invite
-
-def ai_conference_swap_lightweight():
-    conf_map = get_conferences_map(); user_team = st.session_state.team_name
-    if random.random() > 0.10: return None
-    pools = [("ACC", "Big 12"), ("Big Ten", "SEC"), ("G5", "Big 12")]
-    from_conf, to_conf = random.choice(pools)
-    from_list = [t for t in conf_map.get(from_conf, []) if t != user_team]
-    if not from_list: return None
-    team = random.choice(from_list)
-    conf_map[from_conf].remove(team)
-    conf_map.setdefault(to_conf, []).append(team)
-    add_news(f"Realignment: {team} moves from {from_conf} to {to_conf}.")
-
-def init_playoff_bracket(user_rank, user_team_name):
-    results = st.session_state.get("selection_sunday_results", []) or []
-    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
-    while len(top12) < 12: top12.append("FCS East")
-    seen = set()
-    for i in range(len(top12)):
-        nm = top12[i]
-        if nm in seen: top12[i] = "FCS East"
-        else: seen.add(nm)
-    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
-    try: ur = int(user_rank)
-    except: ur = 999
-    if 1 <= ur <= 12:
-        target_idx = ur - 1; top12[target_idx] = user_team_name; seed_map[user_team_name] = ur
-        for i in range(len(top12)):
-            if i != target_idx and top12[i] == user_team_name: top12[i] = "FCS East"
-    r1_matches = [
-        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
-        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
-        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
-        {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
-    ]
-    qf_seeds = top12[:4]
-    return {"Type": "CFP", "Round": 1, "Seeds": top12, "QF_Seeds": qf_seeds, "Matches": r1_matches, "UserAlive": True, "Rank": int(ur), "SeedMap": seed_map}
-
-# ==============================================================================
-# ZONE 9: VIEW FUNCTIONS - SCREENS
-# ==============================================================================
-def trophy_icon(name: str) -> str:
-    """Get emoji icon for trophy name."""
-    return TROPHY_ICONS.get(name, TROPHY_ICONS.get("Bowl Win", "🎳"))
-
-def award_trophy(trophy_name: str):
-    """Award a trophy to the player's collection."""
-    if "trophies" not in st.session_state:
-        st.session_state.trophies = []
-    st.session_state.trophies.append({
-        "Year": st.session_state.year,
-        "Name": trophy_name,
-        "Icon": trophy_icon(trophy_name)
-    })
-
-def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
-    """Display the player's trophy collection in a grid."""
-    st.subheader(title_text)
-    trophies = st.session_state.get("trophies", []) or []
-    if not trophies:
-        st.info("No trophies yet. Win a bowl or a title to start your case.")
-        return
-    trophies_sorted = sorted(trophies, key=lambda x: int(x.get("Year", 0)), reverse=True)
-    cols = st.columns(4)
-    for i, t in enumerate(trophies_sorted[:24]):
-        with cols[i % 4]:
-            icon = t.get("Icon", "🏆")
-            name = t.get("Name", "Trophy")
-            year = t.get("Year", "?")
-            st.markdown(
-                f"<div class='trophy-tile'>"
-                f"<div style='font-size:2em'>{icon}</div>"
-                f"<div style='font-weight:800'>{name}</div>"
-                f"<div class='small-muted'>Year {year}</div>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-
-def calculate_saban_score(career_stats, prestige):
-    """Calculate legacy score based on wins, bowls, and titles."""
-    return int(
-        (career_stats.get("w", 0) * 1) +
-        (career_stats.get("bowl_w", 0) * 5) +
-        (career_stats.get("titles", 0) * 50) +
-        (prestige * 0.5)
-    )
-
-def apply_conference_move(to_conf: str, boost_mult: float):
-    """Move team to new conference and update revenue multiplier."""
-    conf_map = get_conferences_map()
-    team = st.session_state.team_name
-    cur_conf = st.session_state.team_conf
-    if cur_conf in conf_map and team in conf_map[cur_conf]:
-        conf_map[cur_conf].remove(team)
-    if to_conf not in conf_map:
-        conf_map[to_conf] = []
-    if team not in conf_map[to_conf]:
-        conf_map[to_conf].append(team)
-    st.session_state.team_conf = to_conf
-    st.session_state.conf_revenue_boost_mult = float(boost_mult)
-    add_news(f"{team} joins the {to_conf}.")
-
-def end_regular_season_and_stay_on_results():
-    """Finalize regular season and prepare for postseason."""
-    if st.session_state.season_end_ready: return
-    st.session_state.season_simulated = True
-    st.session_state.season_end_ready = True
-    rev = BudgetManager.calculate_revenue(
-        st.session_state.school_tier,
-        st.session_state.facilities["Marketing"],
-        st.session_state.inflation
-    )
-    BudgetManager.add(rev, f"End of Regular Season Payout", show_toast=False)
-    st.session_state.revenue_report = f"End of Regular Season Payout: +{helper_format_cash(rev)}"
-    add_news(f"Regular season ends at {st.session_state.record['w']}-{st.session_state.record['l']}.")
-    st.session_state.ai_records = simulate_ai_regular_season_seeded(st.session_state.year)
-    st.session_state.game_state = "SEASON_END"
 
 def run_setup():
     st.title("🏆 College Football Mogul V27.0")
@@ -1475,7 +1029,7 @@ def show_dashboard():
                         vis_trait = cand.get("trait") if cand.get("scouted") else "???"
                         st.markdown(f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>{cand.get('history','')}</div><div style='margin:5px 0'><span class='badge badge-trait'>{role} OVR: {vis_rate}</span><span class='badge badge-trait'>Trait: {vis_trait}</span></div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>", unsafe_allow_html=True)
                         b1, b2 = st.columns(2)
-                        if b1.button("Hire", key=f"h_{role}_{j}"):
+                        if b1.button("Hire", key=f"hire_{role}_{j}"):
                             if BudgetManager.spend(cand["salary"], f"hire {role}"):
                                 st.session_state.staff[role] = cand
                                 add_news(f"{st.session_state.team_name} hires {cand['name']} as {role}.")
@@ -1614,6 +1168,20 @@ def show_dashboard():
         st.write(f"**Legacy (Saban) Score:** {calculate_saban_score(cs, st.session_state.prestige)}")
         st.divider(); render_trophy_gallery("🏆 Trophy Case Gallery"); st.divider()
         render_achievements_panel(); st.divider(); render_dynasty_timeline()
+
+def show_fired():
+    st.error("FIRED! Your tenure has ended.")
+    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
+    st.write(f"Final Legacy (Saban) Score: **{saban}**")
+    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
+    if st.button("Restart Career"): st.session_state.clear(); st.rerun()
+
+def show_retirement():
+    st.title("Retirement"); st.write("Thanks for playing!")
+    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
+    st.write(f"Final Legacy (Saban) Score: **{saban}**")
+    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
+    if st.button("Restart Career"): st.session_state.clear(); st.rerun()
 
 def show_season_end():
     sync_team_ratings()
@@ -1859,19 +1427,41 @@ def show_season_recap():
         check_and_award_achievements()
         st.session_state.game_state = "OFFSEASON"; st.session_state.offseason_step = 1; st.rerun()
 
-def show_fired():
-    st.error("FIRED! Your tenure has ended.")
-    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
-    st.write(f"Final Legacy (Saban) Score: **{saban}**")
-    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
-    if st.button("Restart Career"): st.session_state.clear(); st.rerun()
+def show_recruiting_wrap():
+    st.title("📦 Recruiting Wrap-Up")
+    summary = st.session_state.get("recruiting_summary", {})
+    if not summary:
+        st.warning("No recruiting summary found.")
+        if st.button("Back to Dashboard"):
+            st.session_state.game_state = "DASHBOARD"
+            st.rerun()
+        return
 
-def show_retirement():
-    st.title("Retirement"); st.write("Thanks for playing!")
-    saban = calculate_saban_score(st.session_state.career_stats, st.session_state.prestige)
-    st.write(f"Final Legacy (Saban) Score: **{saban}**")
-    render_trophy_gallery("🏛️ Your Trophy Gallery (Career)")
-    if st.button("Restart Career"): st.session_state.clear(); st.rerun()
+    grade = summary.get("grade", "N/A")
+    score = summary.get("score", 0)
+    bd = summary.get("breakdown", {}) or {}
+
+    st.success(f"Recruiting Grade: **{grade}**")
+    st.write(f"Score: **{score}** points")
+    st.caption("Tip: Strong recruiting improves next season’s OFF/DEF and keeps boosters happy.")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("NIL Signed", int(bd.get("nil_signed", 0)))
+    c2.metric("Top-8 Commits", int(bd.get("top8_commits", 0)))
+    c3.metric("Gems Found", int(bd.get("gems_found", 0)))
+
+    pts = bd.get("points", {}) or {}
+    st.markdown("### 📊 Points Breakdown")
+    st.write(f"• NIL points: **{int(pts.get('nil', 0))}**")
+    st.write(f"• Top-8 points: **{int(pts.get('top8', 0))}**")
+    st.write(f"• Gems points: **{int(pts.get('gems', 0))}**")
+
+    st.divider()
+
+    if st.button("Begin New Season →", type="primary"):
+        st.session_state.recruiting_summary = None
+        st.session_state.game_state = "DASHBOARD"
+        st.rerun()
 
 # ==============================================================================
 # ZONE 7: INITIALIZATION & ROUTER
@@ -1916,8 +1506,17 @@ elif st.session_state.game_state == "SEASON_END":
     # --- AUTO-FIX: Restore Team Name if it vanished ---
     if st.session_state.team_name == "Unknown U":
         st.warning("⚠️ Team Identity Lost! The previous crash may have reset your team name.")
+        
+        suggested = st.session_state.get("last_known_team_name")
+        if suggested and suggested in ALL_TEAMS:
+            st.info(f"Suggested restore: **{suggested}**")
+            if st.button("Restore Suggested Team", type="primary"):
+                st.session_state.team_name = suggested
+                st.session_state.team_color = st.session_state.get("last_known_team_color") or TEAMS_DB.get(suggested, {}).get("color", "#333333")
+                st.rerun()
+
         c_fix1, c_fix2 = st.columns([3, 1])
-        # FIX #5: Restore from ALL_TEAMS (expanded list)
+        # PATCH 4: Safe Color Lookup using .get()
         new_name_fix = c_fix1.selectbox("Restore Your Team:", sorted(ALL_TEAMS))
         if c_fix2.button("Restore Name"):
             st.session_state.team_name = new_name_fix
