@@ -1,6 +1,6 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 27.5 (Golden State)
+Version 27.6 (The Attrition Update)
 
 A comprehensive college football coaching simulation featuring:
 - Dynasty mode with multi-season careers
@@ -23,7 +23,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 27.5
+STATE_VERSION = 27.6
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -44,7 +44,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V27.5", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V27.6", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -75,8 +75,22 @@ st.markdown("""
 .badge-tier-f { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 .badge-trait { background: #e2e3e5; color: #383d41; }
 .recruiting-intel { background-color: #e0f7fa; color: #006064 !important; border-left: 5px solid #006064; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
-.bracket-box { background-color: #2c3e50; color: white !important; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
-.bracket-row { display: flex; justify-content: space-between; padding: 6px; border-bottom: 1px solid #444; }
+.bracket-box { 
+    background-color: #2c3e50; 
+    color: white !important; 
+    padding: 20px; 
+    border-radius: 8px; 
+    text-align: center; 
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+.bracket-box h3 { margin: 0; color: #cbd5e0; font-size: 1.1em; text-transform: uppercase; letter-spacing: 2px;}
+.bracket-box h1 { margin: 10px 0; color: white; font-size: 2.5em; font-weight: 900; line-height: 1.1; }
+.bracket-row { display: flex; justify-content: space-between; padding: 6px; border-bottom: 1px solid #444; width: 100%; }
 .news-box { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .news-item { padding: 6px 0; border-bottom: 1px solid #f1f1f1; }
 .trophy-tile { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 10px; }
@@ -163,32 +177,27 @@ CONF_POWER = {"SEC": 1.10, "Big Ten": 1.08, "ACC": 1.04, "Big 12": 1.03, "G5": 0
 # ==============================================================================
 
 def safe_int(value, default: int = 0) -> int:
-    """Safely convert any value to integer with fallback."""
     try:
         if value is None or value == "": return default
         return int(float(value))
     except (ValueError, TypeError): return default
 
 def safe_float(value, default: float = 0.0) -> float:
-    """Safely convert any value to float with fallback."""
     try:
         if value is None or value == "": return default
         return float(value)
     except (ValueError, TypeError): return default
 
 def safe_dict(x):
-    """Safely return a dict or empty dict if None."""
     return x if isinstance(x, dict) else {}
 
 def clamp_budget() -> None:
-    """Ensure budget never goes negative due to rounding errors."""
     try:
         st.session_state.budget = max(0, int(st.session_state.get("budget", 0) or 0))
     except Exception:
         st.session_state.budget = 0
 
 def safe_toast(msg: str) -> None:
-    """Show toast notification with fallback to st.info."""
     try: st.toast(msg)
     except Exception:
         try: st.info(msg)
@@ -199,20 +208,17 @@ def safe_toast(msg: str) -> None:
 # ==============================================================================
 
 def helper_format_cash(amount: int) -> str:
-    """Format currency amounts for display."""
     try: amount = int(amount)
     except Exception: amount = 0
     return f"${amount/1_000_000:.1f}M" if amount >= 1_000_000 else f"${int(amount/1_000)}K"
 
 def format_position_delta(delta: float) -> str:
-    """Format position rating changes with +/- sign."""
     try: delta = float(delta)
     except Exception: delta = 0.0
     sign = "+" if delta >= 0 else ""
     return f"{sign}{int(round(delta))}"
 
 def get_letter_grade(rating: int) -> str:
-    """Convert numeric rating (0-10) to letter grade."""
     if rating >= 9: return "A+"
     elif rating >= 8: return "A"
     elif rating >= 7: return "B"
@@ -221,7 +227,6 @@ def get_letter_grade(rating: int) -> str:
     else: return "F"
 
 def validate_budget_input(amount: int, max_budget: int, action: str = "transaction") -> bool:
-    """Validate budget transaction before execution."""
     amount = safe_int(amount, 0)
     max_budget = safe_int(max_budget, 0)
     if amount < 0:
@@ -237,24 +242,20 @@ def validate_budget_input(amount: int, max_budget: int, action: str = "transacti
 # ==============================================================================
 
 def generate_name() -> str:
-    """Generate random player name from pool."""
     first = ["Marcus", "Trey", "Deion", "Caleb", "Jalen", "Bo", "Ty", "Zay", "Kool-Aid", "Tank", "Arch", "Shedeur", "Quinn", "Travis", "Ashton", "Jaxson", "Miller"]
     last = ["King", "Sanders", "Ewers", "Milroe", "Hunter", "Bond", "Nix", "Penix", "Bowers", "Manning", "Gabriel", "Beck", "Jeanty", "Judkins", "Dart", "Moss"]
     return f"{random.choice(first)} {random.choice(last)}"
 
 def generate_coach_name() -> str:
-    """Generate random coach name from pool."""
     first = ["Kirby", "Nick", "Ryan", "Lane", "Dabo", "Lincoln", "Steve", "Chip", "Deion", "Marcus", "Dan", "Kalen", "Matt", "Luke"]
     last = ["Smart", "Saban", "Day", "Kiffin", "Swinney", "Riley", "Sarkisian", "Kelly", "Sanders", "Freeman", "Lanning", "DeBoer", "Rhule", "Fickell"]
     return f"{random.choice(first)} {random.choice(last)}"
 
 def generate_star_player(pos: str, tier: int = 1) -> dict:
-    """Generate a star recruit/player."""
     base = 86 if tier == 1 else 78
     return {"name": generate_name(), "pos": pos, "rating": random.randint(base, min(99, base + 10))}
 
 def generate_ga_coach(role: str) -> dict:
-    """Generate a Graduate Assistant coach (low ratings, free)."""
     base = random.randint(2, 5)
     return {"name": generate_coach_name() + " (GA)", "role": role, "off": min(10, base + random.randint(0, 2)), "def": min(10, base + random.randint(0, 2)), "recruit": min(10, base + random.randint(0, 2)), "trait": "None", "salary": 0, "history": "Internal Promotion", "scouted": True}
 
@@ -263,8 +264,6 @@ def generate_ga_coach(role: str) -> dict:
 # ==============================================================================
 
 class BudgetManager:
-    """Centralized budget operations with validation and news integration."""
-    
     @staticmethod
     def get_current() -> int:
         return safe_int(st.session_state.get("budget", 0), 0)
@@ -297,8 +296,6 @@ class BudgetManager:
         return int(total)
 
 class OpponentManager:
-    """Centralized management of opponent team data."""
-    
     @staticmethod
     def get(team_name: str) -> dict:
         if "opponents_db" not in st.session_state: st.session_state.opponents_db = {}
@@ -348,7 +345,6 @@ class OpponentManager:
 # OTHER HELPERS
 # ==============================================================================
 def make_deterministic_rng(*parts) -> random.Random:
-    """Creates a stable RNG based on current save state + inputs."""
     base = (str(st.session_state.get("state_version", "")), str(st.session_state.get("year", "")), str(st.session_state.get("team_name", "")))
     seed_str = "|".join([*base, *[str(p) for p in parts]])
     return random.Random(seed_str)
@@ -434,19 +430,26 @@ def generate_hotspots():
    return out
 
 def calculate_committee_score(team_name, wins, losses, conf, sos_score):
-    score = (wins * 100) - (losses * 90)
-    if conf in ["SEC", "Big Ten"]: score += 130
-    elif conf in ["ACC", "Big 12"]: score += 70
-    score += (sos_score * 1.5)
-    if conf == "G5" and losses > 0: score -= 250
+    # UPDATED V27.6: Heavy weight on SOS and Punishment for G5 losses
+    score = (wins * 105) - (losses * 115)
+    
+    # Power Conf Boost
+    if conf in ["SEC", "Big Ten"]: score += 140
+    elif conf in ["ACC", "Big 12"]: score += 80
+    
+    # SOS Importance Doubled
+    score += (sos_score * 3.0)
+    
+    # G5 "Perfection or Bust" Penalty
+    if conf in ["G5", "MAC", "Indep"] and losses > 0: 
+        score -= 300
+        
     return int(score)
 
 def trophy_icon(name: str) -> str:
-    """Get emoji icon for trophy name."""
     return TROPHY_ICONS.get(name, TROPHY_ICONS.get("Bowl Win", "🎳"))
 
 def award_trophy(trophy_name: str):
-    """Award a trophy to the player's collection."""
     if "trophies" not in st.session_state:
         st.session_state.trophies = []
     st.session_state.trophies.append({
@@ -456,7 +459,6 @@ def award_trophy(trophy_name: str):
     })
 
 def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
-    """Display the player's trophy collection in a grid."""
     st.subheader(title_text)
     trophies = st.session_state.get("trophies", []) or []
     if not trophies:
@@ -479,7 +481,6 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
             )
 
 def calculate_saban_score(career_stats, prestige):
-    """Calculate legacy score based on wins, bowls, and titles."""
     return int(
         (career_stats.get("w", 0) * 1) +
         (career_stats.get("bowl_w", 0) * 5) +
@@ -488,7 +489,6 @@ def calculate_saban_score(career_stats, prestige):
     )
 
 def apply_conference_move(to_conf: str, boost_mult: float):
-    """Move team to new conference and update revenue multiplier."""
     conf_map = get_conferences_map()
     team = st.session_state.team_name
     cur_conf = st.session_state.team_conf
@@ -502,8 +502,23 @@ def apply_conference_move(to_conf: str, boost_mult: float):
     st.session_state.conf_revenue_boost_mult = float(boost_mult)
     add_news(f"{team} joins the {to_conf}.")
 
+def apply_roster_attrition():
+    """V27.6: Simulates graduation and draft declaration to prevent infinite stacking."""
+    attrition_log = []
+    for p in POSITIONS:
+        current = st.session_state.roster[p]
+        # Base loss: Seniors graduating
+        loss = random.randint(3, 7)
+        # Draft penalty: High ratings lose more talent
+        if current > 90: loss += random.randint(1, 4)
+        
+        new_val = max(40, current - loss)
+        st.session_state.roster[p] = new_val
+        attrition_log.append(f"{p}: -{loss}")
+    
+    add_news(f"Graduation/Draft departures: {', '.join(attrition_log)}")
+
 def end_regular_season_and_stay_on_results():
-    """Finalize regular season and prepare for postseason."""
     if st.session_state.season_end_ready:
         return
     st.session_state.season_simulated = True
@@ -520,7 +535,6 @@ def end_regular_season_and_stay_on_results():
     st.session_state.game_state = "SEASON_END"
 
 def normalize_shares(shares: dict):
-    """Normalize recruiting shares to sum to 100."""
     def _val(pos):
         try:
             return max(0.0, float(shares.get(pos, 0.0)))
@@ -532,7 +546,6 @@ def normalize_shares(shares: dict):
     return {p: (_val(p) / total) * 100.0 for p in POSITIONS}
 
 def render_achievements_panel():
-    """Display achievements list."""
     st.subheader("🎖️ Achievements")
     ach = st.session_state.get("achievements", []) or []
     if not ach:
@@ -542,7 +555,6 @@ def render_achievements_panel():
         st.write(f"• {a}")
 
 def render_dynasty_timeline(max_items=25):
-    """Display dynasty history timeline."""
     st.subheader("🧾 Dynasty Timeline")
     hist = st.session_state.get("history", []) or []
     if not hist:
@@ -552,7 +564,6 @@ def render_dynasty_timeline(max_items=25):
         st.write(f"Year {h.get('Year','?')}: {h.get('Record','?')} | Rank {h.get('Rank','NR')} | {h.get('PostseasonResult','')}")
 
 def check_and_award_achievements():
-    """Check for and award achievements."""
     if "achievements" not in st.session_state or st.session_state.achievements is None:
         st.session_state.achievements = []
     if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
@@ -950,7 +961,7 @@ def render_hs_budget_controls(max_budget: int, needs: List[str], hot: List[str])
     with c2:
         current_cap = int(st.session_state.get("hs_total_spend", 0))
         safe_current_cap = min(current_cap, max_budget)
-        new_cap = st.number_input("Total Recruiting Budget ($)", min_value=0, max_value=max_budget, value=safe_current_cap, step=250_000)
+        new_cap = st.number_input("Total Recruiting Budget ($)", min_value=0, max_value=max_budget, value=safe_current_cap, step=250_000, format="$%d")
     new_cap = min(int(new_cap), max_budget)
     st.session_state.hs_total_spend = new_cap
     return new_cap
@@ -977,16 +988,25 @@ def render_hs_position_allocators(budget: int, needs: List[str], hot: List[str])
         if key not in st.session_state: st.session_state[key] = int(alloc.get(p, 0) or 0)
     
     st.divider(); cols = st.columns(2)
+    # V27.6 FIX: Format inputs with $ to prevent crash on user typing symbols
+    new_alloc = alloc.copy()
     for idx, pos in enumerate(POSITIONS):
         with cols[idx % 2]:
             badges = ""
             if pos in needs: badges += " 🔴"
             if pos in hot: badges += " 🔥"
-            saved_val = int(st.session_state.get(f"input_{pos}", 0) or 0)
-            safe_val = min(saved_val, budget)
-            val = st.number_input(f"{pos}{badges}", min_value=0, max_value=budget, value=safe_val, step=100_000, key=f"input_{pos}")
-            alloc[pos] = int(val)
-    return alloc
+            
+            val = st.number_input(
+                f"{pos}{badges}", 
+                min_value=0, 
+                max_value=budget, 
+                value=int(alloc.get(pos, 0)), 
+                step=100_000, 
+                format="$%d",
+                key=f"hs_pos_input_{pos}_v27"
+            )
+            new_alloc[pos] = int(val)
+    return new_alloc
 
 def validate_and_fix_allocation(alloc: dict, budget: int) -> Tuple[dict, bool]:
     allocated = sum(int(alloc.get(p, 0) or 0) for p in POSITIONS)
@@ -1205,7 +1225,7 @@ def show_offseason_top8_v8():
                             st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
                             safe_toast("Committed!")
                         else:
-                            r["status"] = "LOST"
+                            r["status"] = "LOST" 
                             safe_toast("Lost recruit.")
                         st.session_state.top8_resolved.add(rid)
                         st.rerun()
@@ -1305,7 +1325,6 @@ def show_offseason():
             st.session_state.game_state = "RECRUITING_WRAP"; st.rerun()
 
 def show_recruiting_wrap():
-    """Simple one-screen summary of the offseason recruiting outcome."""
     st.title("📦 Recruiting Wrap-Up")
 
     summary = st.session_state.get("recruiting_summary", {})
@@ -1338,7 +1357,6 @@ def show_recruiting_wrap():
     st.divider()
 
     if st.button("Begin New Season →", type="primary"):
-        # Clear so it doesn't show again
         st.session_state.recruiting_summary = None
         st.session_state.game_state = "DASHBOARD"
         st.rerun()
@@ -1388,7 +1406,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V27.3")
+    st.title("🏆 College Football Mogul V27.6")
     st.markdown("### Dynasty Mode")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -1447,6 +1465,28 @@ def show_dashboard():
     if st.session_state.job_security < thresh:
         st.session_state.game_state = "FIRED"
         st.rerun()
+
+    # V27.6: CONFERENCE INVITE POPUP
+    if st.session_state.get("pending_invite"):
+        inv = st.session_state.pending_invite
+        st.markdown(f"""
+        <div style="background: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 2px solid #f1c40f;">
+            <h3>📨 Conference Invite: {inv['to_conf']}</h3>
+            <p>The {inv['to_conf']} formally invites {st.session_state.team_name} to join the conference.</p>
+            <p><i>"{inv['note']}"</i></p>
+            <p><b>Effect:</b> Revenue boost (x{inv['boost_mult']}), Prestige Boost, but Harder Schedule.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        if c1.button("✅ Accept Invitation", type="primary"):
+            apply_conference_move(inv['to_conf'], inv['boost_mult'])
+            st.session_state.pending_invite = None
+            safe_toast(f"Welcome to the {inv['to_conf']}!")
+            st.rerun()
+        if c2.button("❌ Decline (Stay)", type="secondary"):
+            st.session_state.pending_invite = None
+            add_news(f"{st.session_state.team_name} declines invitation to {inv['to_conf']}.")
+            st.rerun()
 
     if st.session_state.season_end_ready:
         st.markdown("""<div style="background:#ffcccb; padding:10px; border-radius:5px; text-align:center; border:2px solid #e00; color: #333;"><h3>🚨 SEASON COMPLETE</h3><p>The regular season is over. Go to results/postseason.</p></div>""", unsafe_allow_html=True)
@@ -1660,6 +1700,12 @@ def show_dashboard():
         st.write(f"**Legacy (Saban) Score:** {calculate_saban_score(cs, st.session_state.prestige)}")
         st.divider(); render_trophy_gallery("🏆 Trophy Case Gallery"); st.divider()
         render_achievements_panel(); st.divider(); render_dynasty_timeline()
+        
+        # V27.6: RETIREMENT BUTTON IN LEGACY TAB
+        st.divider()
+        if st.button("🚪 Retire from Coaching", type="secondary"):
+            st.session_state.game_state = "RETIREMENT"
+            st.rerun()
 
 def show_fired():
     st.error("FIRED! Your tenure has ended.")
@@ -1916,13 +1962,22 @@ def show_season_recap():
             BudgetManager.add(3_000_000, "Booster Performance Bonus")
         elif new_boost <= 20:
             st.session_state.job_security -= 10; safe_toast("Booster Pressure: Security -10")
+        
+        # V27.6 FIX: Apply attrition/graduation here so players don't stack infinitely
+        apply_roster_attrition()
+        
         check_and_award_achievements()
         st.session_state.game_state = "OFFSEASON"; st.session_state.offseason_step = 1; st.rerun()
+
+    # V27.6: RETIRE BUTTON IN SEASON RECAP
+    st.divider()
+    if st.button("🚪 Retire from Coaching (End Career)", type="secondary"):
+        st.session_state.game_state = "RETIREMENT"
+        st.rerun()
 
 # ==============================================================================
 # ZONE 7: INITIALIZATION & ROUTER
 # ==============================================================================
-# REQUIRED_FUNCS guard added to catch any future deletions
 REQUIRED_FUNCS = [
     "run_setup", "show_dashboard", "show_season_end", "show_selection_sunday",
     "show_postseason", "show_season_recap", "show_offseason", "show_recruiting_wrap",
@@ -1932,7 +1987,6 @@ REQUIRED_FUNCS = [
     "generate_hotspots"
 ]
 
-# Diagnostic helper
 def _similar(name: str):
     funcs = [k for k, v in globals().items() if callable(v)]
     key = name.lower().replace("_", "")
@@ -1959,10 +2013,8 @@ elif st.session_state.game_state == "FIRED":
 elif st.session_state.game_state == "DASHBOARD":
     show_dashboard()
 elif st.session_state.game_state == "SEASON_END":
-    # PATCH 6: Enhanced Team Restore (suggests last known)
     if st.session_state.team_name == "Unknown U":
         st.warning("⚠️ Team Identity Lost! The previous crash may have reset your team name.")
-        
         suggested = st.session_state.get("last_known_team_name")
         if suggested and suggested in ALL_TEAMS:
             st.info(f"Suggested restore: **{suggested}**")
@@ -1972,13 +2024,11 @@ elif st.session_state.game_state == "SEASON_END":
                 st.rerun()
 
         c_fix1, c_fix2 = st.columns([3, 1])
-        # PATCH 4: Safe Color Lookup using .get()
         new_name_fix = c_fix1.selectbox("Restore Your Team:", sorted(ALL_TEAMS))
         if c_fix2.button("Restore Name"):
             st.session_state.team_name = new_name_fix
             st.session_state.team_color = TEAMS_DB.get(new_name_fix, {}).get("color", "#333333")
             st.rerun()
-    # --------------------------------------------------
     show_season_end()
 elif st.session_state.game_state == "SELECTION_SUNDAY":
     show_selection_sunday()
