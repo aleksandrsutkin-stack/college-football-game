@@ -1,11 +1,12 @@
 """
 Build the Program: College Football CEO
-Version 1.2 (Visual Overhaul Update)
+Version 1.3 (Visual Bracket & Stability Update)
 
-Changes in 1.2:
-- Selection Sunday: Transformed into a "Command Center" with VIP Rows and Matchup Cards.
-- CFP Bracket: Fixed-path layout (3 Columns) that shows future matchups clearly.
-- Logic: Standardized 12-team bracket paths (1 plays 8/9 winner, etc.).
+Changes in 1.3:
+- Bracket: Implemented new "Visual Tournament Tree" with CSS styling.
+- Stability: Added Deterministic RNG (refreshing page does not change game results).
+- Logic: Opponent ratings and schemes are now fixed per season (no random fluctuation on reload).
+- Data: Added Bracket History snapshots.
 """
 
 import streamlit as st
@@ -15,13 +16,14 @@ import json
 import datetime
 import math
 import pandas as pd
+import copy
 from typing import List, Dict, Optional, Set
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 1.2
+STATE_VERSION = 1.3
 
 class GameState:
     SETUP = "SETUP"
@@ -170,22 +172,6 @@ st.markdown("""
 .badge-tier-f { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 .badge-trait { background: #e2e3e5; color: #383d41; }
 .recruiting-intel { background-color: #e0f7fa; color: #006064 !important; border-left: 5px solid #006064; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
-.bracket-box { 
-    background-color: #2c3e50; 
-    color: white !important; 
-    padding: 20px; 
-    border-radius: 8px; 
-    text-align: center; 
-    margin-bottom: 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-}
-.bracket-box h3 { margin: 0; color: #cbd5e0; font-size: 1.1em; text-transform: uppercase; letter-spacing: 2px;}
-.bracket-box h1 { margin: 10px 0; color: white; font-size: 2.5em; font-weight: 900; line-height: 1.1; }
-.bracket-row { display: flex; justify-content: space-between; padding: 6px; border-bottom: 1px solid #444; width: 100%; }
 .news-box { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .news-item { padding: 6px 10px; border-bottom: 1px solid #f1f1f1; font-size: 0.9em; }
 .news-item-good { border-left: 4px solid #28a745; background-color: #f0fff4; }
@@ -349,8 +335,10 @@ class OpponentManager:
         
         if "OffOVR" not in opp or "DefOVR" not in opp:
             base = safe_int(opp.get("OVR", 75), 75)
-            opp["OffOVR"] = max(50, min(99, base + random.randint(-3, 3)))
-            opp["DefOVR"] = max(50, min(99, base + random.randint(-3, 3)))
+            # FIX: Deterministic Opponent Stats (V1.3)
+            rr = make_deterministic_rng("opp_split", team_name, st.session_state.get("year", 0))
+            opp["OffOVR"] = max(50, min(99, base + rr.randint(-3, 3)))
+            opp["DefOVR"] = max(50, min(99, base + rr.randint(-3, 3)))
         
         if "Coaches" not in opp or not isinstance(opp.get("Coaches"), dict):
             opp["Coaches"] = {"OC": 5, "DC": 5}
@@ -390,6 +378,10 @@ def make_deterministic_rng(*parts) -> random.Random:
     base = (str(st.session_state.get("state_version", "")), str(st.session_state.get("year", "")), str(st.session_state.get("team_name", "")))
     seed_str = "|".join([*base, *[str(p) for p in parts]])
     return random.Random(seed_str)
+
+def game_rng(year: int, week: int, opp: str, mode: str = "PLAY") -> random.Random:
+    """V1.3: Stable seed for a specific game instance to prevent reroll abuse."""
+    return make_deterministic_rng("game", mode, int(year), int(week), str(opp))
 
 def add_news(msg: str):
     if "news" not in st.session_state or st.session_state.news is None: st.session_state.news = []
@@ -537,102 +529,327 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
                 unsafe_allow_html=True
             )
 
-def render_cfp_bracket(data: dict):
-    # V1.2: Fixed Path Static Layout (3-Cols)
-    st.subheader("🏆 CFP Bracket")
+def render_cfp_bracket_tree(data: dict):
+    """V1.3: Visual Tournament Tree Bracket"""
+    st.subheader("🏆 College Football Playoff Bracket")
     
-    # Ensure seeding is robust
     seeds = data.get("Seeds", ["TBD"]*12)
     matches = data.get("Matches", [])
     round_num = data.get("Round", 1)
     
-    # Helper to find match by participant
-    def _find_match(team_name):
-        for m in matches:
-            if m.get("winner") == team_name: return m # Completed match where team won
-            if m.get("t1") == team_name or m.get("t2") == team_name: return m # Active match
-        return None
-
-    c1, c2, c3 = st.columns([1.1, 1.1, 1.1])
+    # Determine which teams are still alive
+    alive_teams = set()
+    for m in matches:
+        if not m.get("winner"):
+            if m.get("t1"): alive_teams.add(m["t1"])
+            if m.get("t2"): alive_teams.add(m["t2"])
+        else:
+            alive_teams.add(m["winner"])
     
-    # --- COL 1: OPENING ROUND (GAMES 5-8) ---
-    with c1:
-        st.markdown("### Opening Round")
-        # Fixed order display: 8v9, 5v12, 6v11, 7v10
-        display_order = [
-            (seeds[7], seeds[8], 0),  # 8 vs 9
-            (seeds[4], seeds[11], 1), # 5 vs 12
-            (seeds[5], seeds[10], 2), # 6 vs 11
-            (seeds[6], seeds[9], 3)   # 7 vs 10
-        ]
+    # Add top 4 seeds if round 1
+    if round_num == 1:
+        for i in range(4):
+            if i < len(seeds):
+                alive_teams.add(seeds[i])
+    
+    st.markdown("""
+    <style>
+    .bracket-container {
+        display: flex;
+        justify-content: space-around;
+        gap: 20px;
+        margin: 20px 0;
+        overflow-x: auto;
+    }
+    .bracket-round {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        min-width: 200px;
+    }
+    .bracket-matchup {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+        position: relative;
+    }
+    .bracket-matchup.active {
+        border-color: #2196F3;
+        box-shadow: 0 0 10px rgba(33, 150, 243, 0.3);
+    }
+    .bracket-matchup.completed {
+        background: #f5f5f5;
+        border-color: #4CAF50;
+    }
+    .bracket-matchup.user-involved {
+        border: 3px solid #FF9800;
+        background: #FFF3E0;
+    }
+    .bracket-seed {
+        display: inline-block;
+        background: #333;
+        color: white;
+        width: 24px;
+        height: 24px;
+        line-height: 24px;
+        text-align: center;
+        border-radius: 50%;
+        font-weight: bold;
+        font-size: 0.8em;
+        margin-right: 8px;
+    }
+    .bracket-team {
+        font-weight: bold;
+        color: #333;
+        margin: 4px 0;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .bracket-team.winner {
+        background: #E8F5E9;
+        border-left: 4px solid #4CAF50;
+    }
+    .bracket-team.loser {
+        color: #999;
+        text-decoration: line-through;
+    }
+    .bracket-score {
+        font-weight: bold;
+        margin-left: 10px;
+        color: #666;
+    }
+    .bracket-round-title {
+        text-align: center;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #666;
+        margin-bottom: 10px;
+        font-size: 0.9em;
+        letter-spacing: 1px;
+    }
+    .bracket-bye {
+        background: #E3F2FD;
+        border: 2px dashed #2196F3;
+        color: #1976D2;
+        font-style: italic;
+        text-align: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    user_team = st.session_state.team_name
+    
+    # Build bracket HTML based on round
+    if round_num == 1:
+        # Opening Round + Top 4 Byes
+        html = "<div class='bracket-container'>"
         
-        # We need to map these conceptual matchups to actual matches in state
-        # The engine initializes matches in a specific list order. 
-        # Match 0: 5v12, Match 1: 6v11, Match 2: 7v10, Match 3: 8v9 (based on init code)
-        # Let's just iterate the current state matches for simplicity, but strictly ordered.
+        # Column 1: Opening Round (Seeds 5-12)
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>Opening Round</div>"
         
-        # Match mapping based on init_playoff_bracket order:
-        # 0: 5v12, 1: 6v11, 2: 7v10, 3: 8v9
-        ordered_matches = [matches[3], matches[0], matches[1], matches[2]] if len(matches)>=4 else []
-        
-        for m in ordered_matches:
-            if not m: continue
+        # matches are in order: 5v12, 6v11, 7v10, 8v9
+        # Re-sort to match standard view if needed, but linear list is fine
+        display_order = [matches[3], matches[0], matches[1], matches[2]] if len(matches)>=4 else matches
+
+        for i, m in enumerate(display_order):
             t1, t2 = m.get("t1", "TBD"), m.get("t2", "TBD")
             s1, s2 = m.get("s1", ""), m.get("s2", "")
-            w = m.get("winner")
-            badge = "✅" if w else "⏳"
+            winner = m.get("winner")
             
-            # Highlight winner
-            c1_str = f"<b>{t1}</b>" if w==t1 else f"{t1}"
-            c2_str = f"<b>{t2}</b>" if w==t2 else f"{t2}"
+            matchup_class = "bracket-matchup"
+            if winner:
+                matchup_class += " completed"
+            if user_team in [t1, t2]:
+                matchup_class += " user-involved"
             
-            st.markdown(
-                f"<div class='game-card' style='padding:8px; font-size:0.9em; margin-bottom:12px;'>"
-                f"<div>{badge} {c1_str} vs {c2_str}</div>"
-                f"<div style='color:#666; font-size:0.8em;'>{s1} - {s2}</div>"
-                f"</div>", unsafe_allow_html=True
-            )
-
-    # --- COL 2: QUARTERFINALS (Top 4 Waiting) ---
-    with c2:
-        st.markdown("### Quarterfinals")
-        qf_teams = seeds[:4] # 1, 2, 3, 4
+            html += f"<div class='{matchup_class}'>"
+            html += f"<div class='bracket-team {'winner' if winner == t1 else ('loser' if winner else '')}'>"
+            html += f"<span>{t1}</span>"
+            if s1: html += f"<span class='bracket-score'>{s1}</span>"
+            html += "</div>"
+            html += f"<div class='bracket-team {'winner' if winner == t2 else ('loser' if winner else '')}'>"
+            html += f"<span>{t2}</span>"
+            if s2: html += f"<span class='bracket-score'>{s2}</span>"
+            html += "</div>"
+            html += "</div>"
         
-        # Logic: 
-        # #1 plays Winner of 8v9 (Match index 3)
-        # #4 plays Winner of 5v12 (Match index 0)
-        # #3 plays Winner of 6v11 (Match index 1)
-        # #2 plays Winner of 7v10 (Match index 2)
+        html += "</div>"
         
-        paths = [
-            (qf_teams[0], matches[3] if len(matches)>3 else None),
-            (qf_teams[3], matches[0] if len(matches)>0 else None),
-            (qf_teams[2], matches[1] if len(matches)>1 else None),
-            (qf_teams[1], matches[2] if len(matches)>2 else None)
-        ]
+        # Column 2: Quarterfinals (Top 4 waiting)
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>Quarterfinals</div>"
         
-        for seed_team, prev_match in paths:
-            opponent = "Winner R1"
-            if prev_match and prev_match.get("winner"):
-                opponent = prev_match["winner"]
+        qf_seeds = data.get("QF_Seeds", seeds[:4])
+        for i, seed_team in enumerate(qf_seeds):
+            matchup_class = "bracket-matchup bracket-bye"
+            if user_team == seed_team:
+                matchup_class += " user-involved"
             
-            # If QF match exists (Round >= 2), show score? 
-            # For V1.2, simplistic view: just show the matchup placeholder
-            st.markdown(
-                f"<div class='game-card' style='padding:12px; margin-bottom:12px; border-left:4px solid #f1c40f;'>"
-                f"<div><b>#{seeds.index(seed_team)+1} {seed_team}</b></div>"
-                f"<div style='font-size:0.85em; color:#555;'>vs {opponent}</div>"
-                f"</div>", unsafe_allow_html=True
-            )
-
-    # --- COL 3: SEMIS / FINALS ---
-    with c3:
-        st.markdown("### Final Four")
-        st.markdown(
-            f"<div class='game-card' style='padding:20px; text-align:center; opacity:0.7; height: 100%; display:flex; align-items:center; justify-content:center;'>"
-            f"<div>🏆<br>SEMIS & TITLE<br><small>(Awaiting Results)</small></div>"
-            f"</div>", unsafe_allow_html=True
-        )
+            html += f"<div class='{matchup_class}'>"
+            html += f"<div class='bracket-team'>"
+            html += f"<span><span class='bracket-seed'>{i+1}</span>{seed_team}</span>"
+            html += "</div>"
+            html += f"<div style='text-align:center; color:#666; font-size:0.85em; margin-top:8px;'>BYE (awaits winner)</div>"
+            html += "</div>"
+        
+        html += "</div>"
+        
+        # Column 3: Future Rounds
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>Semifinals</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.4;'>"
+        html += "<div style='text-align:center; padding:20px; color:#999;'>TBD</div>"
+        html += "</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.4;'>"
+        html += "<div style='text-align:center; padding:20px; color:#999;'>TBD</div>"
+        html += "</div>"
+        html += "</div>"
+        
+        html += "</div>"
+    
+    elif round_num == 2:
+        # Quarterfinals Active
+        html = "<div class='bracket-container'>"
+        
+        # Column 1: Quarterfinals
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>Quarterfinals</div>"
+        
+        seed_map = data.get("SeedMap", {})
+        for m in matches:
+            t1, t2 = m.get("t1", "TBD"), m.get("t2", "TBD")
+            s1, s2 = m.get("s1", ""), m.get("s2", "")
+            winner = m.get("winner")
+            
+            matchup_class = "bracket-matchup"
+            if not winner:
+                matchup_class += " active"
+            else:
+                matchup_class += " completed"
+            if user_team in [t1, t2]:
+                matchup_class += " user-involved"
+            
+            html += f"<div class='{matchup_class}'>"
+            html += f"<div class='bracket-team {'winner' if winner == t1 else ('loser' if winner else '')}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(t1, '?')}</span>{t1}</span>"
+            if s1: html += f"<span class='bracket-score'>{s1}</span>"
+            html += "</div>"
+            html += f"<div class='bracket-team {'winner' if winner == t2 else ('loser' if winner else '')}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(t2, '?')}</span>{t2}</span>"
+            if s2: html += f"<span class='bracket-score'>{s2}</span>"
+            html += "</div>"
+            html += "</div>"
+        
+        html += "</div>"
+        
+        # Column 2: Semifinals Preview
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>Semifinals</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.6;'>"
+        html += "<div style='text-align:center; padding:20px; color:#999;'>Awaiting QF Results</div>"
+        html += "</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.6;'>"
+        html += "<div style='text-align:center; padding:20px; color:#999;'>Awaiting QF Results</div>"
+        html += "</div>"
+        html += "</div>"
+        
+        # Column 3: Championship Preview
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>Championship</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.3;'>"
+        html += "<div style='text-align:center; padding:30px; color:#999;'>🏆</div>"
+        html += "</div>"
+        html += "</div>"
+        
+        html += "</div>"
+    
+    elif round_num == 3:
+        # Semifinals Active
+        html = "<div class='bracket-container'>"
+        
+        # Column 1: Semifinals
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>Semifinals</div>"
+        
+        seed_map = data.get("SeedMap", {})
+        for m in matches:
+            t1, t2 = m.get("t1", "TBD"), m.get("t2", "TBD")
+            s1, s2 = m.get("s1", ""), m.get("s2", "")
+            winner = m.get("winner")
+            
+            matchup_class = "bracket-matchup"
+            if not winner:
+                matchup_class += " active"
+            else:
+                matchup_class += " completed"
+            if user_team in [t1, t2]:
+                matchup_class += " user-involved"
+            
+            html += f"<div class='{matchup_class}'>"
+            html += f"<div class='bracket-team {'winner' if winner == t1 else ('loser' if winner else '')}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(t1, '?')}</span>{t1}</span>"
+            if s1: html += f"<span class='bracket-score'>{s1}</span>"
+            html += "</div>"
+            html += f"<div class='bracket-team {'winner' if winner == t2 else ('loser' if winner else '')}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(t2, '?')}</span>{t2}</span>"
+            if s2: html += f"<span class='bracket-score'>{s2}</span>"
+            html += "</div>"
+            html += "</div>"
+        
+        html += "</div>"
+        
+        # Column 2: Championship Preview
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>National Championship</div>"
+        html += "<div class='bracket-matchup active' style='padding:30px;'>"
+        html += "<div style='text-align:center; font-size:2em;'>🏆</div>"
+        html += "<div style='text-align:center; color:#666; margin-top:10px;'>Awaiting Semifinal Results</div>"
+            html += "</div>"
+        html += "</div>"
+        
+        html += "</div>"
+    
+    else:  # Round 4 - Championship
+        html = "<div class='bracket-container' style='justify-content:center;'>"
+        
+        html += "<div class='bracket-round'>"
+        html += "<div class='bracket-round-title'>National Championship</div>"
+        
+        seed_map = data.get("SeedMap", {})
+        for m in matches:
+            t1, t2 = m.get("t1", "TBD"), m.get("t2", "TBD")
+            s1, s2 = m.get("s1", ""), m.get("s2", "")
+            winner = m.get("winner")
+            
+            matchup_class = "bracket-matchup"
+            if not winner:
+                matchup_class += " active"
+            else:
+                matchup_class += " completed"
+            if user_team in [t1, t2]:
+                matchup_class += " user-involved"
+            
+            html += f"<div class='{matchup_class}' style='min-width:300px;'>"
+            html += "<div style='text-align:center; font-size:1.5em; margin-bottom:10px;'>🏆</div>"
+            html += f"<div class='bracket-team {'winner' if winner == t1 else ('loser' if winner else '')}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(t1, '?')}</span>{t1}</span>"
+            if s1: html += f"<span class='bracket-score'>{s1}</span>"
+            html += "</div>"
+            html += f"<div class='bracket-team {'winner' if winner == t2 else ('loser' if winner else '')}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(t2, '?')}</span>{t2}</span>"
+            if s2: html += f"<span class='bracket-score'>{s2}</span>"
+            html += "</div>"
+            html += "</div>"
+        
+        html += "</div>"
+        html += "</div>"
+    
+    st.markdown(html, unsafe_allow_html=True)
 
 def calculate_saban_score(career_stats, prestige):
     return int(
@@ -1372,8 +1589,11 @@ def show_offseason():
             st.session_state.offseason_step = 2
             st.rerun()
     elif step == 2:
+        # V28: New bottom-up HS recruiting
         show_offseason_hs_outreach()
         st.divider()
+        
+        # FIX: Block continuing if HS results are pending
         block_continue = st.session_state.get("hs_last_results") is not None
         if st.button("Continue to Top-8 Battles →", type="primary", disabled=block_continue):
             st.session_state.offseason_step = 3
@@ -1411,6 +1631,7 @@ def show_offseason():
             st.session_state.hotspots = generate_hotspots()
             sync_team_ratings()
             
+            # --- RESET V28 WAR ROOM INPUTS/RESULTS FOR NEXT YEAR ---
             st.session_state.hs_last_results = None
             for p in GameConfig.POSITIONS: st.session_state[f"hs_pos_input_{p}_v28"] = 0
             st.session_state.hs_alloc_by_pos = {p: 0 for p in GameConfig.POSITIONS}
@@ -1516,6 +1737,7 @@ def run_setup():
     st.info(f"**{team}** | Conf: {conf} | Tier: {tier} | Budget: {helper_format_cash(budget)} | Rival: {rival}")
     st.caption(f"Expectation: {expect}+ Wins")
     if st.button("Start Dynasty", type="primary"):
+        # Explicit Setup Initialization
         st.session_state.year = 2026
         st.session_state.tenure = 1
         st.session_state.job_security = 75
@@ -1551,6 +1773,7 @@ def run_setup():
         st.session_state.trophies = []; st.session_state.conf_revenue_boost_mult = 1.0; st.session_state.pending_invite = None; st.session_state.booster_rating = 50; st.session_state.ai_records = []; st.session_state.selection_sunday_results = []; st.session_state.last_postseason_result = "NONE"
         st.session_state.achievements = []; st.session_state.milestone_log = []
         
+        # Init V28 recruiting keys
         for p in GameConfig.POSITIONS: st.session_state[f"hs_pos_input_{p}_v28"] = 0
         
         add_news(f"{team} hires {st.session_state.staff['HC']['name']} as HC."); st.session_state.game_state = GameState.DASHBOARD; st.rerun()
@@ -1725,7 +1948,9 @@ def show_dashboard():
             def play_one_week():
                 try:
                     is_home = (wk % 2 == 0); loc_str = "HOME" if is_home else "@AWAY"
-                    res = engine_play_game_v8(my_off_val, my_def_val, opp_off, opp_def, st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home, is_riv, st.session_state.facilities["Stadium"], opp_data.get("Stadium", 7), rng=random.Random())
+                    # FIX V1.3: Deterministic Game RNG
+                    rng = game_rng(st.session_state.year, wk + 1, opp, mode="PLAY")
+                    res = engine_play_game_v8(my_off_val, my_def_val, opp_off, opp_def, st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home, is_riv, st.session_state.facilities["Stadium"], opp_data.get("Stadium", 7), rng=rng)
                 except Exception as e:
                     st.error(f"⚠️ Game simulation error: {str(e)}"); st.warning("Generating fallback result to preserve your save...")
                     loc_str = "HOME" if (wk % 2 == 0) else "@AWAY"
@@ -1755,7 +1980,9 @@ def show_dashboard():
                         if wk2 >= len(sched2) or wk2 >= 12: break
                         opp2 = sched2[wk2]; opp_data2 = OpponentManager.get(opp2)
                         is_riv2 = (opp2 == st.session_state.team_rival); is_home2 = (wk2 % 2 == 0); loc_str2 = "HOME" if is_home2 else "@AWAY"
-                        res2 = engine_play_game_v8(my_off_val, my_def_val, int(opp_data2["OffOVR"]), int(opp_data2["DefOVR"]), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data2.get("Off", "Pro Style"), "Def": opp_data2.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data2.get("Coaches", {"OC": 5, "DC": 5}), is_home=is_home2, is_rival=is_riv2, my_stadium_level=st.session_state.facilities["Stadium"], opp_stadium_level=opp_data2.get("Stadium", 7), rng=random.Random())
+                        # FIX V1.3: Deterministic SIM RNG
+                        rng = game_rng(st.session_state.year, wk2 + 1, opp2, mode="SIM")
+                        res2 = engine_play_game_v8(my_off_val, my_def_val, int(opp_data2["OffOVR"]), int(opp_data2["DefOVR"]), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data2.get("Off", "Pro Style"), "Def": opp_data2.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data2.get("Coaches", {"OC": 5, "DC": 5}), is_home=is_home2, is_rival=is_riv2, my_stadium_level=st.session_state.facilities["Stadium"], opp_stadium_level=opp_data2.get("Stadium", 7), rng=rng)
                         st.session_state.season_logs.append({"Week": wk2 + 1, "Opponent": opp2, "Score": f"{res2['result']} {res2['score']}", "Stats": res2["stats"], "Explain": res2["explain"], "OppOVR": int(opp_data2.get("OVR", 80)), "Loc": loc_str2})
                         if res2["result"] == "W":
                             st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
@@ -1855,83 +2082,33 @@ def show_season_end():
 def show_selection_sunday():
     sync_team_ratings()
     st.title("🏆 SELECTION SUNDAY")
-    st.markdown("The Committee has spoken.")
+    st.markdown("The Committee has met. Here are the final rankings.")
     results = st.session_state.selection_sunday_results
-    
-    # Locate user rank
-    user_rank = 999
+    user_rank = -1
     for i, t in enumerate(results):
-        if t.get("IsUser") or t.get("Team") == st.session_state.team_name:
-            user_rank = i + 1; break
-            
-    # --- 1. TOP 4 VIP ROW ---
-    st.subheader("🛡️ First Round Byes (Seeds #1 - #4)")
-    vip_cols = st.columns(4)
-    for i in range(4):
-        if i < len(results):
-            t = results[i]
-            with vip_cols[i]:
-                is_u = t.get("IsUser", False)
-                border = "2px solid #2196f3" if is_u else "2px solid #f1c40f"
-                bg = "#e3f2fd" if is_u else "#fffbeb"
-                st.markdown(
-                    f"<div style='background:{bg}; border:{border}; border-radius:8px; padding:15px; text-align:center; height:100%;'>"
-                    f"<div style='font-size:1.5em; font-weight:900; color:#b7791f;'>#{i+1}</div>"
-                    f"<div style='font-weight:bold; font-size:1.1em; margin:5px 0;'>{t['Team']}</div>"
-                    f"<div style='font-size:0.9em; color:#666;'>{t['Wins']}-{t['Losses']}</div>"
-                    f"<div style='margin-top:5px;'><span class='vip-badge'>BYE</span></div>"
-                    f"</div>", unsafe_allow_html=True
-                )
-    st.divider()
-
-    # --- 2. FIRST ROUND MATCHUPS (5-12) ---
-    st.subheader("⚔️ First Round Matchups")
-    # Matchups: 5v12, 6v11, 7v10, 8v9
-    m_cols = st.columns(4)
-    pairs = [(4, 11), (5, 10), (6, 9), (7, 8)] # Indices in 0-based list
+        if t.get("IsUser"): user_rank = i + 1; break
+    if user_rank == -1: 
+        for i, t in enumerate(results):
+            if t.get("Team") == st.session_state.team_name: user_rank = i + 1; t["IsUser"] = True; break
+    if user_rank == -1: user_rank = 999
     
-    for idx, (h, l) in enumerate(pairs):
-        if l < len(results):
-            high = results[h]; low = results[l]
-            with m_cols[idx]:
-                st.markdown(
-                    f"<div style='background:white; border:1px solid #ddd; border-radius:8px; padding:10px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.05);'>"
-                    f"<div style='font-weight:bold; border-bottom:1px solid #eee; padding-bottom:5px;'>Match {idx+1}</div>"
-                    f"<div style='margin-top:8px;'>#{h+1} {high['Team']}</div>"
-                    f"<div style='color:#888; font-size:0.8em;'>vs</div>"
-                    f"<div style='margin-bottom:8px;'>#{l+1} {low['Team']}</div>"
-                    f"</div>", unsafe_allow_html=True
-                )
-    st.divider()
+    user_row = next((t for t in results if t.get("IsUser") or t.get("Team") == st.session_state.team_name), None)
+    if user_row:
+        st.subheader("🎯 Your Team (Pinned)")
+        st.markdown(html_rank_row(user_rank, user_row['Team'], user_row['Wins'], user_row['Losses'], user_row['Conf'], True), unsafe_allow_html=True)
+        st.divider()
 
-    # --- 3. THE BUBBLE & REST (Dataframe) ---
-    st.subheader("📉 The Bubble & Rankings")
-    rest_data = []
-    for i, t in enumerate(results[12:25]):
-        rank = i + 13
-        status = "❌ OUT"
-        if safe_int(t.get("Wins"),0) >= 6: status = "🎳 BOWL"
-        if t.get("IsUser"): status += " (YOU)"
-        rest_data.append({
-            "Rank": rank,
-            "Team": t["Team"],
-            "Record": f"{t['Wins']}-{t['Losses']}",
-            "Conf": t["Conf"],
-            "Status": status
-        })
+    if user_rank <= 4: st.success(f"✅ Top-4 Seed (#{user_rank}): You receive a First Round BYE.")
     
-    if rest_data:
-        df = pd.DataFrame(rest_data)
-        st.dataframe(df, hide_index=True, use_container_width=True)
+    st.write("### 📊 Final Committee Rankings")
+    show_full = st.toggle("Show full rankings", value=False)
+    view = results if show_full else results[:25]
 
-    # --- 4. USER CONTEXT (If outside top 25) ---
-    if user_rank > 25:
-        st.warning(f"You are ranked #{user_rank}. (Not shown in Top 25)")
-
-    st.divider()
+    for i, t in enumerate(view):
+        rank = i + 1; is_user = t.get("IsUser", False);
+        st.markdown(html_rank_row(rank, t['Team'], t['Wins'], t['Losses'], t['Conf'], is_user), unsafe_allow_html=True)
     
-    # Logic Actions
-    user_wins = st.session_state.record['w']
+    st.divider(); user_wins = st.session_state.record['w']
     if user_wins < 6:
         st.error("❌ You did not qualify for a bowl game (less than 6 wins).")
         st.session_state.last_postseason_result = "NO_BOWL"
@@ -2003,22 +2180,25 @@ def show_postseason():
                 st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
 
     elif data.get("Type") == "CFP":
-        round_num = int(data.get("Round", 1)); round_names = ["Opening Rd", "Quarterfinals", "Semifinals", "Championship"]
-        label = round_names[round_num - 1] if 1 <= round_num <= 4 else f"Round {round_num}"
-        st.header(f"CFP Round: {label}")
-        
-        render_cfp_bracket(st.session_state.postseason_data)
+        # FIX V1.3: New Visual Bracket
+        render_cfp_bracket_tree(st.session_state.postseason_data)
         st.divider()
 
         user_match = None
-        for m in data.get("Matches", []):
+        matches = data.get("Matches", [])
+        round_num = int(data.get("Round", 1))
+        
+        for m in matches:
             if m.get("t1") == st.session_state.team_name or m.get("t2") == st.session_state.team_name: user_match = m; break
 
         if not user_match and data.get("UserAlive") and round_num == 1:
             st.success("✅ FIRST ROUND BYE"); st.info("You are a Top-4 Seed. You automatically advance to the Quarterfinals.")
             if st.button("Simulate Opening Round & Advance", type="primary"):
+                # Save History for Bracket
+                data.setdefault("History", []).append(copy.deepcopy(matches))
+                
                 seed_map = st.session_state.postseason_data.get("SeedMap", {}); next_round_teams = []
-                for m in data.get("Matches", []):
+                for m in matches:
                     t1, t2 = m.get("t1"), m.get("t2"); o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
                     p = o1 / max(1.0, (o1 + o2)); winner = t1 if random.random() < p else t2
                     
@@ -2026,30 +2206,19 @@ def show_postseason():
                     if s_win <= s_loss: s_win = s_loss + 3 
                     if winner == t1: m["s1"], m["s2"] = s_win, s_loss
                     else: m["s1"], m["s2"] = s_loss, s_win
-                    
                     m["winner"] = winner; next_round_teams.append((winner, seed_map.get(winner, 99)))
                     
-                next_round_teams.sort(key=lambda ts: ts[1], reverse=True); winners_only = [ts[0] for ts in next_round_teams]
                 seeds = data.get("Seeds", []); new_matches = []
-                if len(seeds) >= 4 and len(winners_only) >= 4:
-                    # FIX V1.2: Standard Bracket Logic
-                    # Q1: #1 vs Winner of 8v9 (Match index 3 in list)
-                    # Q2: #4 vs Winner of 5v12 (Match index 0)
-                    # Q3: #3 vs Winner of 6v11 (Match index 1)
-                    # Q4: #2 vs Winner of 7v10 (Match index 2)
-                    
-                    # We need to map from the 'next_round_teams' list which is just winners.
-                    # It's safer to grab winners from the specific match objects.
-                    matches = data.get("Matches", [])
+                if len(seeds) >= 4 and len(matches) >= 4:
+                    # Map winners from specific matches (0=5v12, 1=6v11, 2=7v10, 3=8v9)
                     w_8v9 = matches[3].get("winner")
                     w_5v12 = matches[0].get("winner")
                     w_6v11 = matches[1].get("winner")
                     w_7v10 = matches[2].get("winner")
-                    
-                    new_matches.append({"t1": seeds[0], "t2": w_8v9, "winner": None}) # #1 vs 8/9
-                    new_matches.append({"t1": seeds[3], "t2": w_5v12, "winner": None}) # #4 vs 5/12
-                    new_matches.append({"t1": seeds[2], "t2": w_6v11, "winner": None}) # #3 vs 6/11
-                    new_matches.append({"t1": seeds[1], "t2": w_7v10, "winner": None}) # #2 vs 7/10
+                    new_matches.append({"t1": seeds[0], "t2": w_8v9, "winner": None}) 
+                    new_matches.append({"t1": seeds[3], "t2": w_5v12, "winner": None}) 
+                    new_matches.append({"t1": seeds[2], "t2": w_6v11, "winner": None}) 
+                    new_matches.append({"t1": seeds[1], "t2": w_7v10, "winner": None}) 
 
                 st.session_state.postseason_data["Round"] = 2; st.session_state.postseason_data["Matches"] = new_matches; st.rerun()
                 add_news(f"{st.session_state.team_name} advances to Quarterfinals after Bye."); st.rerun()
@@ -2059,15 +2228,20 @@ def show_postseason():
             opp_data = OpponentManager.get(opp)
             st.info(f"Your Matchup: vs {opp} (OVR: {opp_data.get('OVR',88)} | OFF {int(opp_data.get('OffOVR',80))} / DEF {int(opp_data.get('DefOVR',80))})")
             if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
-                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=random.Random())
+                # FIX V1.3: Game RNG
+                rng = game_rng(st.session_state.year, 20, opp, mode="PLAY")
+                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
                 
                 try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
                 except: my_s, opp_s = 0, 0
                 if user_match.get("t1") == st.session_state.team_name: user_match["s1"], user_match["s2"] = my_s, opp_s
                 else: user_match["s1"], user_match["s2"] = opp_s, my_s
 
+                # Save History
+                data.setdefault("History", []).append(copy.deepcopy(matches))
+
                 next_round_teams = []; seed_map = st.session_state.postseason_data.get("SeedMap", {})
-                for m in data.get("Matches", []):
+                for m in matches:
                     if m is user_match:
                         if res["result"] == "W":
                             m["winner"] = st.session_state.team_name; next_round_teams.append((st.session_state.team_name, seed_map.get(st.session_state.team_name, 99)))
@@ -2100,18 +2274,11 @@ def show_postseason():
                         st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
                     else:
                         new_matches = []
-                        # Round logic handles advancing
-                        matches = data.get("Matches", [])
-                        if round_num == 1:
-                            pass # Handled in simulate block
-                        elif round_num == 2: # QF to Semis
-                            # Q1 winner vs Q2 winner (Upper Bracket)
-                            # Q3 winner vs Q4 winner (Lower Bracket)
-                            # Or strict seeds. Let's assume matches 0,1,2,3 correspond to the QF matches created in prev step.
+                        if round_num == 2:
                             if len(matches) >= 4:
                                 new_matches.append({"t1": matches[0]["winner"], "t2": matches[1]["winner"], "winner": None})
                                 new_matches.append({"t1": matches[2]["winner"], "t2": matches[3]["winner"], "winner": None})
-                        elif round_num == 3: # Semis to Finals
+                        elif round_num == 3:
                             if len(matches) >= 2:
                                 new_matches.append({"t1": matches[0]["winner"], "t2": matches[1]["winner"], "winner": None})
                         st.session_state.postseason_data["Round"] = round_num + 1; st.session_state.postseason_data["Matches"] = new_matches; st.rerun()
