@@ -1,13 +1,14 @@
+
 """
 Build the Program: College Football CEO
-Version 1.7 (The UI & Realism Update)
+Version 1.8 (The Championship Update)
 
 Audit Log:
-- Base: V1.6.1 (Expanded Universe + Retention Logic).
-- Feature: G5 Schedule Boost (Forces Power 4 games for G5 teams).
-- Feature: Enhanced Selection Sunday UI (Hero Card).
-- Feature: Enhanced Bowl Game UI (Tale of the Tape).
-- Stability: All helper functions audited and present.
+- Base: V1.7 (Schedule Boost + Expanded Universe).
+- Feature: Dynamic Difficulty "Cinderella Tax" (Option C).
+- Feature: Selection Sunday UI Overhaul.
+- Feature: Bowl Game "Tale of the Tape" UI.
+- Stability: All previous helpers retained.
 """
 
 import streamlit as st
@@ -24,7 +25,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 1.7
+STATE_VERSION = 1.8
 
 class GameState:
     SETUP = "SETUP"
@@ -403,6 +404,40 @@ def make_deterministic_rng(*parts) -> random.Random:
 def game_rng(year: int, week: int, opp: str, mode: str = "PLAY") -> random.Random:
     """V1.3: Stable seed for a specific game instance to prevent reroll abuse."""
     return make_deterministic_rng("game", mode, int(year), int(week), str(opp))
+
+def calculate_difficulty_multiplier(user_conf: str, user_prestige: int, user_ovr: int, user_wins: int) -> float:
+    """
+    V1.8: Dynamic difficulty scaling based on user performance (The Cinderella Tax)
+    Returns a multiplier to boost opponent ratings
+    """
+    multiplier = 1.0
+    
+    # G5 TEAMS: Scale up opponents if dominating
+    if user_conf in ["G5", "MAC", "Pac-12", "Indep"]:
+        # Base on overall rating
+        if user_ovr >= 85:
+            multiplier += 0.20  # +20% to opponents
+        elif user_ovr >= 80:
+            multiplier += 0.15  # +15%
+        elif user_ovr >= 75:
+            multiplier += 0.10  # +10%
+        
+        # Bonus scaling for win streak
+        if user_wins >= 10:
+            multiplier += 0.08
+        elif user_wins >= 8:
+            multiplier += 0.05
+        
+        # Prestige bonus
+        if user_prestige >= 80:
+            multiplier += 0.05
+    
+    # POWER 4 TEAMS: Slight boost for blue bloods
+    elif user_conf in ["SEC", "Big Ten"]:
+        if user_prestige >= 90:
+            multiplier += 0.05  # Top teams face slightly tougher competition
+    
+    return min(1.35, multiplier)  # Cap at +35% max boost
 
 def add_news(msg: str):
     if "news" not in st.session_state or st.session_state.news is None: st.session_state.news = []
@@ -919,6 +954,19 @@ def compute_team_unit_ratings(roster: dict, staff: dict, facilities: dict):
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
     rng = rng or random.Random()
     
+    # V1.8: Dynamic Difficulty "Cinderella Tax" Injection
+    try:
+        diff_mult = calculate_difficulty_multiplier(
+            st.session_state.get("team_conf", "G5"),
+            st.session_state.get("prestige", 60),
+            st.session_state.get("team_rating", 75),
+            st.session_state.get("record", {}).get("w", 0)
+        )
+        opp_off = int(opp_off * diff_mult)
+        opp_def = int(opp_def * diff_mult)
+    except Exception:
+        pass # Fail safely
+
     # V1.1: TALENT WEIGHT INCREASED TO 0.75
     my_edge = (my_off - opp_def) * 0.75
     opp_edge = (opp_off - my_def) * 0.75
@@ -2307,7 +2355,7 @@ def show_postseason():
         
         col1, col2, col3 = st.columns([1, 0.3, 1])
         
-        with col1:
+              with col1:
             st.markdown(f"""
             <div style='background: rgba(33, 150, 243, 0.1); padding: 20px; 
                         border-radius: 10px; border-left: 5px solid #2196F3;'>
