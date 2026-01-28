@@ -742,6 +742,68 @@ def normalize_shares(shares: dict):
     if total <= 0:
         return {p: 100.0 / len(GameConfig.POSITIONS) for p in GameConfig.POSITIONS}
     return {p: (_val(p) / total) * 100.0 for p in GameConfig.POSITIONS}
+    def render_achievements_panel():
+    st.subheader("🎖️ Achievements")
+    ach = st.session_state.get("achievements", []) or []
+    if not ach:
+        st.info("No achievements yet.")
+        return
+    for a in ach[-20:][::-1]:
+        st.write(f"• {a}")
+
+def render_dynasty_timeline(max_items=25):
+    st.subheader("🧾 Dynasty Timeline")
+    hist = st.session_state.get("history", []) or []
+    if not hist:
+        st.info("No seasons logged yet.")
+        return
+    for h in hist[-12:][::-1]:
+        st.write(f"Year {h.get('Year','?')}: {h.get('Record','?')} | Rank {h.get('Rank','NR')} | {h.get('PostseasonResult','')}")
+
+def check_and_award_achievements():
+    if "achievements" not in st.session_state or st.session_state.achievements is None:
+        st.session_state.achievements = []
+    
+    # 1. Bowl Win
+    if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
+        st.session_state.achievements.append("First Bowl Win")
+    
+    # 2. Program Builder
+    if st.session_state.prestige >= 80 and "Program Builder" not in st.session_state.achievements:
+        st.session_state.achievements.append("Program Builder")
+        safe_toast("🏆 Achievement Unlocked: Program Builder")
+
+    # 3. Perfect Season
+    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
+        st.session_state.achievements.append("Perfect Season")
+        safe_toast("🏆 Achievement Unlocked: Perfect Season")
+
+def init_playoff_bracket(user_rank, user_team_name):
+    results = st.session_state.get("selection_sunday_results", []) or []
+    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
+    while len(top12) < 12: top12.append("FCS East")
+    seen = set()
+    for i in range(len(top12)):
+        nm = top12[i]
+        if nm in seen: top12[i] = "FCS East"
+        else: seen.add(nm)
+    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
+    try: ur = int(user_rank)
+    except: ur = 999
+    if 1 <= ur <= 12:
+        target_idx = ur - 1; top12[target_idx] = user_team_name; seed_map[user_team_name] = ur
+        for i in range(len(top12)):
+            if i != target_idx and top12[i] == user_team_name: top12[i] = "FCS East"
+    
+    # Standard 12-Team Bracket Matches (Opening Round)
+    r1_matches = [
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
+        {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
+    ]
+    qf_seeds = top12[:4]
+    return {"Type": "CFP", "Round": 1, "Seeds": top12, "QF_Seeds": qf_seeds, "Matches": r1_matches, "UserAlive": True, "Rank": int(ur), "SeedMap": seed_map}
 
 # ==============================================================================
 # ZONE 3: ENGINE
