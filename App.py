@@ -1,6 +1,6 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 27.8 (The Allocator Fix)
+Version 28.0 (The War Room Update)
 
 A comprehensive college football coaching simulation featuring:
 - Dynasty mode with multi-season careers
@@ -23,7 +23,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 27.8
+STATE_VERSION = 28.0
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -44,7 +44,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V27.8", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V28", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -598,40 +598,6 @@ def init_playoff_bracket(user_rank, user_team_name):
 # ZONE 3: ENGINE
 # ==============================================================================
 
-def distribute_exact(total: int, weights: dict, step: int = 100_000) -> dict:
-    total = max(0, int(total))
-    if total == 0: return {p: 0 for p in POSITIONS}
-    w = {}
-    for p in POSITIONS:
-        try: w[p] = max(0.0, float(weights.get(p, 0.0)))
-        except Exception: w[p] = 0.0
-    s = sum(w.values())
-    if s <= 0: w = {p: 1.0 for p in POSITIONS}; s = float(len(POSITIONS))
-    alloc = {}
-    for p in POSITIONS:
-        raw = total * (w[p] / s)
-        alloc[p] = int(raw // step) * step
-    remainder = total - sum(alloc.values())
-    if remainder > 0:
-        order = sorted(POSITIONS, key=lambda p: w[p], reverse=True); i = 0
-        while remainder > 0:
-            p = order[i % len(order)]; add = min(step, remainder)
-            alloc[p] += add; remainder -= add; i += 1
-    remainder = total - sum(alloc.values())
-    if remainder < 0:
-        order = sorted(POSITIONS, key=lambda p: w[p]); i = 0
-        while remainder < 0:
-            p = order[i % len(order)]; take = min(alloc[p], step, abs(remainder))
-            alloc[p] -= take; remainder += take; i += 1
-    return alloc
-
-def sync_alloc_to_inputs(alloc: dict):
-    for p in POSITIONS:
-        # V27.8 FIX: Must target the NEW widget keys defined in V27.7
-        # This ensures the session state matches the widgets, allowing the buttons to update them.
-        key = f"hs_pos_input_{p}_v27"
-        st.session_state[key] = int(alloc.get(p, 0) or 0)
-
 def engine_generate_coach(role, tier):
     cost = random.randint(4_000_000, 8_000_000) if tier == 1 else random.randint(500_000, 3_500_000)
     trait_pool = list(COACH_TRAITS.keys())
@@ -834,51 +800,11 @@ def migrate_state():
     if st.session_state.team_name not in st.session_state.conferences_map[tc]:
         st.session_state.conferences_map[tc].append(st.session_state.team_name)
 
-    # Recruiting migration logic
-    try:
-        alloc_map = st.session_state.get("hs_alloc_by_pos", {}) or {}
-        need_migrate_alloc = (not isinstance(alloc_map, dict)) or (sum(int(v or 0) for v in alloc_map.values()) == 0 and int(st.session_state.get("hs_total_spend", 0) or 0) > 0)
-        if need_migrate_alloc:
-            hs_total = int(st.session_state.get("hs_total_spend", 0) or 0)
-            hs_spend = st.session_state.get("hs_spend_by_pos", {}) or {}
-            hs_shares = st.session_state.get("hs_shares", {}) or {}
-            alloc = {p: 0 for p in POSITIONS}
-            if any(int(hs_spend.get(p, 0) or 0) > 0 for p in POSITIONS):
-                alloc = {p: int(hs_spend.get(p, 0) or 0) for p in POSITIONS}
-            elif hs_total > 0 and any(float(hs_shares.get(p, 0) or 0.0) > 0.0 for p in POSITIONS):
-                alloc = {p: int(round((float(hs_shares.get(p, 0) or 0.0) / 100.0) * hs_total)) for p in POSITIONS}
-            else:
-                alloc = {p: int(st.session_state.get("hs_alloc_by_pos", {}).get(p, 0) or 0) for p in POSITIONS}
-            
-            # Deterministic adjustment logic
-            total_alloc = sum(alloc.values())
-            if hs_total > 0 and total_alloc != hs_total:
-                remainder = hs_total - total_alloc
-                if remainder > 0:
-                    order = sorted(POSITIONS, key=lambda p: alloc.get(p, 0), reverse=True)
-                    i = 0
-                    while remainder > 0:
-                        p = order[i % len(order)]
-                        add = min(100_000, remainder) if remainder >= 100_000 else remainder
-                        alloc[p] += add; remainder -= add; i += 1
-                elif remainder < 0:
-                    order = sorted(POSITIONS, key=lambda p: alloc.get(p, 0))
-                    i = 0
-                    while remainder < 0:
-                        p = order[i % len(order)]
-                        take = min(100_000, alloc.get(p, 0), abs(remainder))
-                        if take <= 0: i += 1; continue
-                        alloc[p] -= take; remainder += take; i += 1
-            
-            st.session_state.hs_alloc_by_pos = alloc
-            st.session_state.hs_spend_by_pos = {p: int(alloc.get(p, 0) or 0) for p in POSITIONS}
-            total_alloc = sum(st.session_state.hs_spend_by_pos.values()) or 0
-            if total_alloc > 0: st.session_state.hs_shares = {p: (st.session_state.hs_spend_by_pos[p] / total_alloc) * 100.0 for p in POSITIONS}
-            else: st.session_state.hs_shares = {p: 100.0 / len(POSITIONS) for p in POSITIONS}
-    except Exception:
-        st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
-        st.session_state.hs_spend_by_pos = {p: 0 for p in POSITIONS}
-        st.session_state.hs_shares = {p: 100.0 / len(POSITIONS) for p in POSITIONS}
+    # Initialize recruiting inputs in session state if missing
+    for p in POSITIONS:
+        key = f"hs_pos_input_{p}_v28"
+        if key not in st.session_state:
+            st.session_state[key] = int(st.session_state.get("hs_alloc_by_pos", {}).get(p, 0) or 0)
 
     sync_team_ratings()
     st.session_state.state_version = STATE_VERSION
@@ -936,7 +862,7 @@ def render_system_sidebar():
                 st.error(f"Error loading save: {e}")
 
 # ==============================================================================
-# ZONE 6: UI - RECRUITING COMPONENTS
+# ZONE 6: UI - RECRUITING COMPONENTS (V28 REWRITE)
 # ==============================================================================
 
 def render_hs_results_summary() -> bool:
@@ -957,70 +883,20 @@ def render_hs_results_summary() -> bool:
     st.divider()
     return True
 
-def render_hs_budget_controls(max_budget: int, needs: List[str], hot: List[str]) -> int:
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        st.markdown(f"<div class='recruiting-intel'>Needs: <b>{', '.join(needs)}</b> | Pipeline: <b>{', '.join(hot)}</b></div>", unsafe_allow_html=True)
-    with c2:
-        current_cap = int(st.session_state.get("hs_total_spend", 0))
-        safe_current_cap = min(current_cap, max_budget)
-        new_cap = st.number_input("Total Recruiting Budget ($)", min_value=0, max_value=max_budget, value=safe_current_cap, step=250_000, format="%d")
-    new_cap = min(int(new_cap), max_budget)
-    st.session_state.hs_total_spend = new_cap
-    return new_cap
-
-def render_hs_quick_allocations(budget: int, needs: List[str], hot: List[str]) -> Optional[dict]:
-    colA, colB, colC = st.columns(3)
-    clicked = None
-    if colA.button("⚖️ Balanced"):
-        weights = {p: 1.0 for p in POSITIONS}
-        clicked = distribute_exact(budget, weights, step=100_000)
-    if colB.button("🎯 Needs Heavy"):
-        weights = {p: (3.0 if p in needs else 1.0) for p in POSITIONS}
-        clicked = distribute_exact(budget, weights, step=100_000)
-    if colC.button("🔥 Pipeline Focus"):
-        weights = {p: (3.0 if p in hot else 1.0) for p in POSITIONS}
-        clicked = distribute_exact(budget, weights, step=100_000)
-    return clicked
-
-def render_hs_position_allocators(budget: int, needs: List[str], hot: List[str]) -> dict:
-    if "hs_alloc_by_pos" not in st.session_state: st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
-    alloc = st.session_state.hs_alloc_by_pos
+# --- V28 CALLBACKS ---
+def cb_set_balanced():
     for p in POSITIONS:
-        key = f"input_{p}"
-        if key not in st.session_state: st.session_state[key] = int(alloc.get(p, 0) or 0)
-    
-    st.divider(); cols = st.columns(2)
-    new_alloc = alloc.copy()
-    for idx, pos in enumerate(POSITIONS):
-        with cols[idx % 2]:
-            badges = ""
-            if pos in needs: badges += " 🔴"
-            if pos in hot: badges += " 🔥"
-            
-            val = st.number_input(
-                f"{pos}{badges}", 
-                min_value=0, 
-                max_value=budget, 
-                value=int(alloc.get(pos, 0)), 
-                step=100_000, 
-                format="%d",
-                key=f"hs_pos_input_{pos}_v27"
-            )
-            new_alloc[pos] = int(val)
-    return new_alloc
+        st.session_state[f"hs_pos_input_{p}_v28"] = 500_000
 
-def validate_and_fix_allocation(alloc: dict, budget: int) -> Tuple[dict, bool]:
-    allocated = sum(int(alloc.get(p, 0) or 0) for p in POSITIONS)
-    remaining = budget - allocated
-    if remaining < 0 and allocated > 0:
-        st.warning(f"⚠️ Manual adjustments exceeded budget by {helper_format_cash(abs(remaining))}. Auto-fixing...")
-        scale = budget / allocated if allocated > 0 else 0.0
-        fixed_alloc = {p: int(alloc[p] * scale) for p in POSITIONS}
-        sync_alloc_to_inputs(fixed_alloc)
-        time.sleep(0.8)
-        return fixed_alloc, True
-    return alloc, False
+def cb_set_needs():
+    needs = st.session_state.get("team_needs", [])
+    for p in POSITIONS:
+        val = 1_250_000 if p in needs else 100_000
+        st.session_state[f"hs_pos_input_{p}_v28"] = val
+
+def cb_clear_all():
+    for p in POSITIONS:
+        st.session_state[f"hs_pos_input_{p}_v28"] = 0
 
 def execute_hs_outreach(budget: int, alloc: dict, needs: List[str]) -> None:
     if not BudgetManager.spend(budget, "HS recruiting", show_toast=False): return
@@ -1046,36 +922,69 @@ def execute_hs_outreach(budget: int, alloc: dict, needs: List[str]) -> None:
 
 def show_offseason_hs_outreach():
     if render_hs_results_summary(): return
-    st.subheader("2) HS Outreach: The War Room")
-    st.write("Set your total recruiting budget, then distribute it to position groups.")
+    st.subheader("2) HS Outreach: The War Room (V28)")
+    st.write("Directly invest in position groups to find talent.")
+    
+    # 1. State Init
     hot = st.session_state.hotspots.get(st.session_state.home_region, [])
     needs = st.session_state.get("team_needs", [])
     max_budget = BudgetManager.get_current()
-    new_cap = render_hs_budget_controls(max_budget, needs, hot)
     
-    quick_alloc = render_hs_quick_allocations(new_cap, needs, hot)
-    if quick_alloc:
-        st.session_state.hs_alloc_by_pos = quick_alloc
-        sync_alloc_to_inputs(quick_alloc); st.rerun()
+    # 2. Calculate Current Spend Live
+    current_spend = 0
+    allocations = {}
+    for p in POSITIONS:
+        key = f"hs_pos_input_{p}_v28"
+        val = safe_int(st.session_state.get(key, 0))
+        current_spend += val
+        allocations[p] = val
+        
+    remaining = max_budget - current_spend
     
-    alloc = render_hs_position_allocators(new_cap, needs, hot)
-    alloc, needs_rerun = validate_and_fix_allocation(alloc, new_cap)
-    if needs_rerun:
-        st.session_state.hs_alloc_by_pos = alloc; st.rerun()
-    
-    allocated = sum(int(alloc.get(p, 0) or 0) for p in POSITIONS)
-    remaining = new_cap - allocated
+    # 3. Top Bar (Wallet)
+    c1, c2, c3 = st.columns([1, 1, 2])
+    c1.metric("Team Budget", helper_format_cash(max_budget))
+    c2.metric("Allocated", helper_format_cash(current_spend))
+    if remaining >= 0:
+        c3.metric("Remaining", helper_format_cash(remaining), delta="Safe")
+    else:
+        c3.metric("Overdraft", helper_format_cash(remaining), delta="-Over Budget", delta_color="inverse")
+
     st.divider()
-    if new_cap == 0: st.info("Set a budget above to begin.")
-    elif remaining == 0: st.success(f"✅ Fully Allocated: {helper_format_cash(new_cap)}")
-    elif remaining > 0: st.warning(f"⚠️ Unassigned Funds: {helper_format_cash(remaining)}")
-    else: st.error(f"🚫 Over Budget: {helper_format_cash(abs(remaining))}")
     
-    st.session_state.hs_alloc_by_pos = alloc
-    st.session_state.hs_spend_by_pos = {p: int(alloc.get(p, 0) or 0) for p in POSITIONS}
-    disabled_confirm = (new_cap == 0) or (remaining != 0)
-    if st.button("Confirm & Run Recruiting 🚀", type="primary", disabled=disabled_confirm):
-        execute_hs_outreach(new_cap, alloc, needs)
+    # 4. Action Buttons (Callbacks)
+    b1, b2, b3 = st.columns(3)
+    b1.button("⚖️ Auto-Fill: Balanced ($3.5M)", on_click=cb_set_balanced, use_container_width=True)
+    b2.button("🎯 Auto-Fill: Needs ($4M)", on_click=cb_set_needs, use_container_width=True)
+    b3.button("❌ Clear All", on_click=cb_clear_all, use_container_width=True)
+    
+    # 5. Grid Input
+    st.write("### Position Investment")
+    cols = st.columns(4)
+    for idx, p in enumerate(POSITIONS):
+        with cols[idx % 4]:
+            badges = ""
+            if p in needs: badges += " 🔴"
+            if p in hot: badges += " 🔥"
+            st.number_input(
+                f"{p}{badges}",
+                min_value=0,
+                max_value=max_budget,
+                step=100_000,
+                format="%d",
+                key=f"hs_pos_input_{p}_v28" # Direct session state binding
+            )
+
+    st.divider()
+    
+    # 6. Submit
+    st.markdown(f"<div style='text-align: center; font-size: 1.2em; margin-bottom: 10px;'>Total Investment: <b>{helper_format_cash(current_spend)}</b></div>", unsafe_allow_html=True)
+    
+    disabled_confirm = (remaining < 0) or (current_spend == 0)
+    if st.button("Confirm & Run Recruiting 🚀", type="primary", disabled=disabled_confirm, use_container_width=True):
+        st.session_state.hs_total_spend = current_spend
+        st.session_state.hs_alloc_by_pos = allocations
+        execute_hs_outreach(current_spend, allocations, needs)
 
 # ==============================================================================
 # ZONE 6 CONTINUED: OFFSEASON LOGIC
@@ -1287,6 +1196,7 @@ def show_offseason():
             st.session_state.offseason_step = 2
             st.rerun()
     elif step == 2:
+        # V28: New bottom-up HS recruiting
         show_offseason_hs_outreach()
         st.divider()
         if st.button("Continue to Top-8 Battles →", type="primary"):
@@ -1408,7 +1318,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V27.8")
+    st.title("🏆 College Football Mogul V28.0")
     st.markdown("### Dynasty Mode")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -1459,6 +1369,10 @@ def run_setup():
         st.session_state.top8 = []; st.session_state.top8_resolved = set()
         st.session_state.trophies = []; st.session_state.conf_revenue_boost_mult = 1.0; st.session_state.pending_invite = None; st.session_state.booster_rating = 50; st.session_state.ai_records = []; st.session_state.selection_sunday_results = []; st.session_state.last_postseason_result = "NONE"
         st.session_state.achievements = []; st.session_state.milestone_log = []
+        
+        # Init V28 recruiting keys
+        for p in POSITIONS: st.session_state[f"hs_pos_input_{p}_v28"] = 0
+        
         add_news(f"{team} hires {st.session_state.staff['HC']['name']} as HC."); st.session_state.game_state = "DASHBOARD"; st.rerun()
 
 def show_dashboard():
@@ -1909,7 +1823,7 @@ def show_postseason():
                             next_round_teams.sort(key=lambda ts: ts[1]); 
                             if len(next_round_teams) >= 4:
                                 new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[3][0], "winner": None})
-                                new_matches.append({"t1": next_round_teams[1][0], "t2": next_round_teams[2][0], "winner": None})
+                                new_matches.append({"t1": next_round_teams[1][0], "t2": next_round_teams[1][0], "winner": None})
                         elif round_num == 3:
                             next_round_teams.sort(key=lambda ts: ts[1]); 
                             if len(next_round_teams) >= 2: new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[1][0], "winner": None})
