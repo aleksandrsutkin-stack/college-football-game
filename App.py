@@ -1478,6 +1478,13 @@ def show_dashboard():
 # ROUTER
 # ==============================================================================
 
+# 1. Initialize State (CRITICAL FIX)
+init_session_state_defaults()
+
+# 2. Render Sidebar
+render_system_sidebar()
+
+# 3. Route to correct screen
 if st.session_state.game_state == GameState.SETUP:
     run_setup()
 elif st.session_state.game_state == GameState.FIRED:
@@ -1493,177 +1500,7 @@ elif st.session_state.game_state == GameState.POSTSEASON:
 elif st.session_state.game_state == GameState.SEASON_RECAP:
     show_season_recap()
 elif st.session_state.game_state == GameState.OFFSEASON:
-    # Use V1.9 RecruitingPhases config + Router
-    step = st.session_state.get("offseason_step", 1)
-    phase = RecruitingPhases.get_phase_by_step(step)
-    
-    if phase:
-        # Retention (Step 1)
-        if step == 1:
-            render_recruiting_phase_header(phase)
-            # Inject V1.8 Retention Logic
-            if not st.session_state.retention_data:
-                st.session_state.retention_data = generate_retention_demands()
-            
-            demands = st.session_state.retention_data
-            pending = sum(1 for d in demands if d["status"] == "PENDING")
-            
-            # --- Retention UI ---
-            cols = st.columns(3)
-            for i, d in enumerate(demands):
-                with cols[i]:
-                    with st.container(border=True):
-                        st.markdown(f"### {d['pos']} Group")
-                        st.metric("Current Rating", d['rating'])
-                        st.metric("Demanding", helper_format_cash(d['cost']))
-                        if d["status"] == "PENDING":
-                            if st.button("Pay", key=f"pay_{i}"):
-                                if BudgetManager.spend(d["cost"], f"Retention: {d['pos']}"):
-                                    d["status"] = "PAID"; st.rerun()
-                            if st.button("Release", key=f"leave_{i}"):
-                                d["status"] = "LEFT"
-                                loss = random.randint(6, 9)
-                                st.session_state.roster[d['pos']] = max(40, d['rating'] - loss)
-                                add_news(f"{d['pos']} group leaves! -{loss} OVR")
-                                st.rerun()
-                        elif d["status"] == "PAID": st.success("Retained")
-                        else: st.error("Left Team")
-            # --- End Retention UI ---
-
-            render_recruiting_phase_footer(phase, can_continue=(pending==0))
-
-        # NIL (Step 2)
-        elif step == 2:
-            render_recruiting_phase_header(phase)
-            # Inject V1.8 NIL Logic
-            if not st.session_state.nil_class:
-                st.session_state.nil_class = generate_nil_class_15(st.session_state.team_needs)
-            
-            st.markdown(f"**Needs:** {', '.join(st.session_state.team_needs)}")
-            for p in st.session_state.nil_class:
-                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-                c1.write(f"{p['pos']} {p['name']} ({p['rating']})")
-                c2.markdown(f"`{p['tier_label']}`")
-                c3.write(helper_format_cash(p['ask']))
-                if p["status"] == "SIGNED": c4.success("Signed")
-                else:
-                    if c4.button("Sign", key=f"nil_{p['id']}"):
-                        if BudgetManager.spend(p['ask'], f"Sign {p['name']}"):
-                            p['status'] = "SIGNED"
-                            st.session_state.roster[p['pos']] = max(st.session_state.roster[p['pos']], p['rating'])
-                            st.rerun()
-            # --- End NIL Logic ---
-            render_recruiting_phase_footer(phase)
-
-        # HS Outreach (Step 3)
-        elif step == 3:
-            render_recruiting_phase_header(phase)
-            # Inject V1.8 HS Logic
-            hot = st.session_state.hotspots.get(st.session_state.home_region, [])
-            needs = st.session_state.team_needs
-            max_b = BudgetManager.get_current()
-            
-            cur_spend = 0
-            alloc = {}
-            c1, c2 = st.columns(2)
-            c1.metric("Budget", helper_format_cash(max_b))
-            
-            cols = st.columns(4)
-            for idx, p in enumerate(GameConfig.POSITIONS):
-                with cols[idx%4]:
-                    key = f"hs_pos_input_{p}_v28"
-                    val = safe_int(st.session_state.get(key, 0))
-                    cur_spend += val
-                    alloc[p] = val
-                    st.number_input(f"{p}", min_value=0, max_value=max_b, step=100000, key=key)
-            
-            c2.metric("Allocated", helper_format_cash(cur_spend))
-            
-            # --- End HS Logic ---
-            
-            # Custom Action for Footer
-            def run_hs():
-                if st.button("Run Recruiting 🚀", type="primary", disabled=(cur_spend==0 or cur_spend>max_b)):
-                    st.session_state.hs_total_spend = cur_spend
-                    st.session_state.hs_alloc_by_pos = alloc
-                    execute_hs_outreach(cur_spend, alloc, needs)
-
-            # Check if results exist to show next button
-            has_results = st.session_state.get("hs_last_results") is not None
-            if has_results:
-                render_hs_results_summary()
-            else:
-                render_recruiting_phase_footer(phase, custom_action=run_hs)
-
-        # Top 8 (Step 4)
-        elif step == 4:
-            render_recruiting_phase_header(phase)
-            # Inject V1.8 Top 8 Logic
-            if not st.session_state.top8:
-                st.session_state.top8 = generate_top8_prospects(st.session_state.team_needs)
-            
-            for r in st.session_state.top8:
-                rid = r["id"]
-                c1, c2, c3 = st.columns([2, 2, 1])
-                c1.write(f"**{r['pos']} {r['name']} ({r['rating']})**")
-                c1.caption(f"Ask: {helper_format_cash(r['ask'])}")
-                
-                max_o = int(st.session_state.budget)
-                r["offer"] = c2.slider("Offer", 0, max_o, int(r.get("offer", 0)), step=50000, key=f"offer_{rid}")
-                
-                if r.get("status") == "COMMITTED": c3.success("Signed")
-                elif r.get("status") == "LOST": c3.error("Lost")
-                else:
-                    if c3.button("Pitch", key=f"pitch_{rid}", disabled=(r["offer"]==0)):
-                        if BudgetManager.spend(r["offer"], "Pitch"):
-                            chance = top8_commit_chance(r, {r['pos']: r['offer']}, st.session_state.staff, st.session_state.prestige)
-                            if random.random() < chance:
-                                r["status"] = "COMMITTED"
-                                st.session_state.roster[r['pos']] = max(st.session_state.roster[r['pos']], r['rating'])
-                                safe_toast("Got him!")
-                            else:
-                                r["status"] = "LOST"
-                                safe_toast("Missed.")
-                            st.session_state.top8_resolved.add(rid)
-                            st.rerun()
-            # --- End Top 8 Logic ---
-            
-            def finish_season():
-                if st.button("Finish Season", type="primary"):
-                    # Year End Logic
-                    grade, score, bd = compute_recruiting_class_grade()
-                    st.session_state.history[-1]["RecruitingGrade"] = grade
-                    st.session_state.recruiting_summary = {"grade": grade, "score": score, "breakdown": bd}
-                    
-                    st.session_state.year += 1
-                    st.session_state.tenure += 1
-                    st.session_state.inflation *= 1.02
-                    OpponentManager.evolve_universe()
-                    
-                    invite = maybe_generate_conference_invite()
-                    if not invite: ai_conference_swap_lightweight()
-                    
-                    st.session_state.schedule = engine_generate_schedule(st.session_state.team_name, st.session_state.team_conf, st.session_state.team_rival)
-                    st.session_state.week_index = 0
-                    st.session_state.record = {"w": 0, "l": 0}
-                    st.session_state.season_logs = []
-                    st.session_state.season_simulated = False
-                    st.session_state.season_end_ready = False
-                    st.session_state.offseason_step = 1
-                    st.session_state.nil_class = []
-                    st.session_state.hs_total_spend = 0
-                    st.session_state.top8 = []
-                    st.session_state.top8_resolved = set()
-                    st.session_state.hs_last_results = None
-                    st.session_state.retention_data = []
-                    
-                    for p in GameConfig.POSITIONS: st.session_state[f"hs_pos_input_{p}_v28"] = 0
-                    
-                    st.session_state.game_state = GameState.RECRUITING_WRAP
-                    st.rerun()
-
-            render_recruiting_phase_footer(phase, custom_action=finish_season)
-
+    show_offseason()
 elif st.session_state.game_state == GameState.RECRUITING_WRAP:
     show_recruiting_wrap()
 elif st.session_state.game_state == GameState.RETIREMENT:
