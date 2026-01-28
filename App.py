@@ -1417,7 +1417,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 Build the Program: CEO")
+    st.title("🏆 Build the Program: College Football CEO")
     st.markdown("### Dynasty Mode Setup")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
