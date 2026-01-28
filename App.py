@@ -742,7 +742,7 @@ def normalize_shares(shares: dict):
     if total <= 0:
         return {p: 100.0 / len(GameConfig.POSITIONS) for p in GameConfig.POSITIONS}
     return {p: (_val(p) / total) * 100.0 for p in GameConfig.POSITIONS}
-    def render_achievements_panel():
+def render_achievements_panel():
     st.subheader("🎖️ Achievements")
     ach = st.session_state.get("achievements", []) or []
     if not ach:
