@@ -1,12 +1,13 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 28.2 (UI Polish & Bracket Fixes)
+Version 28.3 (Engine Tuning & UI Polish)
 
-Changes in 28.2:
-- Season Tab: Moved Play/Sim buttons and Game Plan to the top (no scrolling).
-- HS War Room: Single-click "Dismiss & Continue" flow.
-- CFP: "Simulate Round" now generates visible scores.
-- CFP: Bracket now displays Top-4 Byes clearly.
+Changes in 28.3:
+- Season Tab: Optimized button layout (no truncation).
+- News: Added color-coding (Good/Bad) and moved to bottom of results.
+- Rankings: Fixed alignment bug for User Pinned row.
+- Attrition: Added "Draft Drain" (better teams lose more talent).
+- Engine: Increased Talent weight (0.60), reduced randomness, buffed Home Field.
 """
 
 import streamlit as st
@@ -22,7 +23,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 28.2
+STATE_VERSION = 28.3
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -43,7 +44,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V28.2", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V28.3", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -91,7 +92,9 @@ st.markdown("""
 .bracket-box h1 { margin: 10px 0; color: white; font-size: 2.5em; font-weight: 900; line-height: 1.1; }
 .bracket-row { display: flex; justify-content: space-between; padding: 6px; border-bottom: 1px solid #444; width: 100%; }
 .news-box { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-.news-item { padding: 6px 0; border-bottom: 1px solid #f1f1f1; }
+.news-item { padding: 6px 10px; border-bottom: 1px solid #f1f1f1; font-size: 0.9em; }
+.news-item-good { border-left: 4px solid #28a745; background-color: #f0fff4; }
+.news-item-bad { border-left: 4px solid #dc3545; background-color: #fff5f5; }
 .trophy-tile { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 10px; }
 .newspaper-head { font-family: 'Georgia', serif; font-size: 2em; text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 20px; color: #2c3e50; background: #fdfbf7; padding-top: 20px; }
 .newspaper-sub { font-family: 'Georgia', serif; font-style: italic; text-align: center; color: #555; margin-bottom: 20px; }
@@ -359,10 +362,33 @@ def render_news_box():
     items = st.session_state.get("news", []) or []
     if not items: st.info("No headlines yet."); return
     st.markdown("<div class='news-box'>", unsafe_allow_html=True)
+    
+    # V28.3: Keyword-based color coding
+    good_keys = ["win", "wins", "advances", "upgrade", "signs", "committed", "found", "promotes", "hires"]
+    bad_keys = ["lose", "loses", "falls", "eliminated", "fired", "pressure", "overdraft"]
+    
     for it in items[:18]:
-        txt = it if isinstance(it, str) else f"{it.get('ts','')}" + " - " + f"{it.get('text','')}"
-        st.markdown(f"<div class='news-item'>{txt}</div>", unsafe_allow_html=True)
+        txt = it if isinstance(it, str) else f"{it.get('ts','')} - {it.get('text','')}"
+        content_lower = txt.lower()
+        css_class = "news-item"
+        if any(k in content_lower for k in good_keys): css_class += " news-item-good"
+        elif any(k in content_lower for k in bad_keys): css_class += " news-item-bad"
+        
+        st.markdown(f"<div class='{css_class}'>{txt}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
+def html_rank_row(rank, team, wins, losses, conf, is_user):
+    """Helper to ensure rank rows are identical structure."""
+    bg_class = "rank-row-user" if is_user else "rank-row"
+    status = "🏆 CFP" if rank <= 12 else ("🎳 BOWL" if wins >= 6 else "❌ OUT")
+    return f"""
+    <div class='{bg_class}'>
+        <div class='rank-num'>#{rank}</div>
+        <div class='rank-team'>{team} <span style='font-size:0.8em; color:#666'>({conf})</span></div>
+        <div class='rank-rec'><b>{wins}-{losses}</b></div>
+        <div style='width:80px; text-align:right; font-weight:bold;'>{status}</div>
+    </div>
+    """
 
 def get_conferences_map():
     if "conferences_map" not in st.session_state or not isinstance(st.session_state.conferences_map, dict):
@@ -377,7 +403,7 @@ def get_conference(team: str) -> str:
     return "G5"
 
 def compute_team_needs(roster: dict, k: int = 3) -> list:
-    roster = roster or {};
+    roster = roster or {}
     vals = [(pos, safe_int(roster.get(pos, 75), 75)) for pos in POSITIONS]
     vals.sort(key=lambda x: x[1])
     return [p for p, _ in vals[:max(1, int(k))]]
@@ -542,20 +568,28 @@ def apply_conference_move(to_conf: str, boost_mult: float):
     add_news(f"{team} joins the {to_conf}.")
 
 def apply_roster_attrition():
-    """V27.6: Simulates graduation and draft declaration to prevent infinite stacking."""
+    """V28.3: Dynamic Attrition (The Draft Drain)
+    Higher rated players are more likely to leave for the draft.
+    """
     attrition_log = []
     for p in POSITIONS:
         current = st.session_state.roster[p]
-        # Base loss: Seniors graduating
-        loss = random.randint(3, 7)
-        # Draft penalty: High ratings lose more talent
-        if current > 90: loss += random.randint(1, 4)
+        # Base loss: Seniors graduating (3-7)
+        base_loss = random.randint(3, 7)
         
-        new_val = max(40, current - loss)
+        # Talent Surplus: The amount above 75 (Average)
+        talent_surplus = max(0, current - 75)
+        
+        # Draft Drain: 35% of the surplus leaves (simulating draft/portal)
+        draft_loss = int(talent_surplus * 0.35)
+        
+        total_loss = base_loss + draft_loss
+        new_val = max(40, current - total_loss)
+        
         st.session_state.roster[p] = new_val
-        attrition_log.append(f"{p}: -{loss}")
+        attrition_log.append(f"{p}: -{total_loss}")
     
-    add_news(f"Graduation/Draft departures: {', '.join(attrition_log)}")
+    add_news(f"Graduation & Draft departures: {', '.join(attrition_log)}")
 
 def end_regular_season_and_stay_on_results():
     if st.session_state.season_end_ready:
@@ -691,9 +725,8 @@ def get_tier_bonus(rating):
 def home_field_points(stadium_level: int) -> float:
     lvl = int(stadium_level)
     if lvl <= 6: return 0.0
-    if lvl <= 8: return 1.0
-    if lvl <= 10: return 3.0
-    return 4.0
+    if lvl <= 8: return 2.5 # V28.3: Bumped up
+    return 4.0 # V28.3: Top Tier gives +4
 
 def compute_team_unit_ratings(roster: dict, staff: dict, facilities: dict):
     roster = roster or {}; staff = staff or {}; facilities = facilities or {}
@@ -708,8 +741,11 @@ def compute_team_unit_ratings(roster: dict, staff: dict, facilities: dict):
 
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
     rng = rng or random.Random()
-    my_edge = (my_off - opp_def) * 0.35
-    opp_edge = (opp_off - my_def) * 0.35
+    
+    # V28.3: INCREASED TALENT WEIGHT (from 0.35 to 0.60)
+    my_edge = (my_off - opp_def) * 0.60
+    opp_edge = (opp_off - my_def) * 0.60
+    
     scheme_bonus_my = scheme_bonus_opp = 0.0
     my_off_s = schemes.get("Off", "Pro Style"); opp_def_s = opp_schemes.get("Def", "Man Coverage")
 
@@ -744,8 +780,9 @@ def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_sc
     exp_opp = base_pts + opp_edge + scheme_bonus_opp + coaching_opp + opp_hf
     exp_my = max(10, min(50, exp_my)); exp_opp = max(10, min(50, exp_opp))
 
-    my_score = int(round(rng.gauss(exp_my, 7.0 * var_mult)))
-    opp_score = int(round(rng.gauss(exp_opp, 7.0 * var_mult)))
+    # V28.3: REDUCED VARIANCE (from 7.0 to 6.0)
+    my_score = int(round(rng.gauss(exp_my, 6.0 * var_mult)))
+    opp_score = int(round(rng.gauss(exp_opp, 6.0 * var_mult)))
 
     if my_score == opp_score:
         my_score += rng.choice([0, 3, 7]); opp_score += rng.choice([0, 0, 3])
@@ -1389,7 +1426,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V28.2")
+    st.title("🏆 College Football Mogul V28.3")
     st.markdown("### Dynasty Mode")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -1590,7 +1627,7 @@ def show_dashboard():
         if not st.session_state.schedule:
             st.session_state.schedule = engine_generate_schedule(st.session_state.team_name, st.session_state.team_conf, st.session_state.team_rival)
 
-        # --- V28.2: REORDERED LAYOUT (CONTROLS AT TOP) ---
+        # --- V28.3: REORDERED LAYOUT (BETTER SPACING) ---
         sched = st.session_state.schedule or []
         sched_len = len(sched)
         
@@ -1610,11 +1647,11 @@ def show_dashboard():
             my_off_val = off_val; my_def_val = def_val
             st.caption(f"Matchup: Your OFF {my_off_val} vs Opp DEF {opp_def} | Your DEF {my_def_val} vs Opp OFF {opp_off}")
 
-            # 2. Controls Row
-            ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([2, 1, 1])
+            # 2. Controls Row (V28.3 Layout)
+            ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([1, 2, 2])
             with ctrl_c1:
                 st.session_state.game_state = "DASHBOARD" # Force
-                st.session_state.game_plan = st.selectbox("Weekly Gameplan", ["Conservative", "Normal", "Aggressive"], index=["Conservative", "Normal", "Aggressive"].index(st.session_state.game_plan))
+                st.session_state.game_plan = st.selectbox("Gameplan", ["Conservative", "Normal", "Aggressive"], index=["Conservative", "Normal", "Aggressive"].index(st.session_state.game_plan))
 
             def play_one_week():
                 try:
@@ -1639,9 +1676,9 @@ def show_dashboard():
                 if st.session_state.week_index >= 12: end_regular_season_and_stay_on_results()
 
             with ctrl_c2:
-                if st.button("🏈 PLAY", type="primary"): play_one_week(); st.rerun()
+                if st.button(f"🏈 Play Week {wk+1}", type="primary", use_container_width=True): play_one_week(); st.rerun()
             with ctrl_c3:
-                if st.button("⏩ SIM"):
+                if st.button("⏩ Sim Season", use_container_width=True):
                     while not st.session_state.season_simulated:
                         wk2 = st.session_state.week_index; sched2 = st.session_state.schedule or []
                         if wk2 >= len(sched2) or wk2 >= 12: break
@@ -1685,7 +1722,10 @@ def show_dashboard():
                     css = "game-card-rival" if is_rival else "game-card-pending"
                     st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
 
-        st.divider(); render_news_box(); st.divider()
+        st.divider()
+        # V28.3: Removed News from here (moved to Sidebar or Season End bottom)
+        render_news_box() 
+        st.divider()
 
     with tab5:
         st.subheader("🏛️ Trophy Case (Quick View)")
@@ -1720,7 +1760,7 @@ def show_season_end():
     sync_team_ratings()
     st.title("📊 Season End — Results Hub")
     st.markdown(f"<div class='nil-alert'>Regular season complete. Record: <b>{st.session_state.record['w']}-{st.session_state.record['l']}</b> | Budget: <b>{helper_format_cash(st.session_state.budget)}</b></div>", unsafe_allow_html=True)
-    render_news_box()
+    
     avg_sos, best_win, worst_loss = get_season_metrics()
     st.divider(); st.subheader("🏆 Your Tournament Resume")
     st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-val'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-val'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-val'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-val'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
@@ -1742,6 +1782,10 @@ def show_season_end():
         all_teams.sort(key=lambda x: x["Score"], reverse=True)
         st.session_state.selection_sunday_results = all_teams
         st.session_state.game_state = "SELECTION_SUNDAY"; st.rerun()
+    
+    # V28.3: Moved News to Bottom
+    st.divider()
+    render_news_box()
 
 def show_selection_sunday():
     sync_team_ratings()
@@ -1760,16 +1804,8 @@ def show_selection_sunday():
     user_row = next((t for t in results if t.get("IsUser") or t.get("Team") == st.session_state.team_name), None)
     if user_row:
         st.subheader("🎯 Your Team (Pinned)")
-        status = "🏆 CFP" if user_rank <= 12 else ("🎳 BOWL" if safe_int(user_row.get("Wins", 0), 0) >= 6 else "❌ OUT")
-        st.markdown(
-            f"<div class='rank-row rank-row-user'>"
-            f"<div class='rank-num'>#{user_rank}</div>"
-            f"<div class='rank-team'>{user_row.get('Team')} <span style='font-size:0.8em; color:#666'>({user_row.get('Conf')})</span></div>"
-            f"<div class='rank-rec'><b>{user_row.get('Wins')}-{user_row.get('Losses')}</b></div>"
-            f"<div style='width:80px; text-align:right; font-weight:bold;'>{status}</div>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
+        # V28.3: Use helper for identical HTML
+        st.markdown(html_rank_row(user_rank, user_row['Team'], user_row['Wins'], user_row['Losses'], user_row['Conf'], True), unsafe_allow_html=True)
         st.divider()
 
     if user_rank <= 4: st.success(f"✅ Top-4 Seed (#{user_rank}): You receive a First Round BYE.")
@@ -1779,9 +1815,9 @@ def show_selection_sunday():
     view = results if show_full else results[:25]
 
     for i, t in enumerate(view):
-        rank = i + 1; is_user = t.get("IsUser", False); bg_class = "rank-row-user" if is_user else "rank-row"; wins = safe_int(t.get("Wins", 0), 0); losses = safe_int(t.get("Losses", 0), 0)
-        status = "🏆 CFP" if rank <= 12 else ("🎳 BOWL" if wins >= 6 else "❌ OUT")
-        st.markdown(f"<div class='{bg_class}'><div class='rank-num'>#{rank}</div><div class='rank-team'>{t['Team']} <span style='font-size:0.8em; color:#666'>({t['Conf']})</span></div><div class='rank-rec'><b>{t['Wins']}-{t['Losses']}</b></div><div style='width:80px; text-align:right; font-weight:bold;'>{status}</div></div>", unsafe_allow_html=True)
+        rank = i + 1; is_user = t.get("IsUser", False);
+        # V28.3: Use helper for identical HTML
+        st.markdown(html_rank_row(rank, t['Team'], t['Wins'], t['Losses'], t['Conf'], is_user), unsafe_allow_html=True)
     
     st.divider(); user_wins = st.session_state.record['w']
     if user_wins < 6:
@@ -2003,7 +2039,7 @@ def show_season_recap():
         elif new_boost <= 20:
             st.session_state.job_security -= 10; safe_toast("Booster Pressure: Security -10")
         
-        # V27.6 FIX: Apply attrition/graduation here so players don't stack infinitely
+        # V28.3: Apply Attrition
         apply_roster_attrition()
         
         check_and_award_achievements()
