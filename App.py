@@ -1,6 +1,6 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 27.6 (The Attrition Update)
+Version 27.7 (Stability Fix)
 
 A comprehensive college football coaching simulation featuring:
 - Dynasty mode with multi-season careers
@@ -23,7 +23,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 27.6
+STATE_VERSION = 27.7
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -44,7 +44,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V27.6", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V27.7", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -961,7 +961,7 @@ def render_hs_budget_controls(max_budget: int, needs: List[str], hot: List[str])
     with c2:
         current_cap = int(st.session_state.get("hs_total_spend", 0))
         safe_current_cap = min(current_cap, max_budget)
-        new_cap = st.number_input("Total Recruiting Budget ($)", min_value=0, max_value=max_budget, value=safe_current_cap, step=250_000, format="$%d")
+        new_cap = st.number_input("Total Recruiting Budget ($)", min_value=0, max_value=max_budget, value=safe_current_cap, step=250_000, format="%d")
     new_cap = min(int(new_cap), max_budget)
     st.session_state.hs_total_spend = new_cap
     return new_cap
@@ -988,7 +988,6 @@ def render_hs_position_allocators(budget: int, needs: List[str], hot: List[str])
         if key not in st.session_state: st.session_state[key] = int(alloc.get(p, 0) or 0)
     
     st.divider(); cols = st.columns(2)
-    # V27.6 FIX: Format inputs with $ to prevent crash on user typing symbols
     new_alloc = alloc.copy()
     for idx, pos in enumerate(POSITIONS):
         with cols[idx % 2]:
@@ -1002,7 +1001,7 @@ def render_hs_position_allocators(budget: int, needs: List[str], hot: List[str])
                 max_value=budget, 
                 value=int(alloc.get(pos, 0)), 
                 step=100_000, 
-                format="$%d",
+                format="%d",
                 key=f"hs_pos_input_{pos}_v27"
             )
             new_alloc[pos] = int(val)
@@ -1406,7 +1405,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V27.6")
+    st.title("🏆 College Football Mogul V27.7")
     st.markdown("### Dynasty Mode")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
