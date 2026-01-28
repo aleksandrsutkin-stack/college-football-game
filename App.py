@@ -1,8 +1,14 @@
 """
 Build the Program: College Football CEO
-Version 1.0 (Refactored & Polished)
+Version 1.1 (Economy Crunch & Talent Update)
 
-A comprehensive college football coaching simulation.
+Changes in 1.1:
+- Economy: Annual budgets cut by ~50% to increase difficulty.
+- Engine: Talent importance increased (0.75 weight), variance reduced (5.5).
+- UI: Static 3-Column CFP Bracket.
+- UI: CSS Grid for perfect ranking alignment.
+- UI: News moved to Sidebar.
+- Legacy: Added 5 new achievements.
 """
 
 import streamlit as st
@@ -14,10 +20,10 @@ import math
 from typing import List, Dict, Optional, Set
 
 # ==============================================================================
-# CONFIGURATION & CONSTANTS (HYGIENE: Encapsulated)
+# CONFIGURATION & CONSTANTS (HYGIENE)
 # ==============================================================================
 
-STATE_VERSION = 1.0
+STATE_VERSION = 1.1
 
 class GameState:
     SETUP = "SETUP"
@@ -335,8 +341,10 @@ class BudgetManager:
     
     @staticmethod
     def calculate_revenue(tier: int, marketing_level: int, inflation: float) -> int:
-        base_revenue = {1: 40_000_000, 2: 25_000_000, 3: 10_000_000, 4: 5_000_000}.get(tier, 5_000_000)
-        marketing_bonus = safe_int(marketing_level, 0) * 2_000_000
+        # V1.1: Reduced Base Revenue (Economy Crunch)
+        base_revenue = {1: 22_000_000, 2: 14_000_000, 3: 6_000_000, 4: 3_000_000}.get(tier, 3_000_000)
+        
+        marketing_bonus = safe_int(marketing_level, 0) * 1_500_000
         total = (base_revenue + marketing_bonus) * float(inflation)
         conf_boost = float(st.session_state.get("conf_revenue_boost_mult", 1.0))
         total *= conf_boost
@@ -403,23 +411,26 @@ def add_news(msg: str):
     st.session_state.news = st.session_state.news[:40]
 
 def render_news_box():
-    st.subheader("🗞️ News Wire")
-    items = st.session_state.get("news", []) or []
-    if not items: st.info("No headlines yet."); return
-    st.markdown("<div class='news-box'>", unsafe_allow_html=True)
-    
-    good_keys = ["win", "wins", "advances", "upgrade", "signs", "committed", "found", "promotes", "hires"]
-    bad_keys = ["lose", "loses", "falls", "eliminated", "fired", "pressure", "overdraft"]
-    
-    for it in items[:18]:
-        txt = it if isinstance(it, str) else f"{it.get('ts','')} - {it.get('text','')}"
-        content_lower = txt.lower()
-        css_class = "news-item"
-        if any(k in content_lower for k in good_keys): css_class += " news-item-good"
-        elif any(k in content_lower for k in bad_keys): css_class += " news-item-bad"
+    # V1.1: Moved to Sidebar
+    with st.sidebar:
+        st.divider()
+        st.subheader("🗞️ News Wire")
+        items = st.session_state.get("news", []) or []
+        if not items: 
+            st.caption("No headlines yet.")
+            return
         
-        st.markdown(f"<div class='{css_class}'>{txt}</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+        good_keys = ["win", "wins", "advances", "upgrade", "signs", "committed", "found", "promotes", "hires"]
+        bad_keys = ["lose", "loses", "falls", "eliminated", "fired", "pressure", "overdraft"]
+        
+        for it in items[:15]:
+            txt = it if isinstance(it, str) else f"{it.get('ts','')} - {it.get('text','')}"
+            content_lower = txt.lower()
+            css_class = "news-item"
+            if any(k in content_lower for k in good_keys): css_class += " news-item-good"
+            elif any(k in content_lower for k in bad_keys): css_class += " news-item-bad"
+            
+            st.markdown(f"<div class='{css_class}'>{txt}</div>", unsafe_allow_html=True)
 
 def html_rank_row(rank, team, wins, losses, conf, is_user):
     """Helper to ensure rank rows are identical structure using CSS Grid."""
@@ -542,37 +553,62 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
             )
 
 def render_cfp_bracket(data: dict):
+    # V1.1: Static 3-Column Layout
     st.subheader("🏆 CFP Bracket")
-    rounds = data.get("Rounds")
-    if not rounds:
-        rounds = [{"name": f"Round {data.get('Round', 1)}", "games": data.get("Matches", [])}]
-
-    cols = st.columns(len(rounds))
-    for i, rd in enumerate(rounds):
-        with cols[i]:
-            st.markdown(f"### {rd.get('name', 'Round')}")
-            for g in rd.get("games", []):
-                t1, t2 = g.get("t1", "TBD"), g.get("t2", "TBD")
-                s1, s2 = g.get("s1", None), g.get("s2", None)
-                w = g.get("winner", None)
-
-                line1 = f"**{t1}**" + (f" — {s1}" if s1 is not None else "")
-                line2 = f"**{t2}**" + (f" — {s2}" if s2 is not None else "")
-                badge = "✅" if w else "⏳"
-
-                st.markdown(
-                    f"<div class='game-card' style='margin-bottom:10px;'>"
-                    f"<div class='card-header'><span>{badge} Match</span><span>{('Winner: ' + w) if w else 'In progress'}</span></div>"
-                    f"<div>{line1}</div>"
-                    f"<div>{line2}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
     
-    if data.get("Round") == 1:
-        seeds = data.get("Seeds", [])
-        if len(seeds) >= 4:
-            st.info(f"**Waiting in Quarterfinals (Byes):** #1 {seeds[0]}, #2 {seeds[1]}, #3 {seeds[2]}, #4 {seeds[3]}")
+    seeds = data.get("Seeds", ["TBD"]*12)
+    matches = data.get("Matches", [])
+    
+    c1, c2, c3 = st.columns([1, 1, 1])
+    
+    # Column 1: Opening Round (Games 1-4)
+    with c1:
+        st.markdown("### Opening Round")
+        for m in matches:
+            t1, t2 = m.get("t1", "TBD"), m.get("t2", "TBD")
+            s1, s2 = m.get("s1", ""), m.get("s2", "")
+            w = m.get("winner")
+            
+            line1 = f"{t1}" + (f" ({s1})" if s1 else "")
+            line2 = f"{t2}" + (f" ({s2})" if s2 else "")
+            badge = "✅" if w else "⏳"
+            
+            st.markdown(
+                f"<div class='game-card' style='padding:8px; font-size:0.9em;'>"
+                f"<div>{badge} <b>{t1}</b> vs <b>{t2}</b></div>"
+                f"<div style='color:#666'>{s1} - {s2}</div>"
+                f"</div>", unsafe_allow_html=True
+            )
+
+    # Column 2: Quarterfinals (Top 4 Waiting)
+    with c2:
+        st.markdown("### Quarterfinals")
+        qf_teams = seeds[:4] # Top 4 Seeds
+        
+        # Hardcode the structure for visual clarity
+        qf_matchups = [
+            f"#1 {qf_teams[0]} vs Winner G4",
+            f"#2 {qf_teams[1]} vs Winner G3",
+            f"#3 {qf_teams[2]} vs Winner G2",
+            f"#4 {qf_teams[3]} vs Winner G1"
+        ] if len(qf_teams) >= 4 else ["TBD"]*4
+        
+        for qm in qf_matchups:
+            st.markdown(
+                f"<div class='game-card' style='padding:12px; border-left:4px solid #f1c40f;'>"
+                f"<div><b>{qm}</b></div>"
+                f"</div>", unsafe_allow_html=True
+            )
+
+    # Column 3: Final Four (Placeholder)
+    with c3:
+        st.markdown("### Final Four")
+        st.markdown(
+            f"<div class='game-card' style='padding:20px; text-align:center; opacity:0.7;'>"
+            f"<div>🏆 SEMIS & TITLE</div>"
+            f"<div>(Awaiting QF Results)</div>"
+            f"</div>", unsafe_allow_html=True
+        )
 
 def calculate_saban_score(career_stats, prestige):
     return int(
@@ -657,8 +693,20 @@ def render_dynasty_timeline(max_items=25):
 def check_and_award_achievements():
     if "achievements" not in st.session_state or st.session_state.achievements is None:
         st.session_state.achievements = []
+    
+    # 1. Bowl Win
     if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
         st.session_state.achievements.append("First Bowl Win")
+    
+    # 2. Program Builder
+    if st.session_state.prestige >= 80 and "Program Builder" not in st.session_state.achievements:
+        st.session_state.achievements.append("Program Builder")
+        safe_toast("🏆 Achievement Unlocked: Program Builder")
+
+    # 3. Perfect Season
+    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
+        st.session_state.achievements.append("Perfect Season")
+        safe_toast("🏆 Achievement Unlocked: Perfect Season")
 
 def init_playoff_bracket(user_rank, user_team_name):
     results = st.session_state.get("selection_sunday_results", []) or []
@@ -757,8 +805,10 @@ def compute_team_unit_ratings(roster: dict, staff: dict, facilities: dict):
 
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
     rng = rng or random.Random()
-    my_edge = (my_off - opp_def) * 0.60
-    opp_edge = (opp_off - my_def) * 0.60
+    
+    # V1.1: TALENT WEIGHT INCREASED TO 0.75 (Was 0.60)
+    my_edge = (my_off - opp_def) * 0.75
+    opp_edge = (opp_off - my_def) * 0.75
     
     scheme_bonus_my = scheme_bonus_opp = 0.0
     my_off_s = schemes.get("Off", "Pro Style"); opp_def_s = opp_schemes.get("Def", "Man Coverage")
@@ -794,8 +844,9 @@ def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_sc
     exp_opp = base_pts + opp_edge + scheme_bonus_opp + coaching_opp + opp_hf
     exp_my = max(10, min(50, exp_my)); exp_opp = max(10, min(50, exp_opp))
 
-    my_score = int(round(rng.gauss(exp_my, 6.0 * var_mult)))
-    opp_score = int(round(rng.gauss(exp_opp, 6.0 * var_mult)))
+    # V1.1: VARIANCE REDUCED TO 5.5 (Was 6.0)
+    my_score = int(round(rng.gauss(exp_my, 5.5 * var_mult)))
+    opp_score = int(round(rng.gauss(exp_opp, 5.5 * var_mult)))
 
     if my_score == opp_score:
         my_score += rng.choice([0, 3, 7]); opp_score += rng.choice([0, 0, 3])
@@ -946,6 +997,9 @@ def render_system_sidebar():
                 st.success("Save Loaded Successfully! Reloading..."); time.sleep(1); st.rerun()
             except Exception as e:
                 st.error(f"Error loading save: {e}")
+                
+        # V1.1: Render News in Sidebar
+        render_news_box()
 
 # ==============================================================================
 # ZONE 6: UI - RECRUITING COMPONENTS
@@ -1319,8 +1373,7 @@ def show_offseason():
                 st.session_state.team_conf, 
                 st.session_state.team_rival
             )
-            st.session_state.week_index = 0; st.session_state.record = {"w": 0, "l": 0}; st.session_state.season_logs = []
-            st.session_state.season_simulated = False; st.session_state.season_end_ready = False; st.session_state.revenue_report = None
+            st.session_state.week_index = 0; st.session_state.record = {"w": 0, "l": 0}; st.session_state.season_logs = []; st.session_state.season_simulated = False; st.session_state.season_end_ready = False; st.session_state.revenue_report = None
             st.session_state.nil_class = []; st.session_state.hs_total_spend = 0
             st.session_state.top8 = []; st.session_state.top8_resolved = set()
             st.session_state.offseason_step = 1
@@ -1417,7 +1470,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 Build the Program: College Football CEO")
+    st.title("🏆 Build the Program: CEO")
     st.markdown("### Dynasty Mode Setup")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -1891,8 +1944,9 @@ def show_postseason():
                     t1, t2 = m.get("t1"), m.get("t2"); o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
                     p = o1 / max(1.0, (o1 + o2)); winner = t1 if random.random() < p else t2
                     
+                    # FIX V28.2: GENERATE RANDOM SCORES FOR SIMULATED GAMES
                     s_win = int(random.gauss(34, 7)); s_loss = int(random.gauss(20, 7))
-                    if s_win <= s_loss: s_win = s_loss + 3 
+                    if s_win <= s_loss: s_win = s_loss + 3 # Ensure winner has higher score
                     if winner == t1: m["s1"], m["s2"] = s_win, s_loss
                     else: m["s1"], m["s2"] = s_loss, s_win
                     
@@ -1912,10 +1966,12 @@ def show_postseason():
             if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
                 res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=random.Random())
                 
+                # --- SAVE SCORES FOR BRACKET ---
                 try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
                 except: my_s, opp_s = 0, 0
                 if user_match.get("t1") == st.session_state.team_name: user_match["s1"], user_match["s2"] = my_s, opp_s
                 else: user_match["s1"], user_match["s2"] = opp_s, my_s
+                # -------------------------------
 
                 next_round_teams = []; seed_map = st.session_state.postseason_data.get("SeedMap", {})
                 for m in data.get("Matches", []):
@@ -1933,6 +1989,7 @@ def show_postseason():
                         o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
                         p = o1 / max(1.0, (o1 + o2)); winner = t1 if random.random() < p else t2
                         
+                        # FIX V28.2: GENERATE RANDOM SCORES FOR SIMULATED GAMES
                         s_win = int(random.gauss(34, 7)); s_loss = int(random.gauss(20, 7))
                         if s_win <= s_loss: s_win = s_loss + 3 
                         if winner == t1: m["s1"], m["s2"] = s_win, s_loss
@@ -2015,11 +2072,13 @@ def show_season_recap():
         elif new_boost <= 20:
             st.session_state.job_security -= 10; safe_toast("Booster Pressure: Security -10")
         
+        # V28.3: Apply Attrition
         apply_roster_attrition()
         
         check_and_award_achievements()
         st.session_state.game_state = GameState.OFFSEASON; st.session_state.offseason_step = 1; st.rerun()
 
+    # V27.6: RETIRE BUTTON IN SEASON RECAP
     st.divider()
     if st.button("🚪 Retire from Coaching (End Career)", type="secondary"):
         st.session_state.game_state = GameState.RETIREMENT
@@ -2031,7 +2090,10 @@ def show_season_recap():
 REQUIRED_FUNCS = [
     "run_setup", "show_dashboard", "show_season_end", "show_selection_sunday",
     "show_postseason", "show_season_recap", "show_offseason", "show_recruiting_wrap",
-    "show_fired", "show_retirement"
+    "show_fired", "show_retirement",
+    "generate_nil_class_15", "process_hs_outreach", "generate_top8_prospects", "top8_commit_chance",
+    "compute_recruiting_class_grade", "maybe_generate_conference_invite", "ai_conference_swap_lightweight",
+    "generate_hotspots"
 ]
 
 def _similar(name: str):
