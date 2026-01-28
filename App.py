@@ -750,7 +750,6 @@ def normalize_shares(shares: dict):
         return
     for a in ach[-20:][::-1]:
         st.write(f"• {a}")
-
 def render_dynasty_timeline(max_items=25):
     st.subheader("🧾 Dynasty Timeline")
     hist = st.session_state.get("history", []) or []
