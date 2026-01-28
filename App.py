@@ -1,12 +1,11 @@
 """
 Build the Program: College Football CEO
-Version 1.6 (The Expanded Stable Release)
+Version 1.6.1 (Tiered Difficulty Logic Update)
 
-Audit Log:
-- Base: V1.4 Stable (Bracket Fixes + Deterministic RNG).
-- Integrated: V1.5 Real World Universe (55+ Teams).
-- Integrated: V1.5 Retention Ransom Phase (Offseason Step 1).
-- Integrated: V1.5 Hall of Fame Retirement Logic.
+Changes from 1.6:
+- ELITE LOGIC: SEC/Big10/ACC teams now force Coaches (8-10) and Stadiums (8-11).
+- TRAP GAMES: Added specific 'Hard' stats for Boise, Fresno, Louisville, NC State, Arizona.
+- G5 NERF: Lowered generic G5 base talent to widen the gap.
 """
 
 import streamlit as st
@@ -23,7 +22,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 1.6
+STATE_VERSION = 1.61
 
 class GameState:
     SETUP = "SETUP"
@@ -83,70 +82,64 @@ class GameConfig:
         "Tulane": {"color": "#006747"}, "App State": {"color": "#FFCC00"}, "Toledo": {"color": "#15397F"}
     }
 
-    # V1.6: Integrated Expanded Universe from V1.5
     REAL_WORLD_INIT = {
-        # Elite Tier (90+ Prestige)
-        "Indiana": {"Prestige": 99, "Talent": 86, "Tier": 1, "Rival": "Purdue"},
-        "Ohio State": {"Prestige": 95, "Talent": 94, "Tier": 1, "Rival": "Michigan"},
-        "Miami": {"Prestige": 94, "Talent": 89, "Tier": 1, "Rival": "Florida St"},
-        "Oregon": {"Prestige": 93, "Talent": 92, "Tier": 1, "Rival": "Washington"},
-        "Georgia": {"Prestige": 92, "Talent": 96, "Tier": 1, "Rival": "Florida"},
-        "Ole Miss": {"Prestige": 91, "Talent": 88, "Tier": 1, "Rival": "Mississippi St"},
-        "Notre Dame": {"Prestige": 92, "Talent": 93, "Tier": 1, "Rival": "USC"},
+        # --- IMPOSSIBLE (90+ OVR) ---
+        "Georgia": {"Prestige": 95, "Talent": 96, "Tier": 1, "Rival": "Florida"},
+        "Ohio State": {"Prestige": 95, "Talent": 95, "Tier": 1, "Rival": "Michigan"},
+        "Texas": {"Prestige": 94, "Talent": 95, "Tier": 1, "Rival": "Oklahoma"},
+        "Alabama": {"Prestige": 92, "Talent": 94, "Tier": 1, "Rival": "Auburn"},
+        "Oregon": {"Prestige": 91, "Talent": 93, "Tier": 1, "Rival": "Washington"},
+        "Notre Dame": {"Prestige": 90, "Talent": 92, "Tier": 1, "Rival": "USC"},
+        "LSU": {"Prestige": 88, "Talent": 91, "Tier": 2, "Rival": "Alabama"},
+        "Michigan": {"Prestige": 88, "Talent": 90, "Tier": 1, "Rival": "Ohio State"},
+
+        # --- VERY HARD (86-89 OVR) ---
+        "Penn State": {"Prestige": 86, "Talent": 89, "Tier": 2, "Rival": "Ohio State"},
+        "Ole Miss": {"Prestige": 85, "Talent": 89, "Tier": 2, "Rival": "Mississippi St"},
+        "Miami": {"Prestige": 86, "Talent": 88, "Tier": 2, "Rival": "Florida St"},
+        "Florida St": {"Prestige": 84, "Talent": 87, "Tier": 2, "Rival": "Miami"},
+        "Tennessee": {"Prestige": 85, "Talent": 88, "Tier": 2, "Rival": "Alabama"},
+        "Clemson": {"Prestige": 87, "Talent": 87, "Tier": 2, "Rival": "South Carolina"},
+        "USC": {"Prestige": 82, "Talent": 88, "Tier": 2, "Rival": "Notre Dame"},
+        "Oklahoma": {"Prestige": 84, "Talent": 89, "Tier": 2, "Rival": "Texas"},
+        "Texas A&M": {"Prestige": 83, "Talent": 89, "Tier": 2, "Rival": "Texas"},
+
+        # --- HARD / TRAP GAMES (82-85 OVR) ---
+        # Power 4
+        "Utah": {"Prestige": 80, "Talent": 85, "Tier": 2, "Rival": "BYU"},
+        "Kansas State": {"Prestige": 78, "Talent": 84, "Tier": 2, "Rival": "Kansas"},
+        "Missouri": {"Prestige": 78, "Talent": 85, "Tier": 2, "Rival": "Kansas"},
+        "Iowa": {"Prestige": 79, "Talent": 83, "Tier": 2, "Rival": "Iowa State"},
+        "Wisconsin": {"Prestige": 78, "Talent": 83, "Tier": 2, "Rival": "Minnesota"},
+        "Indiana": {"Prestige": 88, "Talent": 85, "Tier": 2, "Rival": "Purdue"}, # Boosted
+        "SMU": {"Prestige": 76, "Talent": 84, "Tier": 2, "Rival": "TCU"},
         
-        # High Tier (85-89 Prestige)
-        "Texas Tech": {"Prestige": 90, "Talent": 84, "Tier": 2, "Rival": "Baylor"},
-        "Texas A&M": {"Prestige": 89, "Talent": 91, "Tier": 2, "Rival": "Texas"},
-        "Alabama": {"Prestige": 85, "Talent": 95, "Tier": 1, "Rival": "Auburn"},
-        "BYU": {"Prestige": 86, "Talent": 82, "Tier": 2, "Rival": "Utah"},
-        "Clemson": {"Prestige": 88, "Talent": 87, "Tier": 2, "Rival": "South Carolina"},
-        "Tennessee": {"Prestige": 87, "Talent": 86, "Tier": 2, "Rival": "Alabama"},
-        "Penn State": {"Prestige": 86, "Talent": 88, "Tier": 2, "Rival": "Ohio State"},
-        "Wisconsin": {"Prestige": 85, "Talent": 83, "Tier": 2, "Rival": "Minnesota"},
-        
-        # Good Tier (80-84 Prestige)
-        "Texas": {"Prestige": 84, "Talent": 97, "Tier": 1, "Rival": "Oklahoma"},
-        "Oklahoma": {"Prestige": 83, "Talent": 90, "Tier": 2, "Rival": "Texas"},
-        "Utah": {"Prestige": 82, "Talent": 85, "Tier": 2, "Rival": "BYU"},
-        "USC": {"Prestige": 79, "Talent": 89, "Tier": 2, "Rival": "Notre Dame"},
-        "Michigan": {"Prestige": 78, "Talent": 91, "Tier": 2, "Rival": "Ohio State"},
-        "LSU": {"Prestige": 76, "Talent": 92, "Tier": 2, "Rival": "Alabama"},
-        "Washington": {"Prestige": 81, "Talent": 84, "Tier": 2, "Rival": "Oregon"},
-        "Florida": {"Prestige": 80, "Talent": 86, "Tier": 2, "Rival": "Georgia"},
-        
-        # Competitive Tier (75-79 Prestige)
-        "Boise State": {"Prestige": 76, "Talent": 82, "Tier": 2, "Rival": "Fresno St"},
-        "Colorado": {"Prestige": 75, "Talent": 85, "Tier": 2, "Rival": "Nebraska"},
-        "Iowa": {"Prestige": 77, "Talent": 81, "Tier": 2, "Rival": "Iowa State"},
-        "Kansas State": {"Prestige": 76, "Talent": 80, "Tier": 2, "Rival": "Kansas"},
-        "Louisville": {"Prestige": 75, "Talent": 79, "Tier": 2, "Rival": "Kentucky"},
-        "NC State": {"Prestige": 74, "Talent": 78, "Tier": 3, "Rival": "UNC"},
-        "Arizona": {"Prestige": 73, "Talent": 77, "Tier": 3, "Rival": "Arizona State"},
-        
-        # Mid Tier (70-74 Prestige)
-        "Vanderbilt": {"Prestige": 80, "Talent": 78, "Tier": 3, "Rival": "Tennessee"},
-        "Florida St": {"Prestige": 70, "Talent": 87, "Tier": 3, "Rival": "Miami"},
-        "Tulane": {"Prestige": 74, "Talent": 77, "Tier": 3, "Rival": "LSU"},
-        "Memphis": {"Prestige": 72, "Talent": 76, "Tier": 3, "Rival": "Ole Miss"},
-        "UCF": {"Prestige": 71, "Talent": 75, "Tier": 3, "Rival": "USF"},
-        
-        # G5 Contenders (65-69 Prestige)
-        "Navy": {"Prestige": 68, "Talent": 74, "Tier": 3, "Rival": "Army"},
-        "Army": {"Prestige": 67, "Talent": 73, "Tier": 3, "Rival": "Navy"},
-        "Air Force": {"Prestige": 66, "Talent": 72, "Tier": 3, "Rival": "Army"},
-        "Toledo": {"Prestige": 69, "Talent": 75, "Tier": 3, "Rival": "Bowling Green"},
-        "App State": {"Prestige": 70, "Talent": 76, "Tier": 3, "Rival": "Georgia Southern"},
+        # The Requested "Hard" Mid-Majors/West Coast
+        "Louisville": {"Prestige": 78, "Talent": 85, "Tier": 2, "Rival": "Kentucky"},
+        "NC State": {"Prestige": 77, "Talent": 84, "Tier": 2, "Rival": "UNC"},
+        "Arizona": {"Prestige": 76, "Talent": 84, "Tier": 3, "Rival": "Arizona State"},
+        "Boise State": {"Prestige": 78, "Talent": 85, "Tier": 2, "Rival": "Fresno St"},
+        "Fresno State": {"Prestige": 74, "Talent": 83, "Tier": 3, "Rival": "Boise State"},
+
+        # --- MEDIUM (76-81 OVR) ---
+        "Tulane": {"Prestige": 74, "Talent": 80, "Tier": 3, "Rival": "LSU"},
+        "App State": {"Prestige": 72, "Talent": 79, "Tier": 3, "Rival": "Georgia Southern"},
+        "Memphis": {"Prestige": 72, "Talent": 78, "Tier": 3, "Rival": "Ole Miss"},
+        "Liberty": {"Prestige": 70, "Talent": 78, "Tier": 3, "Rival": "NMSU"},
+        "UNLV": {"Prestige": 68, "Talent": 77, "Tier": 3, "Rival": "Nevada"},
+        "Colorado": {"Prestige": 75, "Talent": 81, "Tier": 2, "Rival": "Nebraska"},
+        "Virginia Tech": {"Prestige": 74, "Talent": 79, "Tier": 3, "Rival": "UVA"},
     }
 
     CONFERENCES = {
-        "SEC": ["Georgia", "Alabama", "Texas", "LSU", "Tennessee", "Oklahoma", "Auburn", "Ole Miss", "Florida", "Texas A&M", "Missouri", "Kentucky", "Vanderbilt", "Mississippi St"],
-        "Big Ten": ["Ohio State", "Oregon", "Penn State", "Michigan", "USC", "Wisconsin", "Iowa", "Washington", "Nebraska", "Michigan St", "UCLA", "Indiana", "Purdue"],
-        "ACC": ["Florida St", "Clemson", "Miami", "Louisville", "UNC", "Virginia Tech", "SMU", "Pitt", "NC State", "Stanford", "Cal"],
-        "Big 12": ["Utah", "Kansas State", "Oklahoma St", "Arizona", "Colorado", "Texas Tech", "Baylor", "TCU", "BYU", "West Virginia", "Arizona State"],
+        "SEC": ["Georgia", "Alabama", "Texas", "LSU", "Tennessee", "Oklahoma", "Auburn", "Ole Miss", "Florida", "Texas A&M", "Missouri", "Kentucky", "Vanderbilt", "Mississippi St", "South Carolina", "Arkansas"],
+        "Big Ten": ["Ohio State", "Oregon", "Penn State", "Michigan", "USC", "Wisconsin", "Iowa", "Washington", "Nebraska", "Michigan St", "UCLA", "Indiana", "Purdue", "Minnesota", "Illinois", "Rutgers", "Maryland"],
+        "ACC": ["Florida St", "Clemson", "Miami", "Louisville", "UNC", "Virginia Tech", "SMU", "Pitt", "NC State", "Stanford", "Cal", "Georgia Tech", "Duke", "Syracuse", "Wake Forest", "Boston College", "UVA"],
+        "Big 12": ["Utah", "Kansas State", "Oklahoma St", "Arizona", "Colorado", "Texas Tech", "Baylor", "TCU", "BYU", "West Virginia", "Arizona State", "Iowa State", "Kansas", "UCF", "Houston", "Cincinnati"],
         "Pac-12": ["Boise State", "Fresno St", "San Diego St", "Colorado St", "Oregon St", "Wash State"],
         "Indep": ["Notre Dame", "UConn", "UMass"],
-        "MAC": ["Toledo", "Miami (OH)", "Ohio", "Northern Illinois", "Western Michigan", "Bowling Green"],
-        "G5": ["Tulane", "Memphis", "Navy", "Army", "USF", "Liberty", "App State", "James Madison", "San Jose State", "Wyoming", "Air Force", "Nevada"]
+        "MAC": ["Toledo", "Miami (OH)", "Ohio", "Northern Illinois", "Western Michigan", "Bowling Green", "Buffalo"],
+        "G5": ["Tulane", "Memphis", "Navy", "Army", "USF", "Liberty", "App State", "James Madison", "San Jose State", "Wyoming", "Air Force", "Nevada", "UNLV", "Rice", "North Texas", "UTSA", "Texas State"]
     }
     
     ALL_TEAMS = [t for c in CONFERENCES.values() for t in c]
@@ -561,6 +554,69 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
                 unsafe_allow_html=True
             )
 
+def render_achievements_panel():
+    st.subheader("🎖️ Achievements")
+    ach = st.session_state.get("achievements", []) or []
+    if not ach:
+        st.info("No achievements yet.")
+        return
+    for a in ach[-20:][::-1]:
+        st.write(f"• {a}")
+
+def render_dynasty_timeline(max_items=25):
+    st.subheader("🧾 Dynasty Timeline")
+    hist = st.session_state.get("history", []) or []
+    if not hist:
+        st.info("No seasons logged yet.")
+        return
+    for h in hist[-12:][::-1]:
+        st.write(f"Year {h.get('Year','?')}: {h.get('Record','?')} | Rank {h.get('Rank','NR')} | {h.get('PostseasonResult','')}")
+
+def check_and_award_achievements():
+    if "achievements" not in st.session_state or st.session_state.achievements is None:
+        st.session_state.achievements = []
+    
+    # 1. Bowl Win
+    if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
+        st.session_state.achievements.append("First Bowl Win")
+    
+    # 2. Program Builder
+    if st.session_state.prestige >= 80 and "Program Builder" not in st.session_state.achievements:
+        st.session_state.achievements.append("Program Builder")
+        safe_toast("🏆 Achievement Unlocked: Program Builder")
+
+    # 3. Perfect Season
+    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
+        st.session_state.achievements.append("Perfect Season")
+        safe_toast("🏆 Achievement Unlocked: Perfect Season")
+
+def init_playoff_bracket(user_rank, user_team_name):
+    results = st.session_state.get("selection_sunday_results", []) or []
+    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
+    while len(top12) < 12: top12.append("FCS East")
+    seen = set()
+    for i in range(len(top12)):
+        nm = top12[i]
+        if nm in seen: top12[i] = "FCS East"
+        else: seen.add(nm)
+    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
+    try: ur = int(user_rank)
+    except: ur = 999
+    if 1 <= ur <= 12:
+        target_idx = ur - 1; top12[target_idx] = user_team_name; seed_map[user_team_name] = ur
+        for i in range(len(top12)):
+            if i != target_idx and top12[i] == user_team_name: top12[i] = "FCS East"
+    
+    # Standard 12-Team Bracket Matches (Opening Round)
+    r1_matches = [
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
+        {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
+    ]
+    qf_seeds = top12[:4]
+    return {"Type": "CFP", "Round": 1, "Seeds": top12, "QF_Seeds": qf_seeds, "Matches": r1_matches, "UserAlive": True, "Rank": int(ur), "SeedMap": seed_map}
+
 def render_cfp_bracket_tree(data: dict):
     """V1.3/V1.4 Fixed Bracket with Correct Indentation"""
     st.subheader("🏆 College Football Playoff Bracket")
@@ -742,67 +798,6 @@ def normalize_shares(shares: dict):
     if total <= 0:
         return {p: 100.0 / len(GameConfig.POSITIONS) for p in GameConfig.POSITIONS}
     return {p: (_val(p) / total) * 100.0 for p in GameConfig.POSITIONS}
-def render_achievements_panel():
-    st.subheader("🎖️ Achievements")
-    ach = st.session_state.get("achievements", []) or []
-    if not ach:
-        st.info("No achievements yet.")
-        return
-    for a in ach[-20:][::-1]:
-        st.write(f"• {a}")
-def render_dynasty_timeline(max_items=25):
-    st.subheader("🧾 Dynasty Timeline")
-    hist = st.session_state.get("history", []) or []
-    if not hist:
-        st.info("No seasons logged yet.")
-        return
-    for h in hist[-12:][::-1]:
-        st.write(f"Year {h.get('Year','?')}: {h.get('Record','?')} | Rank {h.get('Rank','NR')} | {h.get('PostseasonResult','')}")
-
-def check_and_award_achievements():
-    if "achievements" not in st.session_state or st.session_state.achievements is None:
-        st.session_state.achievements = []
-    
-    # 1. Bowl Win
-    if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
-        st.session_state.achievements.append("First Bowl Win")
-    
-    # 2. Program Builder
-    if st.session_state.prestige >= 80 and "Program Builder" not in st.session_state.achievements:
-        st.session_state.achievements.append("Program Builder")
-        safe_toast("🏆 Achievement Unlocked: Program Builder")
-
-    # 3. Perfect Season
-    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
-        st.session_state.achievements.append("Perfect Season")
-        safe_toast("🏆 Achievement Unlocked: Perfect Season")
-
-def init_playoff_bracket(user_rank, user_team_name):
-    results = st.session_state.get("selection_sunday_results", []) or []
-    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
-    while len(top12) < 12: top12.append("FCS East")
-    seen = set()
-    for i in range(len(top12)):
-        nm = top12[i]
-        if nm in seen: top12[i] = "FCS East"
-        else: seen.add(nm)
-    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
-    try: ur = int(user_rank)
-    except: ur = 999
-    if 1 <= ur <= 12:
-        target_idx = ur - 1; top12[target_idx] = user_team_name; seed_map[user_team_name] = ur
-        for i in range(len(top12)):
-            if i != target_idx and top12[i] == user_team_name: top12[i] = "FCS East"
-    
-    # Standard 12-Team Bracket Matches (Opening Round)
-    r1_matches = [
-        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
-        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
-        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9],  "winner": None},
-        {"seed_high": 8, "seed_low": 9,  "t1": top12[7], "t2": top12[8],  "winner": None},
-    ]
-    qf_seeds = top12[:4]
-    return {"Type": "CFP", "Round": 1, "Seeds": top12, "QF_Seeds": qf_seeds, "Matches": r1_matches, "UserAlive": True, "Rank": int(ur), "SeedMap": seed_map}
 
 # ==============================================================================
 # ZONE 3: ENGINE
@@ -1654,12 +1649,50 @@ def run_setup():
         st.session_state.facilities = {"Marketing": val, "Training": val, "Stadium": val}
         st.session_state.opponents_db = {}
         for opp in GameConfig.ALL_TEAMS:
-            if opp in GameConfig.REAL_WORLD_INIT:
+            
+            # --- V1.6.1 Logic for Opponent Generation ---
+            
+            # 1. Determine Tier / Conference Context
+            is_elite_conf = opp in GameConfig.CONFERENCES["SEC"] or opp in GameConfig.CONFERENCES["Big Ten"] or opp in GameConfig.CONFERENCES["ACC"]
+            is_real_init = opp in GameConfig.REAL_WORLD_INIT
+            
+            # 2. Assign Base Stats
+            if is_real_init:
                 data = GameConfig.REAL_WORLD_INIT[opp]
-                st.session_state.opponents_db[opp] = {"Prestige": data["Prestige"], "OVR": data["Talent"], "Off": random.choice(GameConfig.SCHEMES["Offense"]), "Def": random.choice(GameConfig.SCHEMES["Defense"]), "Coaches": {"OC": random.randint(5, 9), "DC": random.randint(5, 9)}, "Stadium": random.randint(5, 11)}
+                pres = data["Prestige"]
+                ovr = data["Talent"]
+                # Elite Logic: If in elite conf, boost coaches/stadium
+                if is_elite_conf or pres >= 85:
+                    coach_min, coach_max = 8, 10
+                    stad_min, stad_max = 8, 11
+                elif pres >= 75: # Hard G5s / Mid Tier
+                    coach_min, coach_max = 6, 9
+                    stad_min, stad_max = 6, 9
+                else: # Medium G5s
+                    coach_min, coach_max = 4, 7
+                    stad_min, stad_max = 4, 8
             else:
-                pres = 85 if opp in GameConfig.CONFERENCES["SEC"] else 65; ovr = 82 if opp in GameConfig.CONFERENCES["SEC"] else 70
-                st.session_state.opponents_db[opp] = {"Prestige": pres, "OVR": ovr, "Off": "Pro Style", "Def": "Man Coverage", "Coaches": {"OC": 5, "DC": 5}, "Stadium": random.randint(4, 10)}
+                # Generic Teams (Rest of G5) - NERFED
+                pres = 60; ovr = 68 # Lowered from 70
+                coach_min, coach_max = 2, 5
+                stad_min, stad_max = 2, 6
+                
+                # Exception: Generic Power 4 fillers (rare but possible)
+                if is_elite_conf:
+                    pres = 78; ovr = 79
+                    coach_min, coach_max = 5, 8
+                    stad_min, stad_max = 6, 9
+
+            # 3. Create Opponent Record
+            st.session_state.opponents_db[opp] = {
+                "Prestige": pres, 
+                "OVR": ovr, 
+                "Off": random.choice(GameConfig.SCHEMES["Offense"]), 
+                "Def": random.choice(GameConfig.SCHEMES["Defense"]), 
+                "Coaches": {"OC": random.randint(coach_min, coach_max), "DC": random.randint(coach_min, coach_max)}, 
+                "Stadium": random.randint(stad_min, stad_max)
+            }
+
         if "conferences_map" not in st.session_state: st.session_state.conferences_map = {k: list(v) for k, v in GameConfig.CONFERENCES.items()}
         if conf not in st.session_state.conferences_map: st.session_state.conferences_map[conf] = []
         if team not in st.session_state.conferences_map[conf]: st.session_state.conferences_map[conf].append(team)
