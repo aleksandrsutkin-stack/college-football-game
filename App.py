@@ -1,13 +1,14 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 28.0 (The War Room Update)
+Version 28.1 (The War Room Update + Fixes)
 
-A comprehensive college football coaching simulation featuring:
-- Dynasty mode with multi-season careers
-- Recruiting system (NIL, HS Outreach, Top-8 battles)
-- Playoff simulation and bowl games
-- Conference realignment and staff management
-- Deterministic simulation engine
+Changes in 28.1:
+- Fixed HS Recruiting "skip" bug (properly resets state between seasons)
+- Fixed Top-8 Logic (commit chance now respects your offer amount)
+- Added "Wants" and "Under/Over" feedback to Top-8 UI
+- Added "Pinned Team" and "Show All" toggle to Selection Sunday
+- Fixed CFP Round 2 bug where #2 seed played themselves
+- Added Visual Bracket for CFP
 """
 
 import streamlit as st
@@ -23,7 +24,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 28.0
+STATE_VERSION = 28.1
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -44,7 +45,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V28", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V28.1", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -361,7 +362,7 @@ def render_news_box():
     if not items: st.info("No headlines yet."); return
     st.markdown("<div class='news-box'>", unsafe_allow_html=True)
     for it in items[:18]:
-        txt = it if isinstance(it, str) else f"{it.get('ts','')} - {it.get('text','')}"
+        txt = it if isinstance(it, str) else f"{it.get('ts','')}" + " - " + f"{it.get('text','')}"
         st.markdown(f"<div class='news-item'>{txt}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -479,6 +480,40 @@ def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
                 f"</div>",
                 unsafe_allow_html=True
             )
+
+def render_cfp_bracket(data: dict):
+    """Simple bracket view: one column per round if data['Rounds'] exists,
+    otherwise displays the current round as a single column.
+    Supports optional scores stored on matches as s1/s2.
+    """
+    st.subheader("🏆 CFP Bracket")
+
+    rounds = data.get("Rounds")
+    if not rounds:
+        # Fallback: show current Matches only
+        rounds = [{"name": f"Round {data.get('Round', 1)}", "games": data.get("Matches", [])}]
+
+    cols = st.columns(len(rounds))
+    for i, rd in enumerate(rounds):
+        with cols[i]:
+            st.markdown(f"### {rd.get('name', 'Round')}")
+            for g in rd.get("games", []):
+                t1, t2 = g.get("t1", "TBD"), g.get("t2", "TBD")
+                s1, s2 = g.get("s1", None), g.get("s2", None)
+                w = g.get("winner", None)
+
+                line1 = f"**{t1}**" + (f" — {s1}" if s1 is not None else "")
+                line2 = f"**{t2}**" + (f" — {s2}" if s2 is not None else "")
+                badge = "✅" if w else "⏳"
+
+                st.markdown(
+                    f"<div class='game-card' style='margin-bottom:10px;'>"
+                    f"<div class='card-header'><span>{badge} Match</span><span>{('Winner: ' + w) if w else 'In progress'}</span></div>"
+                    f"<div>{line1}</div>"
+                    f"<div>{line2}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
 
 def calculate_saban_score(career_stats, prestige):
     return int(
@@ -1116,19 +1151,35 @@ def show_offseason_top8_v8():
         rid = int(r["id"]); pos = r["pos"]; ask = int(r["ask"])
         already = rid in st.session_state.top8_resolved
         c1, c2, c3 = st.columns([4, 2, 2])
-        with c1: st.markdown(f"⭐ **{pos} {r['name']} ({r['rating']})**")
+        with c1: 
+            st.markdown(f"⭐ **{pos} {r['name']} ({r['rating']})**")
+            st.caption(f"Wants: {helper_format_cash(ask)} | Trait: {r.get('trait','')}")
         with c2:
             row_budget = int(st.session_state.get("budget", 0) or 0)
             max_offer = max(0, min(row_budget, max(ask * 2, 250_000)))
             default_offer = int(r.get("offer", 0) or 0)
             default_offer = max(0, min(default_offer, max_offer))
-            offer = st.slider("Offer", 0, max_offer, default_offer, step=250_000, key=f"offer_{rid}")
+            offer = st.slider(f"Offer vs Want ({helper_format_cash(ask)})", 0, max_offer, default_offer, step=250_000, key=f"offer_{rid}")
             r["offer"] = int(offer)
+            
+            # Feedback on offer
+            offer_val = int(r.get("offer", 0) or 0)
+            if offer_val <= 0: st.caption("Set an offer to pitch.")
+            elif offer_val < ask: st.warning("Below ask")
+            elif offer_val < int(ask * 1.25): st.success("Meets ask")
+            else: st.success("Overpay (strong pitch)")
+
         with c3:
             if r.get("status") == "COMMITTED": st.success("✅ COMMITTED")
             elif r.get("status") == "LOST": st.error("❌ LOST")
             else:
-                chance = top8_commit_chance(r, {p: 0 for p in POSITIONS}, st.session_state.staff, st.session_state.prestige)
+                # FIX: Pass the actual offer for this recruit's position
+                chance = top8_commit_chance(
+                    r, 
+                    {pos: float(r.get("offer", 0) or 0)}, 
+                    st.session_state.staff, 
+                    st.session_state.prestige
+                )
                 st.write(f"Chance: **{int(chance*100)}%**")
                 if st.button("Pitch", key=f"pitch_{rid}", disabled=already or r["offer"]<=0):
                     if BudgetManager.spend(r["offer"], "pitch"):
@@ -1200,9 +1251,15 @@ def show_offseason():
         # V28: New bottom-up HS recruiting
         show_offseason_hs_outreach()
         st.divider()
-        if st.button("Continue to Top-8 Battles →", type="primary"):
+        
+        # FIX: Block continuing if HS results are pending
+        block_continue = st.session_state.get("hs_last_results") is not None
+        if st.button("Continue to Top-8 Battles →", type="primary", disabled=block_continue):
             st.session_state.offseason_step = 3
             st.rerun()
+        if block_continue:
+            st.info("Dismiss HS Outreach results above to continue.")
+
     elif step == 3:
         show_offseason_top8_v8()
         st.divider()
@@ -1228,11 +1285,16 @@ def show_offseason():
             st.session_state.week_index = 0; st.session_state.record = {"w": 0, "l": 0}; st.session_state.season_logs = []
             st.session_state.season_simulated = False; st.session_state.season_end_ready = False; st.session_state.revenue_report = None
             st.session_state.nil_class = []; st.session_state.hs_total_spend = 0
-            st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}; st.session_state.top8 = []; st.session_state.top8_resolved = set()
+            st.session_state.top8 = []; st.session_state.top8_resolved = set()
             st.session_state.offseason_step = 1
             st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
             st.session_state.hotspots = generate_hotspots()
             sync_team_ratings()
+            
+            # --- RESET V28 WAR ROOM INPUTS/RESULTS FOR NEXT YEAR ---
+            st.session_state.hs_last_results = None
+            for p in POSITIONS: st.session_state[f"hs_pos_input_{p}_v28"] = 0
+            st.session_state.hs_alloc_by_pos = {p: 0 for p in POSITIONS}
             
             st.session_state.recruiting_summary = {"grade": grade, "score": score, "breakdown": breakdown}
             st.session_state.game_state = "RECRUITING_WRAP"; st.rerun()
@@ -1319,7 +1381,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V28.0")
+    st.title("🏆 College Football Mogul V28.1")
     st.markdown("### Dynasty Mode")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -1677,12 +1739,34 @@ def show_selection_sunday():
         for i, t in enumerate(results):
             if t.get("Team") == st.session_state.team_name: user_rank = i + 1; t["IsUser"] = True; break
     if user_rank == -1: user_rank = 999
+    
+    # --- PINNED USER ROW (always visible) ---
+    user_row = next((t for t in results if t.get("IsUser") or t.get("Team") == st.session_state.team_name), None)
+    if user_row:
+        st.subheader("🎯 Your Team (Pinned)")
+        status = "🏆 CFP" if user_rank <= 12 else ("🎳 BOWL" if safe_int(user_row.get("Wins", 0), 0) >= 6 else "❌ OUT")
+        st.markdown(
+            f"<div class='rank-row rank-row-user'>"
+            f"<div class='rank-num'>#{user_rank}</div>"
+            f"<div class='rank-team'>{user_row.get('Team')} <span style='font-size:0.8em; color:#666'>({user_row.get('Conf')})</span></div>"
+            f"<div class='rank-rec'><b>{user_row.get('Wins')}-{user_row.get('Losses')}</b></div>"
+            f"<div style='width:80px; text-align:right; font-weight:bold;'>{status}</div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+        st.divider()
+
     if user_rank <= 4: st.success(f"✅ Top-4 Seed (#{user_rank}): You receive a First Round BYE.")
+    
     st.write("### 📊 Final Committee Rankings")
-    for i, t in enumerate(results[:25]):
+    show_full = st.toggle("Show full rankings", value=False)
+    view = results if show_full else results[:25]
+
+    for i, t in enumerate(view):
         rank = i + 1; is_user = t.get("IsUser", False); bg_class = "rank-row-user" if is_user else "rank-row"; wins = safe_int(t.get("Wins", 0), 0); losses = safe_int(t.get("Losses", 0), 0)
         status = "🏆 CFP" if rank <= 12 else ("🎳 BOWL" if wins >= 6 else "❌ OUT")
         st.markdown(f"<div class='{bg_class}'><div class='rank-num'>#{rank}</div><div class='rank-team'>{t['Team']} <span style='font-size:0.8em; color:#666'>({t['Conf']})</span></div><div class='rank-rec'><b>{t['Wins']}-{t['Losses']}</b></div><div style='width:80px; text-align:right; font-weight:bold;'>{status}</div></div>", unsafe_allow_html=True)
+    
     st.divider(); user_wins = st.session_state.record['w']
     if user_wins < 6:
         st.error("❌ You did not qualify for a bowl game (less than 6 wins).")
@@ -1758,10 +1842,10 @@ def show_postseason():
         round_num = int(data.get("Round", 1)); round_names = ["Opening Rd", "Quarterfinals", "Semifinals", "Championship"]
         label = round_names[round_num - 1] if 1 <= round_num <= 4 else f"Round {round_num}"
         st.header(f"CFP Round: {label}")
-        st.write("--- Bracket Status ---")
-        for m in data.get("Matches", []):
-            if m.get("winner"): st.markdown(f"<div class='bracket-row'>✅ {m['winner']} advances</div>", unsafe_allow_html=True)
-            else: st.markdown(f"<div class='bracket-row'>{m.get('t1','?')} vs {m.get('t2','?')}</div>", unsafe_allow_html=True)
+        
+        # --- NEW BRACKET RENDERER (V28.1) ---
+        render_cfp_bracket(st.session_state.postseason_data)
+        st.divider()
 
         user_match = None
         for m in data.get("Matches", []):
@@ -1788,6 +1872,14 @@ def show_postseason():
             st.info(f"Your Matchup: vs {opp} (OVR: {opp_data.get('OVR',88)} | OFF {int(opp_data.get('OffOVR',80))} / DEF {int(opp_data.get('DefOVR',80))})")
             if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
                 res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=random.Random())
+                
+                # --- SAVE SCORES FOR BRACKET ---
+                try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
+                except: my_s, opp_s = 0, 0
+                if user_match.get("t1") == st.session_state.team_name: user_match["s1"], user_match["s2"] = my_s, opp_s
+                else: user_match["s1"], user_match["s2"] = opp_s, my_s
+                # -------------------------------
+
                 next_round_teams = []; seed_map = st.session_state.postseason_data.get("SeedMap", {})
                 for m in data.get("Matches", []):
                     if m is user_match:
@@ -1824,7 +1916,8 @@ def show_postseason():
                             next_round_teams.sort(key=lambda ts: ts[1]); 
                             if len(next_round_teams) >= 4:
                                 new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[3][0], "winner": None})
-                                new_matches.append({"t1": next_round_teams[1][0], "t2": next_round_teams[1][0], "winner": None})
+                                # FIX V28.1: Correct pairing logic (1 vs 2, not 1 vs 1)
+                                new_matches.append({"t1": next_round_teams[1][0], "t2": next_round_teams[2][0], "winner": None})
                         elif round_num == 3:
                             next_round_teams.sort(key=lambda ts: ts[1]); 
                             if len(next_round_teams) >= 2: new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[1][0], "winner": None})
