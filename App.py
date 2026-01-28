@@ -898,10 +898,11 @@ def cb_clear_all():
     for p in POSITIONS:
         st.session_state[f"hs_pos_input_{p}_v28"] = 0
 
+
 def execute_hs_outreach(budget: int, alloc: dict, needs: List[str]) -> None:
     if not BudgetManager.spend(budget, "HS recruiting", show_toast=False): return
-    shares = normalize_shares({p: (alloc[p] / max(1, budget)) * 100 for p in POSITIONS})
-    res = process_hs_outreach(budget, shares, st.session_state.staff, st.session_state.prestige, st.session_state.inflation, st.session_state.hotspots, st.session_state.home_region, needs, is_dollars=True)
+    # FIX: Pass 'alloc' (which holds raw dollar amounts) directly to the engine
+    res = process_hs_outreach(budget, alloc, st.session_state.staff, st.session_state.prestige, st.session_state.inflation, st.session_state.hotspots, st.session_state.home_region, needs, is_dollars=True)
     
     if res["booster_bonus"] > 0:
         BudgetManager.add(res["booster_bonus"], "Boosters go wild over surprise recruits!", show_toast=True)
@@ -917,9 +918,9 @@ def execute_hs_outreach(budget: int, alloc: dict, needs: List[str]) -> None:
     
     st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
     sync_team_ratings()
-    st.session_state.hs_last_results = {"spent": int(res.get("spent", 0) or 0), "booster_bonus": int(res.get("booster_bonus", 0) or 0), "pos_changes": dict(res.get("roster_updates", {}) or {}), "gem_count": len(res.get("gems", []) or [])}
-    safe_toast("HS Outreach complete! See results above."); st.rerun()
-
+    st.session_state.hs_last_results = {"spent": int(res.get("spent", 0) or 0), "booster_bonus": int(res.get("booster_bonus", 0) or 0), "pos_changes": dict(res.get("roster_updates", {}) or {}), "gem_count": len(res["gems"])}
+    safe_toast("HS Outreach complete! See results above.")
+    st.rerun()
 def show_offseason_hs_outreach():
     if render_hs_results_summary(): return
     st.subheader("2) HS Outreach: The War Room (V28)")
