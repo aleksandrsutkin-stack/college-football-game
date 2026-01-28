@@ -1,14 +1,12 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 28.1 (The War Room Update + Fixes)
+Version 28.2 (UI Polish & Bracket Fixes)
 
-Changes in 28.1:
-- Fixed HS Recruiting "skip" bug (properly resets state between seasons)
-- Fixed Top-8 Logic (commit chance now respects your offer amount)
-- Added "Wants" and "Under/Over" feedback to Top-8 UI
-- Added "Pinned Team" and "Show All" toggle to Selection Sunday
-- Fixed CFP Round 2 bug where #2 seed played themselves
-- Added Visual Bracket for CFP
+Changes in 28.2:
+- Season Tab: Moved Play/Sim buttons and Game Plan to the top (no scrolling).
+- HS War Room: Single-click "Dismiss & Continue" flow.
+- CFP: "Simulate Round" now generates visible scores.
+- CFP: Bracket now displays Top-4 Byes clearly.
 """
 
 import streamlit as st
@@ -24,7 +22,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 28.1
+STATE_VERSION = 28.2
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -45,7 +43,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V28.1", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V28.2", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -379,7 +377,7 @@ def get_conference(team: str) -> str:
     return "G5"
 
 def compute_team_needs(roster: dict, k: int = 3) -> list:
-    roster = roster or {}
+    roster = roster or {};
     vals = [(pos, safe_int(roster.get(pos, 75), 75)) for pos in POSITIONS]
     vals.sort(key=lambda x: x[1])
     return [p for p, _ in vals[:max(1, int(k))]]
@@ -514,6 +512,12 @@ def render_cfp_bracket(data: dict):
                     f"</div>",
                     unsafe_allow_html=True
                 )
+    
+    # FIX: Show teams on BYE in Round 1
+    if data.get("Round") == 1:
+        seeds = data.get("Seeds", [])
+        if len(seeds) >= 4:
+            st.info(f"**Waiting in Quarterfinals (Byes):** #1 {seeds[0]}, #2 {seeds[1]}, #3 {seeds[2]}, #4 {seeds[3]}")
 
 def calculate_saban_score(career_stats, prestige):
     return int(
@@ -913,8 +917,13 @@ def render_hs_results_summary() -> bool:
     for p in POSITIONS:
         delta = pos_changes.get(p, 0)
         st.write(f"{p}: **{format_position_delta(delta)}**")
-    if st.button("Dismiss Results"):
-        st.session_state.hs_last_results = None; st.rerun()
+    
+    # FIX: V28.2 Single Click dismissal
+    if st.button("Dismiss & Continue to Top-8 →", type="primary"):
+        st.session_state.hs_last_results = None
+        st.session_state.offseason_step = 3
+        st.rerun()
+        
     st.divider()
     return True
 
@@ -1282,8 +1291,7 @@ def show_offseason():
                 st.session_state.team_conf, 
                 st.session_state.team_rival
             )
-            st.session_state.week_index = 0; st.session_state.record = {"w": 0, "l": 0}; st.session_state.season_logs = []
-            st.session_state.season_simulated = False; st.session_state.season_end_ready = False; st.session_state.revenue_report = None
+            st.session_state.week_index = 0; st.session_state.record = {"w": 0, "l": 0}; st.session_state.season_logs = []; st.session_state.season_simulated = False; st.session_state.season_end_ready = False; st.session_state.revenue_report = None
             st.session_state.nil_class = []; st.session_state.hs_total_spend = 0
             st.session_state.top8 = []; st.session_state.top8_resolved = set()
             st.session_state.offseason_step = 1
@@ -1381,7 +1389,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V28.1")
+    st.title("🏆 College Football Mogul V28.2")
     st.markdown("### Dynasty Mode")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -1582,11 +1590,78 @@ def show_dashboard():
         if not st.session_state.schedule:
             st.session_state.schedule = engine_generate_schedule(st.session_state.team_name, st.session_state.team_conf, st.session_state.team_rival)
 
-        st.session_state.game_plan = st.selectbox("Weekly Gameplan", ["Conservative", "Normal", "Aggressive"], index=["Conservative", "Normal", "Aggressive"].index(st.session_state.game_plan))
-
-        c1, c2 = st.columns(2)
+        # --- V28.2: REORDERED LAYOUT (CONTROLS AT TOP) ---
         sched = st.session_state.schedule or []
         sched_len = len(sched)
+        
+        if not st.session_state.season_simulated:
+            wk = int(st.session_state.get("week_index", 0) or 0)
+            if wk >= len(sched): end_regular_season_and_stay_on_results(); st.rerun()
+
+            opp = sched[wk]
+            opp_data = OpponentManager.get(opp)
+            is_riv = (opp == st.session_state.team_rival)
+            opp_off = int(opp_data["OffOVR"]); opp_def = int(opp_data["DefOVR"])
+
+            # 1. Header & Matchup
+            st.subheader(f"Next Game: Week {wk+1} vs {opp}")
+            if is_riv: st.warning("RIVALRY WEEK: More chaos, bigger stakes!")
+            
+            my_off_val = off_val; my_def_val = def_val
+            st.caption(f"Matchup: Your OFF {my_off_val} vs Opp DEF {opp_def} | Your DEF {my_def_val} vs Opp OFF {opp_off}")
+
+            # 2. Controls Row
+            ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([2, 1, 1])
+            with ctrl_c1:
+                st.session_state.game_state = "DASHBOARD" # Force
+                st.session_state.game_plan = st.selectbox("Weekly Gameplan", ["Conservative", "Normal", "Aggressive"], index=["Conservative", "Normal", "Aggressive"].index(st.session_state.game_plan))
+
+            def play_one_week():
+                try:
+                    is_home = (wk % 2 == 0); loc_str = "HOME" if is_home else "@AWAY"
+                    res = engine_play_game_v8(my_off_val, my_def_val, opp_off, opp_def, st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home, is_riv, st.session_state.facilities["Stadium"], opp_data.get("Stadium", 7), rng=random.Random())
+                except Exception as e:
+                    st.error(f"⚠️ Game simulation error: {str(e)}"); st.warning("Generating fallback result to preserve your save...")
+                    loc_str = "HOME" if (wk % 2 == 0) else "@AWAY"
+                    res = {"result": "L", "score": "0-7", "stats": {"qb_duel": [75, 80], "off_vs_def": [75, 80], "def_vs_off": [75, 80], "staff": ["5/5", "5/5"], "raw_roster": 75}, "explain": {"my_off": my_off_val, "my_def": my_def_val, "opp_off": opp_off, "opp_def": opp_def, "my_edge": 0.0, "opp_edge": 0.0, "scheme_my": 0.0, "scheme_opp": 0.0, "coach_my": 0.0, "coach_opp": 0.0, "home_field": 0.0, "plan": st.session_state.game_plan}}
+                
+                st.session_state.season_logs.append({"Week": wk + 1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "Explain": res["explain"], "OppOVR": int(opp_data.get("OVR", 80)), "Loc": loc_str})
+                if res["result"] == "W":
+                    st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
+                    st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv else 2))
+                    add_news(f"{st.session_state.team_name} wins Week {wk+1} vs {opp} ({res['score']}).")
+                else:
+                    st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
+                    pen = 2 if st.session_state.tenure <= 2 else 5
+                    st.session_state.job_security = max(0, st.session_state.job_security - pen)
+                    add_news(f"{st.session_state.team_name} loses Week {wk+1} vs {opp} ({res['score']}).")
+                st.session_state.week_index += 1
+                if st.session_state.week_index >= 12: end_regular_season_and_stay_on_results()
+
+            with ctrl_c2:
+                if st.button("🏈 PLAY", type="primary"): play_one_week(); st.rerun()
+            with ctrl_c3:
+                if st.button("⏩ SIM"):
+                    while not st.session_state.season_simulated:
+                        wk2 = st.session_state.week_index; sched2 = st.session_state.schedule or []
+                        if wk2 >= len(sched2) or wk2 >= 12: break
+                        opp2 = sched2[wk2]; opp_data2 = OpponentManager.get(opp2)
+                        is_riv2 = (opp2 == st.session_state.team_rival); is_home2 = (wk2 % 2 == 0); loc_str2 = "HOME" if is_home2 else "@AWAY"
+                        res2 = engine_play_game_v8(my_off_val, my_def_val, int(opp_data2["OffOVR"]), int(opp_data2["DefOVR"]), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data2.get("Off", "Pro Style"), "Def": opp_data2.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data2.get("Coaches", {"OC": 5, "DC": 5}), is_home=is_home2, is_rival=is_riv2, my_stadium_level=st.session_state.facilities["Stadium"], opp_stadium_level=opp_data2.get("Stadium", 7), rng=random.Random())
+                        st.session_state.season_logs.append({"Week": wk2 + 1, "Opponent": opp2, "Score": f"{res2['result']} {res2['score']}", "Stats": res2["stats"], "Explain": res2["explain"], "OppOVR": int(opp_data2.get("OVR", 80)), "Loc": loc_str2})
+                        if res2["result"] == "W":
+                            st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
+                            st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv2 else 2))
+                        else:
+                            st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
+                            pen = 2 if st.session_state.tenure <= 2 else 5; st.session_state.job_security = max(0, st.session_state.job_security - pen)
+                        st.session_state.week_index += 1
+                    end_regular_season_and_stay_on_results(); st.rerun()
+
+            st.divider()
+
+        # 3. Schedule Grid
+        c1, c2 = st.columns(2)
         with c1:
             st.caption("Weeks 1–6")
             for i in range(min(6, sched_len)):
@@ -1611,65 +1686,6 @@ def show_dashboard():
                     st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
 
         st.divider(); render_news_box(); st.divider()
-
-        if not st.session_state.season_simulated:
-            wk = int(st.session_state.get("week_index", 0) or 0)
-            if wk >= len(sched): end_regular_season_and_stay_on_results(); st.rerun()
-
-            opp = sched[wk]
-            opp_data = OpponentManager.get(opp)
-            is_riv = (opp == st.session_state.team_rival)
-            opp_off = int(opp_data["OffOVR"]); opp_def = int(opp_data["DefOVR"])
-
-            st.subheader(f"Next Game: Week {wk+1} vs {opp}")
-            my_off_val = off_val; my_def_val = def_val
-            st.caption(f"Matchup: Your OFF {my_off_val} vs Opp DEF {opp_def} | Your DEF {my_def_val} vs Opp OFF {opp_off}")
-            st.caption(f"Stadiums: Yours {st.session_state.facilities['Stadium']} | Opp {opp_data.get('Stadium',7)}")
-
-            if is_riv: st.warning("RIVALRY WEEK: More chaos, bigger stakes!")
-
-            colA, colB = st.columns(2)
-
-            def play_one_week():
-                try:
-                    is_home = (wk % 2 == 0); loc_str = "HOME" if is_home else "@AWAY"
-                    res = engine_play_game_v8(my_off_val, my_def_val, opp_off, opp_def, st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home, is_riv, st.session_state.facilities["Stadium"], opp_data.get("Stadium", 7), rng=random.Random())
-                except Exception as e:
-                    st.error(f"⚠️ Game simulation error: {str(e)}"); st.warning("Generating fallback result to preserve your save...")
-                    loc_str = "HOME" if (wk % 2 == 0) else "@AWAY"
-                    res = {"result": "L", "score": "0-7", "stats": {"qb_duel": [75, 80], "off_vs_def": [75, 80], "def_vs_off": [75, 80], "staff": ["5/5", "5/5"], "raw_roster": 75}, "explain": {"my_off": my_off_val, "my_def": my_def_val, "opp_off": opp_off, "opp_def": opp_def, "my_edge": 0.0, "opp_edge": 0.0, "scheme_my": 0.0, "scheme_opp": 0.0, "coach_my": 0.0, "coach_opp": 0.0, "home_field": 0.0, "plan": st.session_state.game_plan}}
-                
-                st.session_state.season_logs.append({"Week": wk + 1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "Explain": res["explain"], "OppOVR": int(opp_data.get("OVR", 80)), "Loc": loc_str})
-                if res["result"] == "W":
-                    st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                    st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv else 2))
-                    add_news(f"{st.session_state.team_name} wins Week {wk+1} vs {opp} ({res['score']}).")
-                else:
-                    st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                    pen = 2 if st.session_state.tenure <= 2 else 5
-                    st.session_state.job_security = max(0, st.session_state.job_security - pen)
-                    add_news(f"{st.session_state.team_name} loses Week {wk+1} vs {opp} ({res['score']}).")
-                st.session_state.week_index += 1
-                if st.session_state.week_index >= 12: end_regular_season_and_stay_on_results()
-
-            if colA.button("🏈 PLAY WEEK", type="primary"): play_one_week(); st.rerun()
-
-            if colB.button("⏩ SIM REST OF SEASON"):
-                while not st.session_state.season_simulated:
-                    wk2 = st.session_state.week_index; sched2 = st.session_state.schedule or []
-                    if wk2 >= len(sched2) or wk2 >= 12: break
-                    opp2 = sched2[wk2]; opp_data2 = OpponentManager.get(opp2)
-                    is_riv2 = (opp2 == st.session_state.team_rival); is_home2 = (wk2 % 2 == 0); loc_str2 = "HOME" if is_home2 else "@AWAY"
-                    res2 = engine_play_game_v8(my_off_val, my_def_val, int(opp_data2["OffOVR"]), int(opp_data2["DefOVR"]), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data2.get("Off", "Pro Style"), "Def": opp_data2.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data2.get("Coaches", {"OC": 5, "DC": 5}), is_home=is_home2, is_rival=is_riv2, my_stadium_level=st.session_state.facilities["Stadium"], opp_stadium_level=opp_data2.get("Stadium", 7), rng=random.Random())
-                    st.session_state.season_logs.append({"Week": wk2 + 1, "Opponent": opp2, "Score": f"{res2['result']} {res2['score']}", "Stats": res2["stats"], "Explain": res2["explain"], "OppOVR": int(opp_data2.get("OVR", 80)), "Loc": loc_str2})
-                    if res2["result"] == "W":
-                        st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                        st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv2 else 2))
-                    else:
-                        st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                        pen = 2 if st.session_state.tenure <= 2 else 5; st.session_state.job_security = max(0, st.session_state.job_security - pen)
-                    st.session_state.week_index += 1
-                end_regular_season_and_stay_on_results(); st.rerun()
 
     with tab5:
         st.subheader("🏛️ Trophy Case (Quick View)")
@@ -1858,7 +1874,15 @@ def show_postseason():
                 for m in data.get("Matches", []):
                     t1, t2 = m.get("t1"), m.get("t2"); o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
                     p = o1 / max(1.0, (o1 + o2)); winner = t1 if random.random() < p else t2
+                    
+                    # FIX V28.2: GENERATE RANDOM SCORES FOR SIMULATED GAMES
+                    s_win = int(random.gauss(34, 7)); s_loss = int(random.gauss(20, 7))
+                    if s_win <= s_loss: s_win = s_loss + 3 # Ensure winner has higher score
+                    if winner == t1: m["s1"], m["s2"] = s_win, s_loss
+                    else: m["s1"], m["s2"] = s_loss, s_win
+                    
                     m["winner"] = winner; next_round_teams.append((winner, seed_map.get(winner, 99)))
+                    
                 next_round_teams.sort(key=lambda ts: ts[1], reverse=True); winners_only = [ts[0] for ts in next_round_teams]
                 seeds = data.get("QF_Seeds", []); new_matches = []
                 if len(seeds) == 4 and len(winners_only) >= 4:
@@ -1895,6 +1919,13 @@ def show_postseason():
                         if not t1 or not t2: continue
                         o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
                         p = o1 / max(1.0, (o1 + o2)); winner = t1 if random.random() < p else t2
+                        
+                        # FIX V28.2: GENERATE RANDOM SCORES FOR SIMULATED GAMES
+                        s_win = int(random.gauss(34, 7)); s_loss = int(random.gauss(20, 7))
+                        if s_win <= s_loss: s_win = s_loss + 3 
+                        if winner == t1: m["s1"], m["s2"] = s_win, s_loss
+                        else: m["s1"], m["s2"] = s_loss, s_win
+                        
                         m["winner"] = winner; next_round_teams.append((winner, seed_map.get(winner, 99)))
                 time.sleep(0.6)
                 if st.session_state.postseason_data.get("UserAlive"):
@@ -1916,7 +1947,6 @@ def show_postseason():
                             next_round_teams.sort(key=lambda ts: ts[1]); 
                             if len(next_round_teams) >= 4:
                                 new_matches.append({"t1": next_round_teams[0][0], "t2": next_round_teams[3][0], "winner": None})
-                                # FIX V28.1: Correct pairing logic (1 vs 2, not 1 vs 1)
                                 new_matches.append({"t1": next_round_teams[1][0], "t2": next_round_teams[2][0], "winner": None})
                         elif round_num == 3:
                             next_round_teams.sort(key=lambda ts: ts[1]); 
