@@ -1,6 +1,6 @@
 """
 College Football Mogul - Dynasty Management Game
-Version 27.7 (Stability Fix)
+Version 27.8 (The Allocator Fix)
 
 A comprehensive college football coaching simulation featuring:
 - Dynasty mode with multi-season careers
@@ -23,7 +23,7 @@ from typing import Tuple, Dict, List, Optional, Any
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 27.7
+STATE_VERSION = 27.8
 
 ALLOWED_SAVE_KEYS = {
     "state_version", "game_state", "year", "budget", "prestige", "job_security",
@@ -44,7 +44,7 @@ ALLOWED_SAVE_KEYS = {
 }
 
 try:
-    st.set_page_config(page_title="CFB Mogul V27.7", page_icon="🏈", layout="wide")
+    st.set_page_config(page_title="CFB Mogul V27.8", page_icon="🏈", layout="wide")
 except Exception:
     pass
 
@@ -627,7 +627,10 @@ def distribute_exact(total: int, weights: dict, step: int = 100_000) -> dict:
 
 def sync_alloc_to_inputs(alloc: dict):
     for p in POSITIONS:
-        st.session_state[f"input_{p}"] = int(alloc.get(p, 0) or 0)
+        # V27.8 FIX: Must target the NEW widget keys defined in V27.7
+        # This ensures the session state matches the widgets, allowing the buttons to update them.
+        key = f"hs_pos_input_{p}_v27"
+        st.session_state[key] = int(alloc.get(p, 0) or 0)
 
 def engine_generate_coach(role, tier):
     cost = random.randint(4_000_000, 8_000_000) if tier == 1 else random.randint(500_000, 3_500_000)
@@ -1405,7 +1408,7 @@ def ai_conference_swap_lightweight():
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 College Football Mogul V27.7")
+    st.title("🏆 College Football Mogul V27.8")
     st.markdown("### Dynasty Mode")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -1861,7 +1864,7 @@ def show_postseason():
                 seeds = data.get("QF_Seeds", []); new_matches = []
                 if len(seeds) == 4 and len(winners_only) >= 4:
                     for i in range(4): new_matches.append({"t1": seeds[i], "t2": winners_only[i], "winner": None})
-                st.session_state.postseason_data["Round"] = 2; st.session_state.postseason_data["Matches"] = new_matches
+                st.session_state.postseason_data["Round"] = 2; st.session_state.postseason_data["Matches"] = new_matches; st.rerun()
                 add_news(f"{st.session_state.team_name} advances to Quarterfinals after Bye."); st.rerun()
 
         elif data.get("UserAlive") and user_match:
