@@ -1,12 +1,11 @@
 """
 Build the Program: College Football CEO
-Version 1.3 (Visual Bracket & Stability Update)
+Version 1.4 (Stable Release)
 
-Changes in 1.3:
-- Bracket: Implemented new "Visual Tournament Tree" with CSS styling.
-- Stability: Added Deterministic RNG (refreshing page does not change game results).
-- Logic: Opponent ratings and schemes are now fixed per season (no random fluctuation on reload).
-- Data: Added Bracket History snapshots.
+Changes in 1.4:
+- Fixed IndentationError in Round 3 Bracket rendering.
+- Audited Deterministic RNG for consistency.
+- Includes all V1.3 features (Visual Bracket, History, Fixed Opponent Stats).
 """
 
 import streamlit as st
@@ -23,7 +22,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 1.3
+STATE_VERSION = 1.4
 
 class GameState:
     SETUP = "SETUP"
@@ -652,8 +651,6 @@ def render_cfp_bracket_tree(data: dict):
         html += "<div class='bracket-round'>"
         html += "<div class='bracket-round-title'>Opening Round</div>"
         
-        # matches are in order: 5v12, 6v11, 7v10, 8v9
-        # Re-sort to match standard view if needed, but linear list is fine
         display_order = [matches[3], matches[0], matches[1], matches[2]] if len(matches)>=4 else matches
 
         for i, m in enumerate(display_order):
@@ -809,7 +806,7 @@ def render_cfp_bracket_tree(data: dict):
         html += "<div class='bracket-matchup active' style='padding:30px;'>"
         html += "<div style='text-align:center; font-size:2em;'>🏆</div>"
         html += "<div style='text-align:center; color:#666; margin-top:10px;'>Awaiting Semifinal Results</div>"
-            html += "</div>"
+        html += "</div>" # FIX V1.4: Fixed indentation here
         html += "</div>"
         
         html += "</div>"
@@ -1921,6 +1918,7 @@ def show_dashboard():
         if not st.session_state.schedule:
             st.session_state.schedule = engine_generate_schedule(st.session_state.team_name, st.session_state.team_conf, st.session_state.team_rival)
 
+        # --- V28.3: REORDERED LAYOUT (BETTER SPACING) ---
         sched = st.session_state.schedule or []
         sched_len = len(sched)
         
@@ -1933,12 +1931,14 @@ def show_dashboard():
             is_riv = (opp == st.session_state.team_rival)
             opp_off = int(opp_data["OffOVR"]); opp_def = int(opp_data["DefOVR"])
 
+            # 1. Header & Matchup
             st.subheader(f"Next Game: Week {wk+1} vs {opp}")
             if is_riv: st.warning("RIVALRY WEEK: More chaos, bigger stakes!")
             
             my_off_val = off_val; my_def_val = def_val
             st.caption(f"Matchup: Your OFF {my_off_val} vs Opp DEF {opp_def} | Your DEF {my_def_val} vs Opp OFF {opp_off}")
 
+            # 2. Controls Row (V28.3 Layout)
             ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([1, 2, 2])
             with ctrl_c1:
                 st.markdown("<strong>Strategy</strong>", unsafe_allow_html=True)
@@ -1986,7 +1986,7 @@ def show_dashboard():
                         st.session_state.season_logs.append({"Week": wk2 + 1, "Opponent": opp2, "Score": f"{res2['result']} {res2['score']}", "Stats": res2["stats"], "Explain": res2["explain"], "OppOVR": int(opp_data2.get("OVR", 80)), "Loc": loc_str2})
                         if res2["result"] == "W":
                             st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                            st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv2 else 2))
+                            st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_riv else 2))
                         else:
                             st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
                             pen = 2 if st.session_state.tenure <= 2 else 5; st.session_state.job_security = max(0, st.session_state.job_security - pen)
@@ -1995,6 +1995,7 @@ def show_dashboard():
 
             st.divider()
 
+        # 3. Schedule Grid
         c1, c2 = st.columns(2)
         with c1:
             st.caption("Weeks 1–6")
@@ -2020,6 +2021,9 @@ def show_dashboard():
                     st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
 
         st.divider()
+        # V28.3: Removed News from here (moved to Sidebar or Season End bottom)
+        render_news_box() 
+        st.divider()
 
     with tab5:
         st.subheader("🏛️ Trophy Case (Quick View)")
@@ -2030,6 +2034,7 @@ def show_dashboard():
         st.divider(); render_trophy_gallery("🏆 Trophy Case Gallery"); st.divider()
         render_achievements_panel(); st.divider(); render_dynasty_timeline()
         
+        # V27.6: RETIREMENT BUTTON IN LEGACY TAB
         st.divider()
         if st.button("🚪 Retire from Coaching", type="secondary"):
             st.session_state.game_state = GameState.RETIREMENT
@@ -2076,6 +2081,7 @@ def show_season_end():
         st.session_state.selection_sunday_results = all_teams
         st.session_state.game_state = GameState.SELECTION_SUNDAY; st.rerun()
     
+    # V28.3: Moved News to Bottom
     st.divider()
     render_news_box()
 
@@ -2092,23 +2098,83 @@ def show_selection_sunday():
             if t.get("Team") == st.session_state.team_name: user_rank = i + 1; t["IsUser"] = True; break
     if user_rank == -1: user_rank = 999
     
+    # --- PINNED USER ROW (always visible) ---
     user_row = next((t for t in results if t.get("IsUser") or t.get("Team") == st.session_state.team_name), None)
     if user_row:
         st.subheader("🎯 Your Team (Pinned)")
+        # V28.3: Use helper for identical HTML
         st.markdown(html_rank_row(user_rank, user_row['Team'], user_row['Wins'], user_row['Losses'], user_row['Conf'], True), unsafe_allow_html=True)
         st.divider()
 
     if user_rank <= 4: st.success(f"✅ Top-4 Seed (#{user_rank}): You receive a First Round BYE.")
     
-    st.write("### 📊 Final Committee Rankings")
-    show_full = st.toggle("Show full rankings", value=False)
-    view = results if show_full else results[:25]
+    # --- 1. TOP 4 VIP ROW ---
+    st.subheader("🛡️ First Round Byes (Seeds #1 - #4)")
+    vip_cols = st.columns(4)
+    for i in range(4):
+        if i < len(results):
+            t = results[i]
+            with vip_cols[i]:
+                is_u = t.get("IsUser", False)
+                border = "2px solid #2196f3" if is_u else "2px solid #f1c40f"
+                bg = "#e3f2fd" if is_u else "#fffbeb"
+                st.markdown(
+                    f"<div style='background:{bg}; border:{border}; border-radius:8px; padding:15px; text-align:center; height:100%;'>"
+                    f"<div style='font-size:1.5em; font-weight:900; color:#b7791f;'>#{i+1}</div>"
+                    f"<div style='font-weight:bold; font-size:1.1em; margin:5px 0;'>{t['Team']}</div>"
+                    f"<div style='font-size:0.9em; color:#666;'>{t['Wins']}-{t['Losses']}</div>"
+                    f"<div style='margin-top:5px;'><span class='vip-badge'>BYE</span></div>"
+                    f"</div>", unsafe_allow_html=True
+                )
+    st.divider()
 
-    for i, t in enumerate(view):
-        rank = i + 1; is_user = t.get("IsUser", False);
-        st.markdown(html_rank_row(rank, t['Team'], t['Wins'], t['Losses'], t['Conf'], is_user), unsafe_allow_html=True)
+    # --- 2. FIRST ROUND MATCHUPS (5-12) ---
+    st.subheader("⚔️ First Round Matchups")
+    # Matchups: 5v12, 6v11, 7v10, 8v9
+    m_cols = st.columns(4)
+    pairs = [(4, 11), (5, 10), (6, 9), (7, 8)] # Indices in 0-based list
     
-    st.divider(); user_wins = st.session_state.record['w']
+    for idx, (h, l) in enumerate(pairs):
+        if l < len(results):
+            high = results[h]; low = results[l]
+            with m_cols[idx]:
+                st.markdown(
+                    f"<div style='background:white; border:1px solid #ddd; border-radius:8px; padding:10px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.05);'>"
+                    f"<div style='font-weight:bold; border-bottom:1px solid #eee; padding-bottom:5px;'>Match {idx+1}</div>"
+                    f"<div style='margin-top:8px;'>#{h+1} {high['Team']}</div>"
+                    f"<div style='color:#888; font-size:0.8em;'>vs</div>"
+                    f"<div style='margin-bottom:8px;'>#{l+1} {low['Team']}</div>"
+                    f"</div>", unsafe_allow_html=True
+                )
+    st.divider()
+
+    # --- 3. THE BUBBLE & REST (Dataframe) ---
+    st.subheader("📉 The Bubble & Rankings")
+    rest_data = []
+    for i, t in enumerate(results[12:25]):
+        rank = i + 13
+        status = "❌ OUT"
+        if safe_int(t.get("Wins"),0) >= 6: status = "🎳 BOWL"
+        if t.get("IsUser"): status += " (YOU)"
+        rest_data.append({
+            "Rank": rank,
+            "Team": t["Team"],
+            "Record": f"{t['Wins']}-{t['Losses']}",
+            "Conf": t["Conf"],
+            "Status": status
+        })
+    
+    if rest_data:
+        df = pd.DataFrame(rest_data)
+        st.dataframe(df, hide_index=True, use_container_width=True)
+
+    # --- 4. USER CONTEXT (If outside top 25) ---
+    if user_rank > 25:
+        st.warning(f"You are ranked #{user_rank}. (Not shown in Top 25)")
+
+    st.divider()
+    
+    user_wins = st.session_state.record['w']
     if user_wins < 6:
         st.error("❌ You did not qualify for a bowl game (less than 6 wins).")
         st.session_state.last_postseason_result = "NO_BOWL"
