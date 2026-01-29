@@ -1,13 +1,11 @@
 """
 Build the Program: College Football CEO
-VERSION 2.2 (The True Golden Master)
+VERSION 2.2 (The Golden Master)
 
 Audit Log:
-- Visuals: Restored 'rank-grid' and 'vip-seed-card' CSS for polished Selection Sunday.
-- UI: Restored 'html_rank_row' for visual rankings instead of raw dataframes.
-- Data: Retained the Expanded Universe (65+ Teams, accurate colors/rivals).
-- Layout: Moved News Wire to Sidebar for persistent visibility.
-- Engine: Unified Recruiting Pipeline (Retention -> NIL -> HS -> Top 8).
+- Logic Restore: Re-implemented V1.7's granular "Week-by-Week" Playoff progression.
+- Data Fix: Expanded database (65+ teams) with correct HEX colors to fix "Gray Bar" bug.
+- Visuals: Visual Bracket Tree + Gradient UI.
 """
 
 import streamlit as st
@@ -72,7 +70,7 @@ class GameConfig:
         "Bowl Win": "🎳"
     }
 
-    # EXPANDED DATABASE (65+ Teams)
+    # EXPANDED DATABASE (Fixes Gray Bars)
     TEAMS_DB = {
         "Georgia": {"color": "#BA0C2F"}, "Alabama": {"color": "#9E1B32"}, "Ohio State": {"color": "#BB0000"},
         "Michigan": {"color": "#00274C"}, "Texas": {"color": "#BF5700"}, "Oklahoma": {"color": "#841617"},
@@ -86,42 +84,40 @@ class GameConfig:
     }
 
     REAL_WORLD_INIT = {
-        "Georgia": {"Prestige": 95, "Talent": 96, "Tier": 1, "Rival": "Florida"},
-        "Ohio State": {"Prestige": 95, "Talent": 95, "Tier": 1, "Rival": "Michigan"},
-        "Texas": {"Prestige": 94, "Talent": 95, "Tier": 1, "Rival": "Oklahoma"},
-        "Alabama": {"Prestige": 92, "Talent": 94, "Tier": 1, "Rival": "Auburn"},
-        "Oregon": {"Prestige": 91, "Talent": 93, "Tier": 1, "Rival": "Washington"},
-        "Notre Dame": {"Prestige": 90, "Talent": 92, "Tier": 1, "Rival": "USC"},
-        "LSU": {"Prestige": 88, "Talent": 91, "Tier": 2, "Rival": "Alabama"},
-        "Michigan": {"Prestige": 88, "Talent": 90, "Tier": 1, "Rival": "Ohio State"},
-        "Penn State": {"Prestige": 86, "Talent": 89, "Tier": 2, "Rival": "Ohio State"},
-        "Ole Miss": {"Prestige": 85, "Talent": 89, "Tier": 2, "Rival": "Mississippi St"},
-        "Miami": {"Prestige": 86, "Talent": 88, "Tier": 2, "Rival": "Florida St"},
-        "Florida St": {"Prestige": 84, "Talent": 87, "Tier": 2, "Rival": "Miami"},
-        "Tennessee": {"Prestige": 85, "Talent": 88, "Tier": 2, "Rival": "Alabama"},
+        # TIER 1 (BOSSES)
+        "Georgia": {"Prestige": 97, "Talent": 96, "Tier": 1, "Rival": "Florida"},
+        "Ohio State": {"Prestige": 96, "Talent": 96, "Tier": 1, "Rival": "Michigan"},
+        "Texas": {"Prestige": 95, "Talent": 95, "Tier": 1, "Rival": "Oklahoma"},
+        "Oregon": {"Prestige": 94, "Talent": 94, "Tier": 1, "Rival": "Washington"},
+        
+        # TIER 1.5 (ELITE)
+        "Alabama": {"Prestige": 93, "Talent": 93, "Tier": 1, "Rival": "Auburn"},
+        "Notre Dame": {"Prestige": 91, "Talent": 91, "Tier": 1, "Rival": "USC"},
+        "Penn State": {"Prestige": 90, "Talent": 90, "Tier": 1, "Rival": "Ohio State"},
+        "Michigan": {"Prestige": 89, "Talent": 88, "Tier": 1, "Rival": "Ohio State"},
+        
+        # TIER 2 (CONTENDERS)
+        "LSU": {"Prestige": 88, "Talent": 89, "Tier": 2, "Rival": "Alabama"},
+        "Miami": {"Prestige": 87, "Talent": 88, "Tier": 2, "Rival": "Florida St"},
+        "Ole Miss": {"Prestige": 86, "Talent": 89, "Tier": 2, "Rival": "Mississippi St"},
         "Clemson": {"Prestige": 87, "Talent": 87, "Tier": 2, "Rival": "South Carolina"},
-        "USC": {"Prestige": 82, "Talent": 88, "Tier": 2, "Rival": "Notre Dame"},
-        "Oklahoma": {"Prestige": 84, "Talent": 89, "Tier": 2, "Rival": "Texas"},
-        "Texas A&M": {"Prestige": 83, "Talent": 89, "Tier": 2, "Rival": "Texas"},
+        "Tennessee": {"Prestige": 86, "Talent": 88, "Tier": 2, "Rival": "Alabama"},
+        "Texas A&M": {"Prestige": 85, "Talent": 89, "Tier": 2, "Rival": "Texas"},
+        "USC": {"Prestige": 84, "Talent": 87, "Tier": 2, "Rival": "Notre Dame"},
+        "Oklahoma": {"Prestige": 84, "Talent": 86, "Tier": 2, "Rival": "Texas"},
+        
+        # TIER 2.5 (TRAPS)
+        "Indiana": {"Prestige": 85, "Talent": 84, "Tier": 2, "Rival": "Purdue"},
+        "SMU": {"Prestige": 82, "Talent": 83, "Tier": 2, "Rival": "TCU"},
+        "BYU": {"Prestige": 80, "Talent": 81, "Tier": 2, "Rival": "Utah"},
         "Utah": {"Prestige": 80, "Talent": 85, "Tier": 2, "Rival": "BYU"},
-        "Kansas State": {"Prestige": 78, "Talent": 84, "Tier": 2, "Rival": "Kansas"},
-        "Missouri": {"Prestige": 78, "Talent": 85, "Tier": 2, "Rival": "Kansas"},
-        "Iowa": {"Prestige": 79, "Talent": 83, "Tier": 2, "Rival": "Iowa State"},
-        "Wisconsin": {"Prestige": 78, "Talent": 83, "Tier": 2, "Rival": "Minnesota"},
-        "Indiana": {"Prestige": 88, "Talent": 85, "Tier": 2, "Rival": "Purdue"},
-        "SMU": {"Prestige": 76, "Talent": 84, "Tier": 2, "Rival": "TCU"},
-        "Louisville": {"Prestige": 78, "Talent": 85, "Tier": 2, "Rival": "Kentucky"},
-        "NC State": {"Prestige": 77, "Talent": 84, "Tier": 2, "Rival": "UNC"},
-        "Arizona": {"Prestige": 76, "Talent": 84, "Tier": 3, "Rival": "Arizona State"},
-        "Boise State": {"Prestige": 78, "Talent": 85, "Tier": 2, "Rival": "Fresno St"},
-        "Fresno State": {"Prestige": 74, "Talent": 83, "Tier": 3, "Rival": "Boise State"},
+        
+        # TIER 3 (HARD MODE)
+        "Colorado": {"Prestige": 77, "Talent": 84, "Tier": 2, "Rival": "Nebraska"},
+        "Boise State": {"Prestige": 78, "Talent": 83, "Tier": 2, "Rival": "Fresno St"},
+        "Virginia Tech": {"Prestige": 74, "Talent": 79, "Tier": 3, "Rival": "UVA"},
         "Tulane": {"Prestige": 74, "Talent": 80, "Tier": 3, "Rival": "LSU"},
         "App State": {"Prestige": 72, "Talent": 79, "Tier": 3, "Rival": "Georgia Southern"},
-        "Memphis": {"Prestige": 72, "Talent": 78, "Tier": 3, "Rival": "Ole Miss"},
-        "Liberty": {"Prestige": 70, "Talent": 78, "Tier": 3, "Rival": "NMSU"},
-        "UNLV": {"Prestige": 68, "Talent": 77, "Tier": 3, "Rival": "Nevada"},
-        "Colorado": {"Prestige": 75, "Talent": 81, "Tier": 2, "Rival": "Nebraska"},
-        "Virginia Tech": {"Prestige": 74, "Talent": 79, "Tier": 3, "Rival": "UVA"},
     }
 
     CONFERENCES = {
@@ -200,7 +196,6 @@ try:
 except Exception:
     pass
 
-# --- RESTORED CSS CLASSES FROM YOUR FILE ---
 st.markdown("""
 <style>
 .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
@@ -243,7 +238,7 @@ st.markdown("""
 .resume-val { font-size: 1.2em; font-weight: bold; }
 .small-muted { font-size: 0.85em; color: #777; }
 
-/* RESTORED FROM YOUR FILE */
+/* RESTORED VISUALS */
 .rank-grid { display: grid; grid-template-columns: 50px 1fr 100px 90px; gap: 10px; align-items: center; padding: 8px; border-bottom: 1px solid #eee; background: white; color: #333; }
 .rank-grid-user { background: #e3f2fd !important; border-left: 5px solid #2196f3; font-weight: bold; }
 .rank-num { font-weight: bold; color: #555; text-align: center; }
@@ -324,7 +319,6 @@ def add_news(msg: str):
     st.session_state.news.insert(0, {"ts": stamp, "text": msg}) 
     st.session_state.news = st.session_state.news[:40]
 
-# --- MOVED HERE FOR GLOBAL ACCESS ---
 def render_news_box():
     with st.sidebar:
         st.divider()
@@ -349,7 +343,6 @@ def render_news_box():
             
             st.markdown(f"<div class='{css_class}'>{txt}</div>", unsafe_allow_html=True)
 
-# --- RESTORED HTML RANK ROW HELPER ---
 def html_rank_row(rank, team, wins, losses, conf, is_user):
     bg_class = "rank-grid-user" if is_user else "rank-grid"
     status = "🏆 CFP" if rank <= 12 else ("🎳 BOWL" if wins >= 6 else "❌ OUT")
@@ -489,7 +482,7 @@ class OpponentManager:
         if "opponents_db" not in st.session_state: return
         for team, data in st.session_state.opponents_db.items():
             base_ovr = safe_int(data.get("OVR", 75), 75)
-            wins = int((base_ovr / 105) * 12) + random.randint(-3, 3) # V1.8 Logic Fix
+            wins = int((base_ovr / 105) * 12) + random.randint(-3, 3) 
             wins = max(0, min(12, wins))
             evolved = OpponentFactory.create_opponent(team, context="EVOLVE", performance_data={"wins": wins})
             data["Prestige"] = evolved["Prestige"]; data["OVR"] = evolved["OVR"]
@@ -516,7 +509,6 @@ class OpponentFactory:
             elif wins <= 4: pres = max(20, pres - 3)
             ovr = int(pres * 0.9) + random.randint(-3, 3)
         elif context == "RUNTIME":
-            # Dynamic Difficulty
             try:
                 uc = st.session_state.get("team_conf", "G5")
                 if uc in ["G5", "MAC", "Pac-12", "Indep"]:
@@ -931,13 +923,6 @@ def compute_team_unit_ratings(roster, staff, facilities):
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
     rng = rng or random.Random()
     
-    # V1.8: Cinderella Tax
-    try:
-        diff_mult = calculate_difficulty_multiplier(st.session_state.get("team_conf", "G5"), st.session_state.get("prestige", 60), st.session_state.get("team_rating", 75), st.session_state.get("record", {}).get("w", 0))
-        opp_off = int(opp_off * diff_mult)
-        opp_def = int(opp_def * diff_mult)
-    except: pass
-
     my_edge, opp_edge = (my_off - opp_def)*0.75, (opp_off - my_def)*0.75
     sb_my, sb_opp = 0.0, 0.0
     if GameConfig.OFF_COUNTERED_BY.get(schemes.get("Off")) == opp_schemes.get("Def"): sb_my -= 2.5; sb_opp += 1.0
@@ -1039,6 +1024,119 @@ def safe_json_default(obj):
     return str(obj)
 
 # ==============================================================================
+# RECRUITING FUNCTIONS
+# ==============================================================================
+
+def generate_retention_demands() -> List[Dict]:
+    demands = []
+    targets = random.sample(GameConfig.POSITIONS, 3)
+    for pos in targets:
+        current_rating = st.session_state.roster.get(pos, 75)
+        base_cost = max(250_000, (current_rating - 60) * 50_000)
+        cost = int(base_cost * random.uniform(0.8, 1.2))
+        demands.append({"pos": pos, "rating": current_rating, "cost": cost, "status": "PENDING"})
+    return demands
+
+def generate_nil_class_15(team_needs: list):
+    def mk(tier: int, pos: str):
+        if tier == 1: rating = random.randint(90, 99); ask = int(random.randint(2_500_000, 9_000_000) * (1.0 + (rating - 90) / 25)); badge = "Tier 1"
+        elif tier == 2: rating = random.randint(84, 89); ask = int(random.randint(900_000, 3_500_000) * (1.0 + (rating - 84) / 35)); badge = "Tier 2"
+        else: rating = random.randint(76, 83); ask = int(random.randint(200_000, 1_200_000) * (1.0 + (rating - 76) / 40)); badge = "Tier 3"
+        return {"id": random.randint(10_000, 99_999), "tier": tier, "tier_label": badge, "name": generate_name(), "pos": pos, "rating": rating, "ask": ask, "trait": random.choice(GameConfig.TRAITS), "status": "AVAILABLE"}
+    needs = team_needs[:] if team_needs else GameConfig.POSITIONS[:]; pool=[]
+    for _ in range(5): pos = random.choice(needs if random.random() < 0.70 else GameConfig.POSITIONS); pool.append(mk(1, pos))
+    for _ in range(5): pos = random.choice(needs if random.random() < 0.60 else GameConfig.POSITIONS); pool.append(mk(2, pos))
+    for _ in range(5): pos = random.choice(needs if random.random() < 0.50 else GameConfig.POSITIONS); pool.append(mk(3, pos))
+    pool.sort(key=lambda x: (x["tier"], -x["rating"])); return pool
+
+def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, prestige: int, inflation: float, hotspots: dict, home_region: str, team_needs: list, is_dollars: bool = False):
+    results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(total_spend)}
+    total_spend = max(0, int(total_spend))
+    staff = staff or {}
+    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
+    hc_trait = (staff.get("HC") or {}).get("trait", "None")
+    efficiency = 0.85 if scout >= 8 else (1.0 if scout >= 5 else 1.15)
+    base_cost = 900_000 * float(inflation) * float(efficiency)
+    hot_positions = hotspots.get(home_region, [])
+    
+    if is_dollars:
+        allocated = 0
+        for p in GameConfig.POSITIONS:
+            try: allocated += int(float(shares_or_alloc.get(p, 0) or 0))
+            except: pass
+        spent = max(0, min(total_spend, allocated))
+    else: spent = total_spend
+    
+    results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(spent)}
+    for pos in GameConfig.POSITIONS:
+        raw = float(shares_or_alloc.get(pos, 0.0) or 0.0)
+        if is_dollars: amt = max(0.0, raw)
+        else: pct = raw; amt = total_spend * (pct / 100.0)
+        
+        if amt <= 0: results["roster_updates"][pos] = -random.randint(1, 3); continue
+        cap = base_cost * 2.0; effective_spend = cap * (1 - math.exp(-amt / cap))
+        spend_ratio = effective_spend / max(1.0, base_cost); dim = spend_ratio ** 0.85
+        pipeline_bonus = 1.15 if pos in hot_positions else 1.0
+        need_bonus = 1.25 if pos in team_needs else 1.0
+        prestige_factor = max(0.85, min(1.20, (prestige / 75) ** 0.35))
+        change = dim * pipeline_bonus * need_bonus * prestige_factor
+        change = max(-4, min(12, change))
+        if hc_trait == "Recruiter": change *= 1.08
+        gem_chance = 0.08
+        if pos in team_needs: gem_chance += 0.07
+        if pos in hot_positions: gem_chance += 0.05
+        if scout >= 8: gem_chance += 0.03
+        if hc_trait == "Recruiter": gem_chance += 0.02
+        if amt > base_cost * 1.25 and random.random() < gem_chance:
+            star = generate_star_player(pos, tier=1); star["name"] += " (GEM)"; results["gems"].append(star)
+            change += 5; results["booster_bonus"] += 250_000 + random.randint(0, 250_000)
+        results["roster_updates"][pos] = change
+    return results
+
+def generate_top8_prospects(team_needs: list):
+    recruits = []
+    for _ in range(8):
+        pos = random.choice(team_needs if team_needs and random.random() < 0.65 else GameConfig.POSITIONS)
+        rating = random.randint(90, 99)
+        ask = int(random.randint(2_000_000, 8_000_000) * (1.0 + (rating - 90) / 35))
+        recruits.append({"id": random.randint(10_000, 99_999), "name": generate_name(), "pos": pos, "rating": rating, "ask": ask, "trait": random.choice(GameConfig.TRAITS), "status": "OPEN", "note": "", "offer": 0})
+    recruits.sort(key=lambda x: x["rating"], reverse=True); return recruits
+
+def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige: int) -> float:
+    staff = staff or {}
+    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
+    hc_trait = (staff.get("HC") or {}).get("trait", "None")
+    chance = 0.18 + (max(40, min(99, prestige)) - 60) * 0.004 + (scout - 5) * 0.02
+    if hc_trait == "Recruiter": chance += 0.05
+    pos = recruit["pos"]; spend = float(spend_by_pos.get(pos, 0.0))
+    chance += min(0.20, spend / 10_000_000)
+    return max(0.05, min(0.80, chance))
+
+def compute_recruiting_class_grade():
+    nil = st.session_state.get("nil_class", []) or []
+    top8 = st.session_state.get("top8", []) or []
+    stars = st.session_state.get("stars", []) or []
+    tier_points = 0; tier_counts = {1: 0, 2: 0, 3: 0}
+    for p in nil:
+        if p.get("status") == "SIGNED":
+            tier = int(p.get("tier", 3)); tier_counts[tier] = tier_counts.get(tier, 0) + 1; tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
+    top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
+    top8_points = len(top8_commits) * 10
+    gem_count = 0
+    for s in stars:
+        if "(GEM)" in str(s.get("name", "")): gem_count += 1
+    gem_points = gem_count * 6
+    score = tier_points + top8_points + gem_points
+    if score >= 70: grade = "A+"
+    elif score >= 55: grade = "A"
+    elif score >= 42: grade = "B"
+    elif score >= 30: grade = "C"
+    elif score >= 18: grade = "D"
+    else: grade = "F"
+    breakdown = {"score": score, "nil_signed": sum(tier_counts.values()), "tier_counts": tier_counts, "top8_commits": len(top8_commits), "gems_found": gem_count, "points": {"nil": tier_points, "top8": top8_points, "gems": gem_points}}
+    return grade, score, breakdown
+
+# ==============================================================================
 # VIEW FUNCTIONS
 # ==============================================================================
 
@@ -1048,7 +1146,11 @@ def run_setup():
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
     diff = c2.selectbox("Difficulty", ["Normal", "Hard", "Easy"])
-    teams = sorted(GameConfig.REAL_WORLD_INIT.keys()) + sorted([t for t in GameConfig.ALL_TEAMS if t not in GameConfig.REAL_WORLD_INIT])
+    
+    # Sort teams by prestige to make finding elite teams easier
+    teams = sorted(GameConfig.REAL_WORLD_INIT.keys(), key=lambda x: GameConfig.REAL_WORLD_INIT[x]["Prestige"], reverse=True)
+    teams += sorted([t for t in GameConfig.ALL_TEAMS if t not in GameConfig.REAL_WORLD_INIT])
+    
     team = st.selectbox("Select Team", teams)
     
     if team in GameConfig.REAL_WORLD_INIT:
@@ -1119,6 +1221,8 @@ def show_dashboard():
     if st.session_state.job_security < (0 if st.session_state.tenure <= 2 else 30):
         st.session_state.game_state = GameState.FIRED
         st.rerun()
+
+    render_news_box()
 
     if st.session_state.get("pending_invite"):
         inv = st.session_state.pending_invite
@@ -1380,7 +1484,6 @@ def show_selection_sunday():
         if i < len(results):
             t = results[i]
             with vip_cols[i]:
-                # FIX: Using HTML list items if visual cards missing, but here restored via CSS
                 border = "2px solid #2196f3" if t.get("IsUser") else "2px solid #f1c40f"
                 bg = "#e3f2fd" if t.get("IsUser") else "#fffbeb"
                 st.markdown(f"<div style='background:{bg}; border:{border}; border-radius:8px; padding:15px; text-align:center;'><h3>#{i+1}</h3><div>{t['Team']}</div></div>", unsafe_allow_html=True)
@@ -1466,97 +1569,222 @@ def show_postseason():
     elif data.get("Type") == "CFP":
         render_cfp_bracket_tree(st.session_state.postseason_data)
         st.divider()
-        user_match = None
-        matches = data.get("Matches", [])
-        round_num = int(data.get("Round", 1))
         
-        for m in matches:
-            if m.get("t1") == st.session_state.team_name or m.get("t2") == st.session_state.team_name: user_match = m; break
-
-        if not user_match and data.get("UserAlive") and round_num == 1:
-            st.success("✅ FIRST ROUND BYE"); st.info("You are a Top-4 Seed. You automatically advance to the Quarterfinals.")
-            if st.button("Simulate Opening Round & Advance", type="primary"):
-                data.setdefault("History", []).append(copy.deepcopy(matches))
-                seed_map = st.session_state.postseason_data.get("SeedMap", {})
-                for m in matches:
-                    t1, t2 = m.get("t1"), m.get("t2"); o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
-                    p = o1 / max(1.0, (o1 + o2)); winner = t1 if random.random() < p else t2
-                    s_win = int(random.gauss(34, 7)); s_loss = int(random.gauss(20, 7))
-                    if s_win <= s_loss: s_win = s_loss + 3 
-                    if winner == t1: m["s1"], m["s2"] = s_win, s_loss
-                    else: m["s1"], m["s2"] = s_loss, s_win
-                    m["winner"] = winner
+        # Get current round and check if user is still alive
+        round_num = data.get("Round", 1)
+        user_alive = data.get("UserAlive", True)
+        user_rank = data.get("Rank", 999)
+        
+        if not user_alive:
+            st.error("💔 You have been eliminated from the College Football Playoff")
+            if st.button("Continue to Season Recap"):
+                st.session_state.game_state = GameState.SEASON_RECAP
+                st.rerun()
+            return
+        
+        # ROUND 1: First Round (seeds 5-12)
+        if round_num == 1:
+            if user_rank <= 4:
+                # User has bye, just advance
+                st.success(f"🛡️ You have a FIRST ROUND BYE as the #{user_rank} seed!")
+                if st.button("Advance to Quarterfinals →", type="primary"):
+                    data["Round"] = 2
+                    # Simulate first round for other teams
+                    matches = data.get("Matches", [])
+                    for m in matches:
+                        if not m.get("winner"):
+                            # Simulate: higher seed wins 65% of time
+                            if random.random() < 0.65:
+                                m["winner"] = m["t1"]
+                                m["s1"], m["s2"] = random.randint(24, 35), random.randint(17, 31)
+                            else:
+                                m["winner"] = m["t2"]
+                                m["s1"], m["s2"] = random.randint(17, 31), random.randint(24, 35)
+                    # Build quarterfinal matchups
+                    winners = [m["winner"] for m in matches]
+                    qf_seeds = data.get("QF_Seeds", data.get("Seeds", [])[:4])
+                    seed_map = data.get("SeedMap", {})
+                    data["Matches"] = [
+                        {"t1": qf_seeds[0], "t2": winners[0], "winner": None},
+                        {"t1": qf_seeds[1], "t2": winners[1], "winner": None},
+                        {"t1": qf_seeds[2], "t2": winners[2], "winner": None},
+                        {"t1": qf_seeds[3], "t2": winners[3], "winner": None},
+                    ]
+                    st.rerun()
+            else:
+                # User must play first round
+                user_team = st.session_state.team_name
+                user_match = next((m for m in data["Matches"] if user_team in [m.get("t1"), m.get("t2")]), None)
+                
+                if user_match and not user_match.get("winner"):
+                    opponent = user_match["t2"] if user_match["t1"] == user_team else user_match["t1"]
+                    opp_data = OpponentManager.get(opponent)
                     
-                seeds = data.get("Seeds", []); new_matches = []
-                if len(seeds) >= 4 and len(matches) >= 4:
-                    w_8v9 = matches[3].get("winner"); w_5v12 = matches[0].get("winner"); w_6v11 = matches[1].get("winner"); w_7v10 = matches[2].get("winner")
-                    new_matches.append({"t1": seeds[0], "t2": w_8v9, "winner": None}) 
-                    new_matches.append({"t1": seeds[3], "t2": w_5v12, "winner": None}) 
-                    new_matches.append({"t1": seeds[2], "t2": w_6v11, "winner": None}) 
-                    new_matches.append({"t1": seeds[1], "t2": w_7v10, "winner": None}) 
-
-                st.session_state.postseason_data["Round"] = 2; st.session_state.postseason_data["Matches"] = new_matches; st.rerun()
-
-        elif data.get("UserAlive") and user_match:
-            opp = user_match["t2"] if user_match["t1"] == st.session_state.team_name else user_match["t1"]
-            opp_data = OpponentManager.get(opp)
-            st.info(f"Your Matchup: vs {opp} (OVR: {opp_data.get('OVR',88)})")
-            if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
-                rng = game_rng(st.session_state.year, 20, opp, mode="PLAY")
-                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
-                
-                try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
-                except: my_s, opp_s = 0, 0
-                if user_match.get("t1") == st.session_state.team_name: user_match["s1"], user_match["s2"] = my_s, opp_s
-                else: user_match["s1"], user_match["s2"] = opp_s, my_s
-
-                data.setdefault("History", []).append(copy.deepcopy(matches))
-                for m in matches:
-                    if m is user_match:
+                    st.subheader(f"🏈 CFP First Round: {user_team} vs {opponent}")
+                    c1, c2, c3 = st.columns([1, 0.2, 1])
+                    with c1: st.markdown(UIComponents.team_stat_card(user_team, f"{st.session_state.record['w']}-{st.session_state.record['l']}", st.session_state.team_rating, st.session_state.team_off, st.session_state.team_def, st.session_state.facilities.get("Stadium", 7), True), unsafe_allow_html=True)
+                    with c2: st.markdown("<h1 style='text-align:center'>VS</h1>", unsafe_allow_html=True)
+                    with c3: st.markdown(UIComponents.team_stat_card(opponent, "Est. 10-2", opp_data.get("OVR", 85), opp_data.get("OffOVR", 85), opp_data.get("DefOVR", 85), opp_data.get("Stadium", 9), False), unsafe_allow_html=True)
+                    
+                    if st.button("PLAY CFP GAME 🏈", type="primary"):
+                        res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR", 85), opp_data.get("DefOVR", 85), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), True, False, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), random.Random())
+                        user_match["s1"], user_match["s2"] = [int(x) for x in res["score"].split("-")]
                         if res["result"] == "W":
-                            m["winner"] = st.session_state.team_name
-                            add_news(f"{st.session_state.team_name} advances in the CFP!"); safe_toast("VICTORY! Advancing...")
-                            BudgetManager.add(5_000_000, "CFP Round Bonus")
+                            user_match["winner"] = user_team
+                            safe_toast("Victory! Advancing to Quarterfinals!")
                         else:
-                            m["winner"] = opp; st.session_state.postseason_data["UserAlive"] = False
-                            st.session_state.last_postseason_result = "CFP_LOSS"; add_news(f"{st.session_state.team_name} is eliminated by {opp}."); st.error(f"Eliminated by {opp}")
-                    else:
-                        t1, t2 = m.get("t1"), m.get("t2")
-                        if not t1 or not t2: continue
-                        o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
-                        p = o1 / max(1.0, (o1 + o2)); winner = t1 if random.random() < p else t2
-                        s_win = int(random.gauss(34, 7)); s_loss = int(random.gauss(20, 7))
-                        if s_win <= s_loss: s_win = s_loss + 3 
-                        if winner == t1: m["s1"], m["s2"] = s_win, s_loss
-                        else: m["s1"], m["s2"] = s_loss, s_win
-                        m["winner"] = winner
-                
-                time.sleep(0.6)
-                if st.session_state.postseason_data.get("UserAlive"):
-                    if round_num == 4:
-                        st.session_state.last_postseason_result = "TITLE"
-                        BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
-                        st.session_state.career_stats["titles"] += 1; st.balloons(); st.success("NATIONAL CHAMPIONS!")
-                        add_news(f"{st.session_state.team_name} wins the NATIONAL TITLE!"); award_trophy("National Title")
-                        check_and_award_achievements()
-                        st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
-                        st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
-                    else:
-                        new_matches = []
-                        if round_num == 2:
-                            if len(matches) >= 4:
-                                new_matches.append({"t1": matches[0]["winner"], "t2": matches[1]["winner"], "winner": None})
-                                new_matches.append({"t1": matches[2]["winner"], "t2": matches[3]["winner"], "winner": None})
-                        elif round_num == 3:
-                            if len(matches) >= 2:
-                                new_matches.append({"t1": matches[0]["winner"], "t2": matches[1]["winner"], "winner": None})
-                        st.session_state.postseason_data["Round"] = round_num + 1; st.session_state.postseason_data["Matches"] = new_matches; st.rerun()
+                            user_match["winner"] = opponent
+                            data["UserAlive"] = False
+                            safe_toast("Eliminated from CFP")
+                        st.rerun()
                 else:
-                    st.session_state.history.append({"Year": st.session_state.year, "Record": "Playoff Loss", "Rank": f"#{data.get('Rank','?')}", "Bowl": "CFP", "PostseasonResult": "CFP_LOSS"})
-                    st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
-        else:
-            st.info("You are no longer alive in the bracket.")
-            if st.button("Close Season → Recap", type="primary"): st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
+                    # User already played or doesn't have match
+                    st.success("✅ First Round Complete!")
+                    if st.button("Advance to Quarterfinals →", type="primary"):
+                        # Simulate remaining games
+                        for m in data["Matches"]:
+                            if not m.get("winner"):
+                                m["winner"] = m["t1"] if random.random() < 0.65 else m["t2"]
+                                m["s1"], m["s2"] = random.randint(24, 35), random.randint(17, 31)
+                        # Build QF matchups
+                        winners = [m["winner"] for m in data["Matches"]]
+                        qf_seeds = data.get("QF_Seeds", data.get("Seeds", [])[:4])
+                        data["Matches"] = [
+                            {"t1": qf_seeds[0], "t2": winners[0], "winner": None},
+                            {"t1": qf_seeds[1], "t2": winners[1], "winner": None},
+                            {"t1": qf_seeds[2], "t2": winners[2], "winner": None},
+                            {"t1": qf_seeds[3], "t2": winners[3], "winner": None},
+                        ]
+                        data["Round"] = 2
+                        st.rerun()
+        
+        # ROUND 2: Quarterfinals
+        elif round_num == 2:
+            user_team = st.session_state.team_name
+            user_match = next((m for m in data["Matches"] if user_team in [m.get("t1"), m.get("t2")]), None)
+            
+            if user_match and not user_match.get("winner"):
+                opponent = user_match["t2"] if user_match["t1"] == user_team else user_match["t1"]
+                opp_data = OpponentManager.get(opponent)
+                
+                st.subheader(f"🏈 CFP Quarterfinal: {user_team} vs {opponent}")
+                c1, c2, c3 = st.columns([1, 0.2, 1])
+                with c1: st.markdown(UIComponents.team_stat_card(user_team, f"{st.session_state.record['w']}-{st.session_state.record['l']}", st.session_state.team_rating, st.session_state.team_off, st.session_state.team_def, st.session_state.facilities["Stadium"], True), unsafe_allow_html=True)
+                with c2: st.markdown("<h1 style='text-align:center'>VS</h1>", unsafe_allow_html=True)
+                with c3: st.markdown(UIComponents.team_stat_card(opponent, "Est. 11-1", opp_data.get("OVR", 88), opp_data.get("OffOVR", 88), opp_data.get("DefOVR", 88), opp_data.get("Stadium", 10), False), unsafe_allow_html=True)
+                
+                if st.button("PLAY QUARTERFINAL 🏈", type="primary"):
+                    res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR", 88), opp_data.get("DefOVR", 88), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), True, False, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), random.Random())
+                    user_match["s1"], user_match["s2"] = [int(x) for x in res["score"].split("-")]
+                    if res["result"] == "W":
+                        user_match["winner"] = user_team
+                        safe_toast("Victory! Advancing to Semifinals!")
+                    else:
+                        user_match["winner"] = opponent
+                        data["UserAlive"] = False
+                        safe_toast("Eliminated from CFP")
+                    st.rerun()
+            else:
+                st.success("✅ Quarterfinal Complete!")
+                if st.button("Advance to Semifinals →", type="primary"):
+                    for m in data["Matches"]:
+                        if not m.get("winner"):
+                            m["winner"] = m["t1"] if random.random() < 0.60 else m["t2"]
+                            m["s1"], m["s2"] = random.randint(24, 35), random.randint(17, 31)
+                    winners = [m["winner"] for m in data["Matches"]]
+                    data["Matches"] = [
+                        {"t1": winners[0], "t2": winners[1], "winner": None},
+                        {"t1": winners[2], "t2": winners[3], "winner": None},
+                    ]
+                    data["Round"] = 3
+                    st.rerun()
+        
+        # ROUND 3: Semifinals
+        elif round_num == 3:
+            user_team = st.session_state.team_name
+            user_match = next((m for m in data["Matches"] if user_team in [m.get("t1"), m.get("t2")]), None)
+            
+            if user_match and not user_match.get("winner"):
+                opponent = user_match["t2"] if user_match["t1"] == user_team else user_match["t1"]
+                opp_data = OpponentManager.get(opponent)
+                
+                st.subheader(f"🏈 CFP SEMIFINAL: {user_team} vs {opponent}")
+                c1, c2, c3 = st.columns([1, 0.2, 1])
+                with c1: st.markdown(UIComponents.team_stat_card(user_team, f"{st.session_state.record['w']}-{st.session_state.record['l']}", st.session_state.team_rating, st.session_state.team_off, st.session_state.team_def, st.session_state.facilities["Stadium"], True), unsafe_allow_html=True)
+                with c2: st.markdown("<h1 style='text-align:center'>VS</h1>", unsafe_allow_html=True)
+                with c3: st.markdown(UIComponents.team_stat_card(opponent, "Est. 12-1", opp_data.get("OVR", 91), opp_data.get("OffOVR", 91), opp_data.get("DefOVR", 91), opp_data.get("Stadium", 11), False), unsafe_allow_html=True)
+                
+                if st.button("PLAY SEMIFINAL 🏈", type="primary"):
+                    res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR", 91), opp_data.get("DefOVR", 91), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), True, False, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), random.Random())
+                    user_match["s1"], user_match["s2"] = [int(x) for x in res["score"].split("-")]
+                    if res["result"] == "W":
+                        user_match["winner"] = user_team
+                        safe_toast("Victory! Advancing to NATIONAL CHAMPIONSHIP!")
+                    else:
+                        user_match["winner"] = opponent
+                        data["UserAlive"] = False
+                        safe_toast("Eliminated from CFP")
+                    st.rerun()
+            else:
+                st.success("✅ Semifinal Complete!")
+                if st.button("Advance to National Championship →", type="primary"):
+                    for m in data["Matches"]:
+                        if not m.get("winner"):
+                            m["winner"] = m["t1"] if random.random() < 0.55 else m["t2"]
+                            m["s1"], m["s2"] = random.randint(24, 35), random.randint(20, 33)
+                    winners = [m["winner"] for m in data["Matches"]]
+                    data["Matches"] = [{"t1": winners[0], "t2": winners[1], "winner": None}]
+                    data["Round"] = 4
+                    st.rerun()
+        
+        # ROUND 4: National Championship
+        elif round_num == 4:
+            user_team = st.session_state.team_name
+            user_match = data["Matches"][0]
+            
+            if not user_match.get("winner"):
+                opponent = user_match["t2"] if user_match["t1"] == user_team else user_match["t1"]
+                opp_data = OpponentManager.get(opponent)
+                
+                st.markdown(UIComponents.gradient_header("🏆 NATIONAL CHAMPIONSHIP GAME 🏆", f"{user_team} vs {opponent}", "135deg, #FFD700 0%, #FFA500 100%"), unsafe_allow_html=True)
+                c1, c2, c3 = st.columns([1, 0.2, 1])
+                with c1: st.markdown(UIComponents.team_stat_card(user_team, f"{st.session_state.record['w']}-{st.session_state.record['l']}", st.session_state.team_rating, st.session_state.team_off, st.session_state.team_def, st.session_state.facilities["Stadium"], True), unsafe_allow_html=True)
+                with c2: st.markdown("<h1 style='text-align:center'>VS</h1>", unsafe_allow_html=True)
+                with c3: st.markdown(UIComponents.team_stat_card(opponent, "Est. 13-1", opp_data.get("OVR", 93), opp_data.get("OffOVR", 93), opp_data.get("DefOVR", 93), opp_data.get("Stadium", 11), False), unsafe_allow_html=True)
+                
+                if st.button("PLAY FOR THE NATIONAL TITLE 🏈", type="primary"):
+                    res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR", 93), opp_data.get("DefOVR", 93), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), True, False, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), random.Random())
+                    user_match["s1"], user_match["s2"] = [int(x) for x in res["score"].split("-")]
+                    user_match["winner"] = user_team if res["result"] == "W" else opponent
+                    
+                    if res["result"] == "W":
+                        st.session_state.last_postseason_result = "NATIONAL_TITLE"
+                        st.session_state.career_stats["titles"] += 1
+                        BudgetManager.add(10_000_000, "National Championship!")
+                        award_trophy("National Title")
+                        safe_toast("🏆 NATIONAL CHAMPIONS! 🏆")
+                    else:
+                        st.session_state.last_postseason_result = "CFP_RUNNER_UP"
+                        BudgetManager.add(5_000_000, "National Championship Runner-Up")
+                        safe_toast("Runner-up in National Championship")
+                    
+                    w = st.session_state.record["w"] + sum(1 for m in data.get("AllMatches", []) if m.get("winner") == user_team and m.get("s1"))
+                    l = st.session_state.record["l"] + sum(1 for m in data.get("AllMatches", []) if m.get("winner") and m.get("winner") != user_team and user_team in [m.get("t1"), m.get("t2")])
+                    st.session_state.history.append({"Year": st.session_state.year, "Record": f"{w}-{l}", "Rank": f"#{user_rank}", "Bowl": "CFP", "PostseasonResult": st.session_state.last_postseason_result})
+                    check_and_award_achievements()
+                    st.rerun()
+            else:
+                # Championship complete
+                winner = user_match["winner"]
+                if winner == st.session_state.team_name:
+                    st.balloons()
+                    st.success(f"🏆🏆🏆 NATIONAL CHAMPIONS! {user_match['s1']}-{user_match['s2']} 🏆🏆🏆")
+                else:
+                    st.error(f"💔 Runner-Up: Lost {user_match['s1']}-{user_match['s2']}")
+                
+                if st.button("Continue to Season Recap →", type="primary"):
+                    st.session_state.game_state = GameState.SEASON_RECAP
+                    st.rerun()
 
 def show_season_recap():
     sync_team_ratings()
