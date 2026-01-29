@@ -1764,31 +1764,71 @@ def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige:
     return max(0.05, min(0.80, chance))
 
 def compute_recruiting_class_grade():
+    """
+    Calculate the recruiting class grade based on NIL signings, top 8 commits, and gems found.
+    
+    Returns:
+        tuple: (grade, score, breakdown) where:
+            - grade: Letter grade (A+, A, B, C, D, F)
+            - score: Numeric score based on tier points, top8 commits, and gems
+            - breakdown: Dictionary with detailed scoring breakdown
+    """
+    # Get recruiting data from session state
+    nil = st.session_state.get("nil_class", [])
+    top8 = st.session_state.get("top8", [])
+    stars = st.session_state.get("stars", [])
+    
+    # Initialize counters
+    tier_counts = {}
+    tier_points = 0
+    
+    # Calculate NIL tier points
     for p in nil:
         if p.get("status") == "SIGNED":
             tier = int(p.get("tier", 3))
             tier_counts[tier] = tier_counts.get(tier, 0) + 1
             tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-        for p in nil:
-        if p.get("status") == "SIGNED":
-            tier = int(p.get("tier", 3))
-            tier_counts[tier] = tier_counts.get(tier, 0) + 1
-            tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-        if r.get("status") == "COMMITTED"]
-           top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
-           top8_points = len(top8_commits) * 10
-            gem_count = 0
-        for s in stars:
-    if "(GEM)" in str(s.get("name", "")): gem_count += 1
+    
+    # Calculate top 8 commits points
+    top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
+    top8_points = len(top8_commits) * 10
+    
+    # Calculate gem points
+    gem_count = 0
+    for s in stars:
+        if "(GEM)" in str(s.get("name", "")):
+            gem_count += 1
     gem_points = gem_count * 6
+    
+    # Calculate total score and assign grade
     score = tier_points + top8_points + gem_points
-    if score >= 70: grade = "A+"
-    elif score >= 55: grade = "A"
-    elif score >= 42: grade = "B"
-    elif score >= 30: grade = "C"
-    elif score >= 18: grade = "D"
-    else: grade = "F"
-    breakdown = {"score": score, "nil_signed": sum(tier_counts.values()), "tier_counts": tier_counts, "top8_commits": len(top8_commits), "gems_found": gem_count, "points": {"nil": tier_points, "top8": top8_points, "gems": gem_points}}
+    if score >= 70:
+        grade = "A+"
+    elif score >= 55:
+        grade = "A"
+    elif score >= 42:
+        grade = "B"
+    elif score >= 30:
+        grade = "C"
+    elif score >= 18:
+        grade = "D"
+    else:
+        grade = "F"
+    
+    # Build breakdown dictionary
+    breakdown = {
+        "score": score,
+        "nil_signed": sum(tier_counts.values()),
+        "tier_counts": tier_counts,
+        "top8_commits": len(top8_commits),
+        "gems_found": gem_count,
+        "points": {
+            "nil": tier_points,
+            "top8": top8_points,
+            "gems": gem_points
+        }
+    }
+    
     return grade, score, breakdown
 
 # ==============================================================================
@@ -2033,31 +2073,33 @@ def show_offseason_top8_v8():
                     key=f"offer_{rid}"
                 )
                 r["offer"] = int(offer)
-                
-                st.divider()
-   if r.get("status") == "COMMITTED":
-    st.success("✅ COMMITTED")
-elif r.get("status") == "LOST":
-    st.error("❌ LOST")
-else:
-    disabled = already or r["offer"] <= 0
-    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
-        if not validate_budget_input(r["offer"], BudgetManager.get_current(), f"recruit {r['name']}"):
-            st.error("Cannot afford this offer!")
-        else:
-            chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
-            if random.random() < chance:
-                BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
-                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
-                r["status"] = "COMMITTED"
-                st.session_state.top8_resolved.add(rid)
-                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
-                sync_team_ratings()
-                safe_toast(f"✅ COMMITTED: {r['name']}")
-                st.rerun()
+            
+            st.divider()
+            
+            # Display status or pitch button
+            if r.get("status") == "COMMITTED":
+                st.success("✅ COMMITTED")
+            elif r.get("status") == "LOST":
+                st.error("❌ LOST")
             else:
-                r["status"] = "LOST"
-                st.session_state.top8_resolved.add(rid)
+                disabled = already or r["offer"] <= 0
+                if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
+                    if not validate_budget_input(r["offer"], BudgetManager.get_current(), f"recruit {r['name']}"):
+                        st.error("Cannot afford this offer!")
+                    else:
+                        chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
+                        if random.random() < chance:
+                            BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
+                            st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
+                            r["status"] = "COMMITTED"
+                            st.session_state.top8_resolved.add(rid)
+                            add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
+                            sync_team_ratings()
+                            safe_toast(f"✅ COMMITTED: {r['name']}")
+                            st.rerun()
+                        else:
+                            r["status"] = "LOST"
+                            st.session_state.top8_resolved.add(rid)
                 add_news(f"{r['name']} commits elsewhere. Lost recruit.")
                 safe_toast(f"❌ LOST: {r['name']}")
                 st.rerun()
