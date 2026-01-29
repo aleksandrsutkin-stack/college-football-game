@@ -1764,10 +1764,11 @@ def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige:
     return max(0.05, min(0.80, chance))
 
 def compute_recruiting_class_grade():
-    nil = st.session_state.get("nil_class", []) or []
-    top8 = st.session_state.get("top8", []) or []
-    stars = st.session_state.get("stars", []) or []
-    tier_points = 0; tier_counts = {1: 0, 2: 0, 3: 0}
+    for p in nil:
+        if p.get("status") == "SIGNED":
+            tier = int(p.get("tier", 3))
+            tier_counts[tier] = tier_counts.get(tier, 0) + 1
+            tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
         for p in nil:
         if p.get("status") == "SIGNED":
             tier = int(p.get("tier", 3))
