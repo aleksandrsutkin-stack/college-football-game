@@ -7,6 +7,7 @@ Audit Log:
 - VISUALS: Added Trading Cards (NIL), Interest Meters (Top 8), 3D Trophy Case, and Mount Rushmore.
 - STABILITY: Preserved V3.0 Native Column fixes for Game Results to prevent rendering errors.
 - DATA: Retained V2.3 Expanded Team Database (65+ teams).
+- REFACTOR: Separated UI components and data helpers into modules for better organization.
 """
 
 import streamlit as st
@@ -18,6 +19,14 @@ import math
 import pandas as pd
 import copy
 from typing import List, Dict, Optional, Set
+
+# Optional imports for separated modules (backwards compatible)
+try:
+    import ui_components
+    import data_helpers
+    HAS_MODULES = True
+except ImportError:
+    HAS_MODULES = False
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
