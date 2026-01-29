@@ -26,6 +26,7 @@ from typing import List, Dict, Optional, Set
 STATE_VERSION = 4.0
 
 class GameState:
+    """Game state constants representing different screens/phases of the game."""
     SETUP = "SETUP"
     DASHBOARD = "DASHBOARD"
     SEASON_END = "SEASON_END"
@@ -38,6 +39,7 @@ class GameState:
     RETIREMENT = "RETIREMENT"
 
 class GameConfig:
+    """Central configuration class containing all game constants and settings."""
     POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
     REGION_STRENGTH = {"South": 1.08, "Midwest": 1.05, "West": 1.05, "North": 1.02}
     
@@ -731,18 +733,41 @@ def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20
     return full_html
 
 def calculate_percentile(user_score: int, all_coaches: List[Dict]) -> int:
+    """
+    Calculate the user's percentile rank among all coaches based on career score.
+    
+    Args:
+        user_score: User's calculated career score (Titles * 50 + Wins * 2)
+        all_coaches: List of all coach dictionaries with Titles and Wins
+        
+    Returns:
+        int: Percentile rank (0-100), where 100 is the best
+    """
     scores = sorted([coach.get("Titles", 0) * 50 + coach.get("Wins", 0) * 2 for coach in all_coaches], reverse=True)
-    if not scores: return 100
+    if not scores:
+        return 100
     user_position = len([s for s in scores if s > user_score])
     percentile = int(((len(scores) - user_position) / len(scores)) * 100)
     return percentile
 
 def render_mount_rushmore(top_coaches: List[Dict], user_data: Dict, user_rank: int) -> str:
+    """
+    Render the Mount Rushmore display showing the top 4 coaches of all time.
+    
+    Args:
+        top_coaches: List of top coach dictionaries
+        user_data: Current user's coach data
+        user_rank: User's ranking position
+        
+    Returns:
+        str: HTML string for the Mount Rushmore display
+    """
     heads_html = ""
     for i, coach in enumerate(top_coaches):
         is_user = (coach.get("Name", "").endswith("(You)"))
         circle_class = "rushmore-circle-user" if is_user else "rushmore-circle"
-        if is_user: display = "YOU"
+        if is_user:
+            display = "YOU"
         else:
             name = coach.get("Name", "?")
             parts = name.split()
@@ -778,7 +803,7 @@ def generate_career_highlights(history: List[Dict], career_stats: Dict) -> List[
             if win_count >= 50 and len(highlights) < 5:
                 highlights.append({"year": h.get("Year"), "text": f"Reached 50 Career Wins!", "color": "linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)"})
                 break
-        except: pass
+        except (ValueError, IndexError, AttributeError): pass
     
     for h in history:
         if "CFP" in h.get("PostseasonResult", ""):
@@ -856,43 +881,98 @@ def generate_ga_coach(role: str) -> dict:
 # ==============================================================================
 
 class BudgetManager:
+    """
+    Manages team budget operations including spending, revenue, and validation.
+    All operations interact with st.session_state.budget.
+    """
+    
     @staticmethod
     def get_current() -> int:
+        """Get current budget amount from session state."""
         return safe_int(st.session_state.get("budget", 0), 0)
     
     @staticmethod
     def spend(amount: int, description: str, show_toast: bool = True) -> bool:
+        """
+        Spend budget on an item with validation.
+        
+        Args:
+            amount: Amount to spend
+            description: Description of purchase for notifications
+            show_toast: Whether to show success toast notification
+            
+        Returns:
+            bool: True if successful, False if insufficient funds
+        """
         amount = safe_int(amount, 0)
-        if not validate_budget_input(amount, BudgetManager.get_current(), description): return False
+        if not validate_budget_input(amount, BudgetManager.get_current(), description):
+            return False
         st.session_state.budget = BudgetManager.get_current() - amount
         clamp_budget()
-        if show_toast: safe_toast(f"Spent {helper_format_cash(amount)} on {description}")
+        if show_toast:
+            safe_toast(f"Spent {helper_format_cash(amount)} on {description}")
         return True
     
     @staticmethod
     def add(amount: int, description: str, show_toast: bool = True) -> None:
+        """
+        Add money to budget.
+        
+        Args:
+            amount: Amount to add
+            description: Description of income source
+            show_toast: Whether to show notification toast
+        """
         amount = safe_int(amount, 0)
         st.session_state.budget = BudgetManager.get_current() + amount
         clamp_budget()
-        if show_toast and amount > 0: safe_toast(f"Received {helper_format_cash(amount)}: {description}")
-        if description: add_news(description)
+        if show_toast and amount > 0:
+            safe_toast(f"Received {helper_format_cash(amount)}: {description}")
+        if description:
+            add_news(description)
     
     @staticmethod
     def calculate_revenue(tier: int, marketing_level: int, inflation: float) -> int:
+        """
+        Calculate annual revenue based on tier, marketing, and conference multipliers.
+        
+        Args:
+            tier: School tier (1=Elite, 2=High, 3=Mid, 4=Low)
+            marketing_level: Marketing department level (adds 1.5M per level)
+            inflation: Inflation multiplier for year
+            
+        Returns:
+            int: Total calculated revenue
+        """
         base = {1: 22_000_000, 2: 14_000_000, 3: 6_000_000, 4: 3_000_000}.get(tier, 3_000_000)
         bonus = safe_int(marketing_level, 0) * 1_500_000
         total = (base + bonus) * float(inflation) * float(st.session_state.get("conf_revenue_boost_mult", 1.0))
         return int(total)
 
 class OpponentManager:
+    """
+    Manages opponent team data and ensures consistency across game sessions.
+    """
+    
     @staticmethod
     def get(team_name: str) -> dict:
-        if "opponents_db" not in st.session_state: st.session_state.opponents_db = {}
+        """
+        Get or create opponent data for a given team.
+        
+        Args:
+            team_name: Name of the opponent team
+            
+        Returns:
+            dict: Opponent data dictionary with ratings and stats
+        """
+        if "opponents_db" not in st.session_state:
+            st.session_state.opponents_db = {}
         if team_name not in st.session_state.opponents_db:
             st.session_state.opponents_db[team_name] = OpponentFactory.create_opponent(team_name, context="RUNTIME")
         
         opp = st.session_state.opponents_db[team_name]
-        opp.setdefault("Prestige", 60); opp.setdefault("OVR", 75)
+        opp.setdefault("Prestige", 60)
+        opp.setdefault("OVR", 75)
         
         if "OffOVR" not in opp or "DefOVR" not in opp:
             base = safe_int(opp.get("OVR", 75), 75)
@@ -959,7 +1039,9 @@ class OpponentFactory:
                     u_win = st.session_state.get("record", {}).get("w", 0)
                     boost = random.randint(10, 15) if (u_ovr >= 82 or u_win >= 8) else (random.randint(6, 10) if (u_ovr >= 78 or u_win >= 6) else 0)
                     if boost > 0: ovr = min(88, ovr + boost)
-            except: pass
+            except (KeyError, AttributeError):
+                # Skip if conference data not available
+                pass
         
         if is_elite or pres >= 90: c_min, c_max, s_min, s_max = 9, 10, 10, 11
         elif pres >= 85: c_min, c_max, s_min, s_max = 9, 10, 9, 11
@@ -982,18 +1064,54 @@ def make_deterministic_rng(*parts) -> random.Random:
     return random.Random(seed_str)
 
 def game_rng(year: int, week: int, opp: str, mode: str = "PLAY") -> random.Random:
+    """
+    Create a deterministic random number generator for game simulation.
+    
+    Args:
+        year: Current game year
+        week: Current week number
+        opp: Opponent team name
+        mode: Game mode (e.g., "PLAY", "SIM")
+        
+    Returns:
+        random.Random: Seeded random number generator for reproducible results
+    """
     return make_deterministic_rng("game", mode, int(year), int(week), str(opp))
 
 def calculate_difficulty_multiplier(user_conf: str, user_prestige: int, user_ovr: int, user_wins: int) -> float:
+    """
+    Calculate difficulty multiplier for lower-tier teams (Cinderella Tax).
+    
+    Teams from weaker conferences face tougher opponents when they perform well,
+    making it harder to maintain success (simulating real playoff committee bias).
+    
+    Args:
+        user_conf: User's conference name
+        user_prestige: Team prestige rating (0-100)
+        user_ovr: Team overall rating (0-99)
+        user_wins: Current season wins
+        
+    Returns:
+        float: Difficulty multiplier (1.0 - 1.35), applied to opponent strength
+    """
     mult = 1.0
+    # G5 teams face increased difficulty when successful
     if user_conf in ["G5", "MAC", "Pac-12", "Indep"]:
-        if user_ovr >= 85: mult += 0.20
-        elif user_ovr >= 80: mult += 0.15
-        elif user_ovr >= 75: mult += 0.10
-        if user_wins >= 10: mult += 0.08
-        elif user_wins >= 8: mult += 0.05
-        if user_prestige >= 80: mult += 0.05
-    elif user_conf in ["SEC", "Big Ten"] and user_prestige >= 90: mult += 0.05
+        if user_ovr >= 85:
+            mult += 0.20
+        elif user_ovr >= 80:
+            mult += 0.15
+        elif user_ovr >= 75:
+            mult += 0.10
+        if user_wins >= 10:
+            mult += 0.08
+        elif user_wins >= 8:
+            mult += 0.05
+        if user_prestige >= 80:
+            mult += 0.05
+    # Elite P5 teams get slight boost
+    elif user_conf in ["SEC", "Big Ten"] and user_prestige >= 90:
+        mult += 0.05
     return min(1.35, mult)
 
 def get_conferences_map():
@@ -1043,10 +1161,31 @@ def generate_hotspots():
     return out
 
 def calculate_committee_score(team_name, wins, losses, conf, sos_score):
+    """
+    Calculate College Football Playoff committee ranking score.
+    
+    Simulates the real CFP committee's bias toward power conferences and
+    penalizes G5 teams with any losses.
+    
+    Args:
+        team_name: Team name (currently unused but kept for interface)
+        wins: Number of wins
+        losses: Number of losses
+        conf: Conference name
+        sos_score: Strength of schedule score
+        
+    Returns:
+        int: Committee score used for ranking teams
+    """
     score = (wins * 105) - (losses * 115) + (sos_score * 3.0)
-    if conf in ["SEC", "Big Ten"]: score += 140
-    elif conf in ["ACC", "Big 12"]: score += 80
-    if conf in ["G5", "MAC", "Indep"] and losses > 0: score -= 300
+    # Power conference bonuses
+    if conf in ["SEC", "Big Ten"]:
+        score += 140
+    elif conf in ["ACC", "Big 12"]:
+        score += 80
+    # G5 penalty for any loss
+    if conf in ["G5", "MAC", "Indep"] and losses > 0:
+        score -= 300
     return int(score)
 
 def trophy_icon(name: str) -> str:
@@ -1088,11 +1227,24 @@ def end_regular_season_and_stay_on_results():
     st.session_state.game_state = GameState.SEASON_END
 
 def normalize_shares(shares: dict):
+    """
+    Normalize position budget shares to percentages summing to 100%.
+    
+    Args:
+        shares: Dictionary mapping positions to budget amounts
+        
+    Returns:
+        dict: Normalized percentages for each position
+    """
     def _val(pos):
-        try: return max(0.0, float(shares.get(pos, 0.0)))
-        except: return 0.0
+        try:
+            return max(0.0, float(shares.get(pos, 0.0)))
+        except (ValueError, TypeError):
+            return 0.0
+    
     total = sum(_val(p) for p in GameConfig.POSITIONS)
-    if total <= 0: return {p: 100.0/len(GameConfig.POSITIONS) for p in GameConfig.POSITIONS}
+    if total <= 0:
+        return {p: 100.0/len(GameConfig.POSITIONS) for p in GameConfig.POSITIONS}
     return {p: (_val(p)/total)*100.0 for p in GameConfig.POSITIONS}
 
 def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
@@ -1297,8 +1449,10 @@ def init_playoff_bracket(user_rank, user_team_name):
         if nm in seen: top12[i] = "FCS East"
         else: seen.add(nm)
     seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
-    try: ur = int(user_rank)
-    except: ur = 999
+    try:
+        ur = int(user_rank)
+    except (ValueError, TypeError):
+        ur = 999
     if 1 <= ur <= 12:
         target_idx = ur - 1; top12[target_idx] = user_team_name; seed_map[user_team_name] = ur
         for i in range(len(top12)):
@@ -1333,10 +1487,14 @@ def organize_trophies_by_category(all_trophies: List[Dict]) -> Dict[str, List[Di
 def categorize_season(record: str, postseason: str) -> str:
     try:
         wins, losses = map(int, record.split('-'))
-        if "TITLE" in postseason or "CHAMPIONSHIP" in postseason: return "championship"
-        elif wins >= 10: return "win"
-        else: return "loss"
-    except: return "loss"
+        if "TITLE" in postseason or "CHAMPIONSHIP" in postseason:
+            return "championship"
+        elif wins >= 10:
+            return "win"
+        else:
+            return "loss"
+    except (ValueError, AttributeError):
+        return "loss"
 
 def detect_era_boundaries(history: List[Dict]) -> List[Dict]:
     if len(history) < 3: return []
@@ -1401,77 +1559,6 @@ def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20
     
     full_html = f"<div style='margin: 20px 0;'>{era_markers}<div class='timeline-container'><div class='timeline-line'></div>{timeline_html}</div></div>"
     return full_html
-
-def calculate_percentile(user_score: int, all_coaches: List[Dict]) -> int:
-    scores = sorted([coach.get("Titles", 0) * 50 + coach.get("Wins", 0) * 2 for coach in all_coaches], reverse=True)
-    if not scores: return 100
-    user_position = len([s for s in scores if s > user_score])
-    percentile = int(((len(scores) - user_position) / len(scores)) * 100)
-    return percentile
-
-def render_mount_rushmore(top_coaches: List[Dict], user_data: Dict, user_rank: int) -> str:
-    heads_html = ""
-    for i, coach in enumerate(top_coaches):
-        is_user = (coach.get("Name", "").endswith("(You)"))
-        circle_class = "rushmore-circle-user" if is_user else "rushmore-circle"
-        if is_user: display = "YOU"
-        else:
-            name = coach.get("Name", "?")
-            parts = name.split()
-            display = f"{parts[0][0]}{parts[1][0]}" if len(parts) >= 2 else name[:2]
-        
-        heads_html += f"<div class='rushmore-head'><div class='{circle_class}'>{display}</div><div class='rushmore-name'>#{i+1} {coach.get('Name', 'Unknown')}</div><div style='color: white; font-size: 0.85em;'>{coach.get('Titles', 0)} Titles</div></div>"
-    
-    climber_html = ""
-    if user_rank > 4:
-        climber_html = f"<div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.2); border-radius: 8px;'><div style='color: white; font-weight: bold; margin-bottom: 5px;'>THE CLIMBERS</div><div style='color: white; font-size: 1.2em;'>#{user_rank} {user_data.get('Name', 'You')}</div><div style='color: rgba(255,255,255,0.8); font-size: 0.9em;'>{user_data.get('Titles', 0)} Titles • {user_data.get('Wins', 0)} Wins</div></div>"
-    
-    html = f"<div class='mount-rushmore'><div style='text-align: center; color: white; font-size: 1.5em; font-weight: bold; margin-bottom: 10px;'>🗻 MOUNT RUSHMORE OF CFB COACHES 🗻</div><div class='rushmore-heads'>{heads_html}</div>{climber_html}</div>"
-    return html
-
-def generate_career_highlights(history: List[Dict], career_stats: Dict) -> List[Dict]:
-    highlights = []
-    championships = [h for h in history if "TITLE" in h.get("PostseasonResult", "")]
-    if championships:
-        first_title = championships[0]
-        highlights.append({"year": first_title.get("Year"), "text": f"Won First National Championship!", "color": "linear-gradient(135deg, #FFD700 0%, #FFA500 100%)"})
-        if len(championships) >= 3:
-            highlights.append({"year": championships[2].get("Year"), "text": f"Dynasty Established - 3rd National Title", "color": "linear-gradient(135deg, #4CAF50 0%, #45a049 100%)"})
-    
-    perfect = [h for h in history if h.get("Record", "").endswith("-0")]
-    if perfect:
-        highlights.append({"year": perfect[0].get("Year"), "text": f"Perfect Season! ({perfect[0].get('Record')})", "color": "linear-gradient(135deg, #2196F3 0%, #1976D2 100%)"})
-    
-    win_count = 0
-    for h in history:
-        try:
-            wins = int(h.get("Record", "0-0").split('-')[0])
-            win_count += wins
-            if win_count >= 50 and len(highlights) < 5:
-                highlights.append({"year": h.get("Year"), "text": f"Reached 50 Career Wins!", "color": "linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)"})
-                break
-        except: pass
-    
-    for h in history:
-        if "CFP" in h.get("PostseasonResult", ""):
-            highlights.append({"year": h.get("Year"), "text": f"Made College Football Playoff", "color": "linear-gradient(135deg, #FF5722 0%, #E64A19 100%)"})
-            break
-            
-    return highlights[:5]
-
-def render_career_highlights_carousel(highlights: List[Dict]) -> str:
-    if not highlights: return ""
-    slides_html = ""
-    for highlight in highlights:
-        slides_html += f"<div class='highlight-slide' style='background: {highlight.get('color', 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)')};'><div class='highlight-year'>{highlight.get('year', '????')}</div><div class='highlight-text'>{highlight.get('text', 'Achievement Unlocked!')}</div></div>"
-    html = f"<div class='career-highlights-carousel'><h3 style='text-align: center; margin-bottom: 20px;'>🎬 Career Highlight Reel</h3>{slides_html}</div>"
-    return html
-
-def render_legacy_report_card(grade: str, score: int, percentile: int) -> str:
-    grade_labels = {"S": "🐐 GOAT STATUS", "A": "🏛️ HALL OF FAME LEGEND", "B": "⭐ CHAMPIONSHIP COACH", "C": "✅ ACCOMPLISHED CAREER", "D": "😐 SOLID EFFORT"}
-    label = grade_labels.get(grade, "Career Complete")
-    html = f"<div class='legacy-report-card'><h2 style='margin-bottom: 10px;'>Legacy Report Card</h2><div class='report-card-grade'>{grade}</div><div style='font-size: 1.5em; font-weight: bold; color: #f57f17; margin: 10px 0;'>{label}</div><div style='font-size: 1.2em; color: #666; margin: 5px 0;'>Career Score: <strong>{score}</strong></div><div class='percentile-badge'>Top {100 - percentile}% of All-Time Coaches</div></div>"
-    return html
 
 # ==============================================================================
 # ENGINE & STATE
@@ -1565,44 +1652,108 @@ def compute_team_unit_ratings(roster, staff, facilities):
     return (int(max(40, min(99, off))), int(max(40, min(99, deff))), int(max(40, min(99, sum(r.values())/7))))
 
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
+    """
+    Main game simulation engine that calculates game outcome based on team stats and game factors.
+    
+    Args:
+        my_off: User's offensive rating
+        my_def: User's defensive rating
+        opp_off: Opponent's offensive rating
+        opp_def: Opponent's defensive rating
+        staff: User's coaching staff dictionary
+        schemes: User's offensive and defensive schemes
+        opp_schemes: Opponent's schemes
+        game_plan: User's game plan ("Aggressive", "Conservative", "Balanced")
+        opp_coaches: Opponent coaching stats
+        is_home: Whether user is playing at home
+        is_rival: Whether this is a rivalry game
+        my_stadium_level: User's stadium level (affects home field advantage)
+        opp_stadium_level: Opponent's stadium level
+        rng: Optional random number generator for deterministic results
+        
+    Returns:
+        dict: Game result with score, win/loss, and stats
+    """
     rng = rng or random.Random()
     
-    # V1.8: Cinderella Tax
+    # V1.8: Cinderella Tax - Apply difficulty multiplier for lower-tier teams
     try:
-        diff_mult = calculate_difficulty_multiplier(st.session_state.get("team_conf", "G5"), st.session_state.get("prestige", 60), st.session_state.get("team_rating", 75), st.session_state.get("record", {}).get("w", 0))
+        diff_mult = calculate_difficulty_multiplier(
+            st.session_state.get("team_conf", "G5"),
+            st.session_state.get("prestige", 60),
+            st.session_state.get("team_rating", 75),
+            st.session_state.get("record", {}).get("w", 0)
+        )
         opp_off = int(opp_off * diff_mult)
         opp_def = int(opp_def * diff_mult)
-    except: pass
+    except (KeyError, ValueError, TypeError):
+        # If difficulty calculation fails, use original opponent ratings
+        pass
 
+    # Calculate team edges (offense vs defense matchups)
     my_edge, opp_edge = (my_off - opp_def)*0.75, (opp_off - my_def)*0.75
+    
+    # Scheme bonuses/penalties based on matchups
     sb_my, sb_opp = 0.0, 0.0
-    if GameConfig.OFF_COUNTERED_BY.get(schemes.get("Off")) == opp_schemes.get("Def"): sb_my -= 2.5; sb_opp += 1.0
-    if GameConfig.DEF_COUNTERS.get(opp_schemes.get("Def")) == schemes.get("Off"): sb_my += 2.5; sb_opp -= 1.0
+    if GameConfig.OFF_COUNTERED_BY.get(schemes.get("Off")) == opp_schemes.get("Def"):
+        sb_my -= 2.5  # User's offense is countered
+        sb_opp += 1.0
+    if GameConfig.DEF_COUNTERS.get(opp_schemes.get("Def")) == schemes.get("Off"):
+        sb_my += 2.5  # User's offense counters their defense
+        sb_opp -= 1.0
     
-    my_c, opp_c = (get_tier_bonus(safe_int(staff.get("OC",{}).get("off",3))) - get_tier_bonus(safe_int(opp_coaches.get("DC",5))))*1.2, (get_tier_bonus(safe_int(opp_coaches.get("OC",5))) - get_tier_bonus(safe_int(staff.get("DC",{}).get("def",3))))*1.2
+    # Coaching bonuses (coordinator quality differential)
+    my_c = (get_tier_bonus(safe_int(staff.get("OC",{}).get("off",3))) - 
+            get_tier_bonus(safe_int(opp_coaches.get("DC",5))))*1.2
+    opp_c = (get_tier_bonus(safe_int(opp_coaches.get("OC",5))) - 
+             get_tier_bonus(safe_int(staff.get("DC",{}).get("def",3))))*1.2
     
+    # Head coach trait bonuses
     hc_t = staff.get("HC", {}).get("trait", "None")
-    if hc_t == "Tactician": my_c += 0.9
-    elif hc_t == "Recruiter": my_c += 0.25
-    if staff.get("OC", {}).get("trait") == schemes.get("Off"): sb_my += 1.0
+    if hc_t == "Tactician":
+        my_c += 0.9  # Tactician trait gives game boost
+    elif hc_t == "Recruiter":
+        my_c += 0.25  # Recruiter trait gives small game boost
     
+    # Scheme specialist coordinator bonus
+    if staff.get("OC", {}).get("trait") == schemes.get("Off"):
+        sb_my += 1.0  # OC specialist in user's offensive scheme
+    
+    # Home field advantage
     hf = home_field_points(my_stadium_level) if is_home else 0.0
     opp_hf = home_field_points(opp_stadium_level) if not is_home else 0.0
     
-    var = 1.35 if is_rival else 1.0
-    if game_plan == "Aggressive": var *= 1.25
-    elif game_plan == "Conservative": var *= 0.85
+    # Variance multipliers
+    var = 1.35 if is_rival else 1.0  # Rivalry games more unpredictable
+    if game_plan == "Aggressive":
+        var *= 1.25  # Aggressive increases variance
+    elif game_plan == "Conservative":
+        var *= 0.85  # Conservative reduces variance
     
+    # Calculate expected scores (clamped between 10-50)
     exp_my = max(10, min(50, 27.5 + my_edge + sb_my + my_c + hf))
     exp_opp = max(10, min(50, 27.5 + opp_edge + sb_opp + opp_c + opp_hf))
     
+    # Generate actual scores using gaussian distribution
     ms = int(round(rng.gauss(exp_my, 5.5 * var)))
     os = int(round(rng.gauss(exp_opp, 5.5 * var)))
-    if ms == os: ms += rng.choice([0, 3, 7]); os += rng.choice([0, 0, 3])
     
+    # Handle ties (slightly favor user)
+    if ms == os:
+        ms += rng.choice([0, 3, 7])
+        os += rng.choice([0, 0, 3])
+    
+    # Clamp scores to realistic range (0-70)
     ms, os = max(0, min(70, ms)), max(0, min(70, os))
     
-    stats = {"qb_duel": [int(st.session_state.roster["QB"]), int(opp_off)], "off_vs_def": [int(my_off), int(opp_def)], "def_vs_off": [int(my_def), int(opp_off)], "staff": ["?","?"], "raw_roster": int((my_off+my_def)/2)}
+    # Build stats dictionary for display
+    stats = {
+        "qb_duel": [int(st.session_state.roster["QB"]), int(opp_off)],
+        "off_vs_def": [int(my_off), int(opp_def)],
+        "def_vs_off": [int(my_def), int(opp_off)],
+        "staff": ["?","?"],
+        "raw_roster": int((my_off+my_def)/2)
+    }
     return {"result": "W" if ms > os else "L", "score": f"{ms}-{os}", "stats": stats, "explain": {}}
 
 def simulate_ai_regular_season_seeded(seed: int):
@@ -1622,11 +1773,17 @@ def simulate_ai_regular_season_seeded(seed: int):
     return results
 
 def sync_team_ratings():
+    """
+    Synchronize team offensive, defensive, and overall ratings based on current roster, staff, and facilities.
+    Updates st.session_state with calculated ratings.
+    """
     if all(k in st.session_state for k in ["roster", "staff", "facilities"]):
         try:
             res = compute_team_unit_ratings(st.session_state.roster, st.session_state.staff, st.session_state.facilities)
             st.session_state.team_off, st.session_state.team_def, st.session_state.team_rating = res
-        except: pass
+        except (KeyError, ValueError, TypeError) as e:
+            # If rating computation fails, keep existing ratings
+            pass
 
 def migrate_state():
     if "state_version" not in st.session_state: st.session_state.state_version = 0.0
@@ -1663,7 +1820,9 @@ def migrate_state():
         if st.session_state.team_name and st.session_state.team_name != "Unknown U":
             st.session_state.last_known_team_name = st.session_state.team_name
             st.session_state.last_known_team_color = st.session_state.team_color
-    except: pass
+    except (AttributeError, KeyError):
+        # Skip if team name/color not available
+        pass
 
 def init_session_state_defaults():
     if "game_state" not in st.session_state: st.session_state.game_state = GameState.SETUP
@@ -1713,10 +1872,14 @@ def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, pr
     if is_dollars:
         allocated = 0
         for p in GameConfig.POSITIONS:
-            try: allocated += int(float(shares_or_alloc.get(p, 0) or 0))
-            except: pass
+            try:
+                allocated += int(float(shares_or_alloc.get(p, 0) or 0))
+            except (ValueError, TypeError):
+                # Skip invalid allocation values
+                pass
         spent = max(0, min(total_spend, allocated))
-    else: spent = total_spend
+    else:
+        spent = total_spend
     
     results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(spent)}
     for pos in GameConfig.POSITIONS:
@@ -1764,31 +1927,71 @@ def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige:
     return max(0.05, min(0.80, chance))
 
 def compute_recruiting_class_grade():
+    """
+    Calculate the recruiting class grade based on NIL signings, top 8 commits, and gems found.
+    
+    Returns:
+        tuple: (grade, score, breakdown) where:
+            - grade: Letter grade (A+, A, B, C, D, F)
+            - score: Numeric score based on tier points, top8 commits, and gems
+            - breakdown: Dictionary with detailed scoring breakdown
+    """
+    # Get recruiting data from session state
+    nil = st.session_state.get("nil_class", [])
+    top8 = st.session_state.get("top8", [])
+    stars = st.session_state.get("stars", [])
+    
+    # Initialize counters
+    tier_counts = {}
+    tier_points = 0
+    
+    # Calculate NIL tier points
     for p in nil:
         if p.get("status") == "SIGNED":
             tier = int(p.get("tier", 3))
             tier_counts[tier] = tier_counts.get(tier, 0) + 1
             tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-        for p in nil:
-        if p.get("status") == "SIGNED":
-            tier = int(p.get("tier", 3))
-            tier_counts[tier] = tier_counts.get(tier, 0) + 1
-            tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-        if r.get("status") == "COMMITTED"]
-           top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
-           top8_points = len(top8_commits) * 10
-            gem_count = 0
-        for s in stars:
-    if "(GEM)" in str(s.get("name", "")): gem_count += 1
+    
+    # Calculate top 8 commits points
+    top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
+    top8_points = len(top8_commits) * 10
+    
+    # Calculate gem points
+    gem_count = 0
+    for s in stars:
+        if "(GEM)" in str(s.get("name", "")):
+            gem_count += 1
     gem_points = gem_count * 6
+    
+    # Calculate total score and assign grade
     score = tier_points + top8_points + gem_points
-    if score >= 70: grade = "A+"
-    elif score >= 55: grade = "A"
-    elif score >= 42: grade = "B"
-    elif score >= 30: grade = "C"
-    elif score >= 18: grade = "D"
-    else: grade = "F"
-    breakdown = {"score": score, "nil_signed": sum(tier_counts.values()), "tier_counts": tier_counts, "top8_commits": len(top8_commits), "gems_found": gem_count, "points": {"nil": tier_points, "top8": top8_points, "gems": gem_points}}
+    if score >= 70:
+        grade = "A+"
+    elif score >= 55:
+        grade = "A"
+    elif score >= 42:
+        grade = "B"
+    elif score >= 30:
+        grade = "C"
+    elif score >= 18:
+        grade = "D"
+    else:
+        grade = "F"
+    
+    # Build breakdown dictionary
+    breakdown = {
+        "score": score,
+        "nil_signed": sum(tier_counts.values()),
+        "tier_counts": tier_counts,
+        "top8_commits": len(top8_commits),
+        "gems_found": gem_count,
+        "points": {
+            "nil": tier_points,
+            "top8": top8_points,
+            "gems": gem_points
+        }
+    }
+    
     return grade, score, breakdown
 
 # ==============================================================================
@@ -2033,34 +2236,36 @@ def show_offseason_top8_v8():
                     key=f"offer_{rid}"
                 )
                 r["offer"] = int(offer)
-                
-                st.divider()
-   if r.get("status") == "COMMITTED":
-    st.success("✅ COMMITTED")
-elif r.get("status") == "LOST":
-    st.error("❌ LOST")
-else:
-    disabled = already or r["offer"] <= 0
-    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
-        if not validate_budget_input(r["offer"], BudgetManager.get_current(), f"recruit {r['name']}"):
-            st.error("Cannot afford this offer!")
-        else:
-            chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
-            if random.random() < chance:
-                BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
-                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
-                r["status"] = "COMMITTED"
-                st.session_state.top8_resolved.add(rid)
-                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
-                sync_team_ratings()
-                safe_toast(f"✅ COMMITTED: {r['name']}")
-                st.rerun()
+            
+            st.divider()
+            
+            # Display status or pitch button
+            if r.get("status") == "COMMITTED":
+                st.success("✅ COMMITTED")
+            elif r.get("status") == "LOST":
+                st.error("❌ LOST")
             else:
-                r["status"] = "LOST"
-                st.session_state.top8_resolved.add(rid)
-                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
-                safe_toast(f"❌ LOST: {r['name']}")
-                st.rerun()
+                disabled = already or r["offer"] <= 0
+                if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
+                    if not validate_budget_input(r["offer"], BudgetManager.get_current(), f"recruit {r['name']}"):
+                        st.error("Cannot afford this offer!")
+                    else:
+                        chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
+                        if random.random() < chance:
+                            BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
+                            st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
+                            r["status"] = "COMMITTED"
+                            st.session_state.top8_resolved.add(rid)
+                            add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
+                            sync_team_ratings()
+                            safe_toast(f"✅ COMMITTED: {r['name']}")
+                            st.rerun()
+                        else:
+                            r["status"] = "LOST"
+                            st.session_state.top8_resolved.add(rid)
+                            add_news(f"{r['name']} commits elsewhere. Lost recruit.")
+                            safe_toast(f"❌ LOST: {r['name']}")
+                            st.rerun()
     st.divider()
     if st.button("Finish Top-8 & Continue →", type="primary"):
         st.session_state.offseason_step = 5
@@ -2600,8 +2805,11 @@ def show_postseason():
                 rng = game_rng(st.session_state.year, 20, opp, mode="PLAY")
                 res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
                 
-                try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
-                except: my_s, opp_s = 0, 0
+                try:
+                    my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
+                except (ValueError, IndexError):
+                    # Default to 0-0 if score parsing fails
+                    my_s, opp_s = 0, 0
                 if user_match.get("t1") == st.session_state.team_name: user_match["s1"], user_match["s2"] = my_s, opp_s
                 else: user_match["s1"], user_match["s2"] = opp_s, my_s
 
