@@ -1,12 +1,12 @@
 """
 Build the Program: College Football CEO
-VERSION 2.9 (The UI Polish Update)
+VERSION 3.0 (The Stability & UI Fix Update)
 
 Audit Log:
-- UI Overhaul (Retirement): Added "Hall of Fame Card" and improved GOAT comparison charts.
-- UI Overhaul (Bowl Games): Replaced buggy HTML "Tale of the Tape" with clean Native Metrics.
-- UI Overhaul (Single Game): Added "Game Flash" result to the Dashboard so you see the score immediately after playing.
-- Bug Fix: Audited all st.markdown calls to ensure 'unsafe_allow_html=True' is present.
+- Critical UI Fix: Replaced broken HTML Game Cards in Dashboard with Native Streamlit Containers.
+- Stability: Added unique keys to all dynamic buttons (Play Week, Sim Season) to prevent state loss.
+- Cleanup: Removed deprecated HTML generation methods that caused indentation errors.
+- Base: V2.5 Logic (Hard Mode + G5 Scheduling + Recruiting Pipeline).
 """
 
 import streamlit as st
@@ -23,7 +23,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 2.9
+STATE_VERSION = 3.0
 
 class GameState:
     SETUP = "SETUP"
@@ -71,7 +71,6 @@ class GameConfig:
         "Bowl Win": "🎳"
     }
 
-    # LEGENDS DATABASE FOR RETIREMENT COMPARISON
     LEGENDS = [
         {"Name": "Nick Saban", "Titles": 7, "Wins": 292, "Losses": 71, "BowlWins": 19},
         {"Name": "Bear Bryant", "Titles": 6, "Wins": 323, "Losses": 85, "BowlWins": 15},
@@ -97,23 +96,18 @@ class GameConfig:
         "Tulane": {"color": "#006747"}, "App State": {"color": "#FFCC00"}, "Toledo": {"color": "#15397F"}
     }
 
-    # V2.3 HARD MODE RATINGS
+    # V2.3 HARD MODE RATINGS PRESERVED
     REAL_WORLD_INIT = {
-        # TIER 1 (BOSSES) - Base 98
         "Georgia": {"Prestige": 99, "Talent": 98, "Tier": 1, "Rival": "Florida"},
         "Ohio State": {"Prestige": 98, "Talent": 98, "Tier": 1, "Rival": "Michigan"},
         "Texas": {"Prestige": 97, "Talent": 98, "Tier": 1, "Rival": "Oklahoma"},
         "Oregon": {"Prestige": 96, "Talent": 97, "Tier": 1, "Rival": "Washington"},
-        
-        # TIER 2 (CONTENDERS) - Base 90-95
         "Alabama": {"Prestige": 94, "Talent": 95, "Tier": 1, "Rival": "Auburn"},
         "Notre Dame": {"Prestige": 93, "Talent": 93, "Tier": 1, "Rival": "USC"},
         "Penn State": {"Prestige": 91, "Talent": 92, "Tier": 1, "Rival": "Ohio State"},
         "Michigan": {"Prestige": 90, "Talent": 91, "Tier": 1, "Rival": "Ohio State"},
         "LSU": {"Prestige": 89, "Talent": 91, "Tier": 2, "Rival": "Alabama"},
         "Ole Miss": {"Prestige": 88, "Talent": 90, "Tier": 2, "Rival": "Mississippi St"},
-        
-        # TIER 3 (TRAPS) - Base 85-90
         "Miami": {"Prestige": 87, "Talent": 89, "Tier": 2, "Rival": "Florida St"},
         "Florida St": {"Prestige": 85, "Talent": 88, "Tier": 2, "Rival": "Miami"},
         "Tennessee": {"Prestige": 86, "Talent": 89, "Tier": 2, "Rival": "Alabama"},
@@ -122,8 +116,6 @@ class GameConfig:
         "Oklahoma": {"Prestige": 85, "Talent": 89, "Tier": 2, "Rival": "Texas"},
         "Texas A&M": {"Prestige": 84, "Talent": 89, "Tier": 2, "Rival": "Texas"},
         "Indiana": {"Prestige": 88, "Talent": 86, "Tier": 2, "Rival": "Purdue"},
-        
-        # TIER 4 (MID-MAJORS) - Base 80-87
         "Utah": {"Prestige": 80, "Talent": 85, "Tier": 2, "Rival": "BYU"},
         "Kansas State": {"Prestige": 79, "Talent": 84, "Tier": 2, "Rival": "Kansas"},
         "Missouri": {"Prestige": 79, "Talent": 85, "Tier": 2, "Rival": "Kansas"},
@@ -152,36 +144,11 @@ class GameConfig:
     ALL_TEAMS = [t for c in CONFERENCES.values() for t in c]
 
 class RecruitingPhases:
-    """Unified recruiting flow configuration."""
     PHASES = {
-        "retention": {
-            "step_num": 1,
-            "title": "1) Retention Ransom: The Transfer Portal",
-            "description": "Before recruiting new talent, you must pay to keep your current stars.",
-            "next_step": 2,
-            "next_button_text": "Continue to NIL Recruiting →"
-        },
-        "nil": {
-            "step_num": 2,
-            "title": "2) NIL Prospects (Class of 15)",
-            "description": "You can sign any of these 15. When they're gone, they're gone.",
-            "next_step": 3,
-            "next_button_text": "Continue to HS Outreach →"
-        },
-        "hs": {
-            "step_num": 3,
-            "title": "3) HS Outreach: The War Room",
-            "description": "Directly invest in position groups to find talent.",
-            "next_step": 4,
-            "next_button_text": "Continue to Top-8 Battles →"
-        },
-        "top8": {
-            "step_num": 4,
-            "title": "4) Top-8 Battles — Close on Elites",
-            "description": "Make final pitches to elite prospects.",
-            "next_step": 5,
-            "next_button_text": "Finish Recruiting & Advance Season →"
-        }
+        "retention": {"step_num": 1, "title": "1) Retention Ransom: The Transfer Portal", "description": "Before recruiting new talent, you must pay to keep your current stars.", "next_step": 2, "next_button_text": "Continue to NIL Recruiting →"},
+        "nil": {"step_num": 2, "title": "2) NIL Prospects (Class of 15)", "description": "You can sign any of these 15. When they're gone, they're gone.", "next_step": 3, "next_button_text": "Continue to HS Outreach →"},
+        "hs": {"step_num": 3, "title": "3) HS Outreach: The War Room", "description": "Directly invest in position groups to find talent.", "next_step": 4, "next_button_text": "Continue to Top-8 Battles →"},
+        "top8": {"step_num": 4, "title": "4) Top-8 Battles — Close on Elites", "description": "Make final pitches to elite prospects.", "next_step": 5, "next_button_text": "Finish Recruiting & Advance Season →"}
     }
     
     @staticmethod
@@ -191,23 +158,7 @@ class RecruitingPhases:
                 return {**config, "key": phase_key}
         return None
 
-ALLOWED_SAVE_KEYS = {
-    "state_version", "game_state", "year", "budget", "prestige", "job_security",
-    "expected_wins", "tenure", "roster", "active_transfers", "stars", "staff",
-    "facilities", "history", "record", "opponents_db", "my_schemes",
-    "career_stats", "season_logs", "schedule", "season_simulated",
-    "hotspots", "candidates", "postseason_data", "revenue_report", "inflation",
-    "team_needs", "game_plan", "week_index", "news", "offseason_step",
-    "nil_class", "hs_total_spend", "hs_shares", "hs_spend_by_pos",
-    "hs_alloc_by_pos", "top8", "top8_resolved", "trophies", "conf_revenue_boost_mult",
-    "pending_invite", "season_end_ready", "booster_rating", "ai_records",
-    "selection_sunday_results", "ad_name", "team_name", "team_color",
-    "team_conf", "team_rival", "home_region", "school_tier",
-    "team_off", "team_def", "team_rating", "last_postseason_result",
-    "achievements", "milestone_log", "conferences_map",
-    "hs_last_results", "recruiting_summary", "postseason_flash",
-    "last_known_team_name", "last_known_team_color", "retention_data"
-}
+ALLOWED_SAVE_KEYS = {"state_version", "game_state", "year", "budget", "prestige", "job_security", "expected_wins", "tenure", "roster", "active_transfers", "stars", "staff", "facilities", "history", "record", "opponents_db", "my_schemes", "career_stats", "season_logs", "schedule", "season_simulated", "hotspots", "candidates", "postseason_data", "revenue_report", "inflation", "team_needs", "game_plan", "week_index", "news", "offseason_step", "nil_class", "hs_total_spend", "hs_shares", "hs_spend_by_pos", "hs_alloc_by_pos", "top8", "top8_resolved", "trophies", "conf_revenue_boost_mult", "pending_invite", "season_end_ready", "booster_rating", "ai_records", "selection_sunday_results", "ad_name", "team_name", "team_color", "team_conf", "team_rival", "home_region", "school_tier", "team_off", "team_def", "team_rating", "last_postseason_result", "achievements", "milestone_log", "conferences_map", "hs_last_results", "recruiting_summary", "postseason_flash", "last_known_team_name", "last_known_team_color", "retention_data"}
 
 try:
     st.set_page_config(page_title="Build the Program: College Football CEO", page_icon="🏈", layout="wide")
@@ -415,37 +366,6 @@ class UIComponents:
     def star_rating(rating: int, max_stars: int = 10) -> str:
         return "⭐" * rating + "☆" * (max_stars - rating)
 
-    @staticmethod
-    def game_result_card(week: int, opponent: str, score: str, 
-                        is_win: bool, is_rival: bool = False, 
-                        is_pending: bool = False, stats: dict = None) -> str:
-        
-        if is_pending:
-            css = "game-card-rival" if is_rival else "game-card-pending"
-            return f"<div class='game-card {css}'>Week {week} vs {opponent}</div>"
-        
-        css = "game-card-win" if is_win else "game-card-loss"
-        stats_html = ""
-        
-        if stats:
-            stats_html = f"""
-            <div class='stat-grid'>
-                <div class='stat-row'><span>🔥 QB Duel</span><span>{stats.get('qb_duel', ['?','?'])[0]} vs {stats.get('qb_duel', ['?','?'])[1]}</span></div>
-                <div class='stat-row'><span>⚔️ OFF vs DEF</span><span>{stats.get('off_vs_def', ['?','?'])[0]} vs {stats.get('off_vs_def', ['?','?'])[1]}</span></div>
-                <div class='stat-row'><span>🛡️ DEF vs OFF</span><span>{stats.get('def_vs_off', ['?','?'])[0]} vs {stats.get('def_vs_off', ['?','?'])[1]}</span></div>
-            </div>
-            """
-            
-        return f"""
-        <div class='game-card {css}'>
-            <div class='card-header'>
-                <span>{score}</span>
-                <span>vs {opponent}</span>
-            </div>
-            {stats_html}
-        </div>
-        """
-
 # ==============================================================================
 # GENERATORS
 # ==============================================================================
@@ -578,10 +498,11 @@ class OpponentFactory:
                     if boost > 0: ovr = min(88, ovr + boost)
             except: pass
         
+        # UPDATED V2.3: Harder Tiers
         if is_elite or pres >= 90: c_min, c_max, s_min, s_max = 9, 10, 10, 11
         elif pres >= 85: c_min, c_max, s_min, s_max = 9, 10, 9, 11
         elif pres >= 75: c_min, c_max, s_min, s_max = 7, 9, 7, 9
-        else: c_min, c_max, s_min, s_max = 5, 8, 5, 8 
+        else: c_min, c_max, s_min, s_max = 5, 8, 5, 8 # Buffed low tier coaches
         
         return {
             "Prestige": pres, "OVR": ovr,
@@ -727,12 +648,42 @@ def render_dynasty_timeline(max_items=25):
 
 def check_and_award_achievements():
     if "achievements" not in st.session_state: st.session_state.achievements = []
+    
+    # 1. Bowl Win
     if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
         st.session_state.achievements.append("First Bowl Win")
+        safe_toast("🏆 Achievement Unlocked: First Bowl Win")
+        
+    # 2. Program Builder
     if st.session_state.prestige >= 80 and "Program Builder" not in st.session_state.achievements:
         st.session_state.achievements.append("Program Builder"); safe_toast("🏆 Achievement Unlocked: Program Builder")
+        
+    # 3. Perfect Season
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
         st.session_state.achievements.append("Perfect Season"); safe_toast("🏆 Achievement Unlocked: Perfect Season")
+
+    # 4. The 1.000 Club
+    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 13 and "The 1.000 Club" not in st.session_state.achievements:
+        st.session_state.achievements.append("The 1.000 Club"); safe_toast("🏆 Achievement Unlocked: The 1.000 Club")
+
+    # 5. Golden Ticket (Playoff)
+    if st.session_state.get("last_postseason_result") in ["CFP_LOSS", "TITLE", "CFP_RUNNER_UP"] and "Golden Ticket" not in st.session_state.achievements:
+        st.session_state.achievements.append("Golden Ticket"); safe_toast("🏆 Achievement Unlocked: Golden Ticket")
+
+    # 6. Granddaddy (Rose Bowl)
+    # Check history for Rose Bowl win
+    last_bowl = st.session_state.history[-1]["Bowl"] if st.session_state.history else ""
+    if last_bowl == "Rose Bowl" and st.session_state.get("last_postseason_result") == "BOWL_WIN" and "Granddaddy" not in st.session_state.achievements:
+        st.session_state.achievements.append("Granddaddy"); safe_toast("🏆 Achievement Unlocked: Granddaddy")
+
+    # 7. The Ring
+    if st.session_state.get("last_postseason_result") == "TITLE" and "The Ring" not in st.session_state.achievements:
+        st.session_state.achievements.append("The Ring"); safe_toast("🏆 Achievement Unlocked: The Ring")
+
+    # 8. Dynasty Mode (Back to Back)
+    if len(st.session_state.history) >= 2:
+        if st.session_state.history[-1]["PostseasonResult"] == "TITLE" and st.session_state.history[-2]["PostseasonResult"] == "TITLE" and "Dynasty Mode" not in st.session_state.achievements:
+            st.session_state.achievements.append("Dynasty Mode"); safe_toast("🏆 Achievement Unlocked: Dynasty Mode")
 
 def build_season_summary_dict():
     w = safe_int(st.session_state.record.get("w", 0), 0); l = safe_int(st.session_state.record.get("l", 0), 0)
@@ -1697,7 +1648,7 @@ def show_dashboard():
                 st.session_state.game_plan = st.selectbox("Plan", ["Conservative", "Normal", "Aggressive"], index=["Conservative", "Normal", "Aggressive"].index(st.session_state.game_plan), label_visibility="collapsed")
             with c2:
                 st.markdown("Action")
-                if st.button(f"Play Week {wk+1}", type="primary", use_container_width=True):
+                if st.button(f"Play Week {wk+1}", type="primary", use_container_width=True, key=f"play_wk_{wk}"):
                     rng = game_rng(st.session_state.year, wk+1, opp, "PLAY")
                     res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
                     
@@ -1713,7 +1664,7 @@ def show_dashboard():
                     st.rerun()
             with c3:
                 st.markdown("Simulate")
-                if st.button("Sim Season", use_container_width=True):
+                if st.button("Sim Season", use_container_width=True, key="sim_season_main"):
                     while not st.session_state.season_simulated and st.session_state.week_index < 12:
                         wk = st.session_state.week_index
                         opp = sched[wk]
@@ -1726,6 +1677,7 @@ def show_dashboard():
                         else:
                             st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
                         st.session_state.week_index += 1
+                        time.sleep(0.01) # Stabilization
                     end_regular_season_and_stay_on_results()
                     st.rerun()
 
@@ -1739,11 +1691,16 @@ def show_dashboard():
                 played = next((x for x in st.session_state.season_logs if x["Week"] == i+1), None)
                 if played:
                     is_win = played["Score"].startswith("W")
-                    css = "game-card-win" if is_win else "game-card-loss"
-                    st.markdown(UIComponents.game_result_card(i+1, f"{opp} ({played.get('OppOVR','?')})", played['Score'], is_win, stats=played.get('Stats')), unsafe_allow_html=True)
+                    with st.container(border=True):
+                        st.write(f"Week {i+1}: {played['Score']} vs {opp}")
+                        # V3.0 FIX: Native columns instead of HTML card
+                        s = played.get('Stats', {})
+                        if s:
+                            sc1, sc2 = st.columns(2)
+                            sc1.caption(f"QB: {s.get('qb_duel',['?','?'])[0]} vs {s.get('qb_duel',['?','?'])[1]}")
+                            sc2.caption(f"O/D: {s.get('off_vs_def',['?','?'])[0]} vs {s.get('off_vs_def',['?','?'])[1]}")
                 else:
-                    css = "game-card-rival" if opp==st.session_state.team_rival else "game-card-pending"
-                    st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
+                    st.markdown(f"Week {i+1} vs {opp}")
         with c2:
             st.caption("Weeks 7-12")
             for i in range(6, min(12, len(sched))):
@@ -1751,11 +1708,15 @@ def show_dashboard():
                 played = next((x for x in st.session_state.season_logs if x["Week"] == i+1), None)
                 if played:
                     is_win = played["Score"].startswith("W")
-                    css = "game-card-win" if is_win else "game-card-loss"
-                    st.markdown(UIComponents.game_result_card(i+1, f"{opp} ({played.get('OppOVR','?')})", played['Score'], is_win, stats=played.get('Stats')), unsafe_allow_html=True)
+                    with st.container(border=True):
+                        st.write(f"Week {i+1}: {played['Score']} vs {opp}")
+                        s = played.get('Stats', {})
+                        if s:
+                            sc1, sc2 = st.columns(2)
+                            sc1.caption(f"QB: {s.get('qb_duel',['?','?'])[0]} vs {s.get('qb_duel',['?','?'])[1]}")
+                            sc2.caption(f"O/D: {s.get('off_vs_def',['?','?'])[0]} vs {s.get('off_vs_def',['?','?'])[1]}")
                 else:
-                    css = "game-card-rival" if opp==st.session_state.team_rival else "game-card-pending"
-                    st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
+                    st.markdown(f"Week {i+1} vs {opp}")
 
     with tab5:
         st.subheader("🏛️ Trophy Case")
@@ -1798,8 +1759,8 @@ def show_season_end():
         stats = log.get("Stats")
         opp_ovr = log.get("OppOVR", "?")
         
-        # FIX: Replaced broken HTML with Native Streamlit Columns
-        with st.container():
+        # V3.0 FIX: Native columns
+        with st.container(border=True):
             col1, col2 = st.columns([1, 2])
             with col1:
                 st.markdown(f"**Week {wk} vs {opp} ({opp_ovr})**")
@@ -1813,7 +1774,6 @@ def show_season_end():
                         {"Metric": "🛡️ DEF vs OFF", "Value": f"{stats['def_vs_off'][0]} vs {stats['def_vs_off'][1]}"},
                     ])
                     st.dataframe(s_grid, hide_index=True, use_container_width=True)
-            st.divider()
 
     st.divider(); c1, c2 = st.columns(2)
     if c1.button("Enter Selection Sunday (Reveal Rankings) 🏆", type="primary"):
@@ -1923,10 +1883,15 @@ def show_postseason():
             
         if "postseason_flash" in st.session_state:
             flash = st.session_state.postseason_flash; res = flash["res"]
-            css = "game-card-win" if res["result"]=="W" else "game-card-loss"
-            # Show detailed stats in bowl result too
-            st.markdown(UIComponents.game_result_card(0, flash['opp'], res['score'], res["result"]=="W", stats=res.get("stats")), unsafe_allow_html=True)
-            
+            # V3.0 FIX: Native columns for Bowl result too
+            with st.container(border=True):
+                st.markdown(f"**Final Score: {res['score']}**")
+                s = res.get("stats", {})
+                if s:
+                    c1, c2 = st.columns(2)
+                    c1.write(f"Total Offense: {s['off_vs_def'][0]} vs {s['off_vs_def'][1]}")
+                    c2.write(f"Total Defense: {s['def_vs_off'][0]} vs {s['def_vs_off'][1]}")
+
             if st.button("Continue ->", type="primary"):
                 w = st.session_state.record["w"] + (1 if res["result"]=="W" else 0)
                 l = st.session_state.record["l"] + (1 if res["result"]=="L" else 0)
