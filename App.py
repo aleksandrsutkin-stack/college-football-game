@@ -1771,7 +1771,8 @@ def compute_recruiting_class_grade():
     for p in nil:
         if p.get("status") == "SIGNED":
             tier = int(p.get("tier", 3)); tier_counts[tier] = tier_counts.get(tier, 0) + 1; tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-    top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
+    top8_commits = [r for r in top8 
+        if r.get("status") == "COMMITTED"]
     top8_points = len(top8_commits) * 10
     gem_count = 0
     for s in stars:
