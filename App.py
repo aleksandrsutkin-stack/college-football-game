@@ -1,13 +1,13 @@
 """
 Build the Program: College Football CEO
-VERSION 2.7 (The Legacy & Polish Update)
+VERSION 2.8 (The Hall of Fame Update)
 
 Audit Log:
-- Critical Fix: Removed duplicate widget rendering in Offseason that caused crashes.
-- Feature: 'Mount Rushmore' Retirement screen comparing user vs. Saban, Bryant, etc.
-- Feature: Expanded Achievements (Undefeated, Rose Bowl, Dynasty, Giant Slayer).
-- UI: Enforced native layouts for Season End to prevent HTML errors.
-- Data: Retained V2.3 Hard Mode ratings and G5 scheduling logic.
+- Critical Fix: Fixed missing HTML flag in Retirement screen that displayed raw code.
+- Feature: Added 'GOAT Comparison' Bar Chart to Retirement screen.
+- Feature: Added 'Career Grade' logic (S/A/B/C/D/F) to Retirement.
+- UI: Refactored Dashboard 'Legacy' tab to use proper Metrics instead of plain text.
+- Integrity: Preserved V2.6 stability fixes (Recruiting flow, Season End layouts).
 """
 
 import streamlit as st
@@ -24,7 +24,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 2.7
+STATE_VERSION = 2.8
 
 class GameState:
     SETUP = "SETUP"
@@ -98,6 +98,7 @@ class GameConfig:
         "Tulane": {"color": "#006747"}, "App State": {"color": "#FFCC00"}, "Toledo": {"color": "#15397F"}
     }
 
+    # V2.3 HARD MODE RATINGS PRESERVED
     REAL_WORLD_INIT = {
         # TIER 1 (BOSSES) - Base 98
         "Georgia": {"Prestige": 99, "Talent": 98, "Tier": 1, "Rival": "Florida"},
@@ -1788,14 +1789,27 @@ def show_dashboard():
                     st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
 
     with tab5:
-        st.subheader("Legacy")
+        st.subheader("🏛️ Trophy Case")
         cs = st.session_state.career_stats
-        st.write(f"Titles: {cs['titles']} | Bowl: {cs['bowl_w']}-{cs['bowl_l']} | Career: {cs['w']}-{cs['l']}")
-        render_trophy_gallery()
+        
+        # V2.8: Metric Display
+        m1, m2, m3 = st.columns(3)
+        m1.metric("National Titles", cs['titles'])
+        m2.metric("Career Record", f"{cs['w']}-{cs['l']}")
+        m3.metric("Bowl Record", f"{cs['bowl_w']}-{cs['bowl_l']}")
+        
+        st.caption(f"Legacy Score: {calculate_saban_score(cs, st.session_state.prestige)}")
+        st.divider()
+        
+        render_trophy_gallery("🏆 Trophy Gallery")
+        st.divider()
         render_achievements_panel()
+        st.divider()
         render_dynasty_timeline()
         st.divider()
-        if st.button("Retire"): st.session_state.game_state = GameState.RETIREMENT; st.rerun()
+        if st.button("🚪 Retire from Coaching", type="secondary"):
+            st.session_state.game_state = GameState.RETIREMENT
+            st.rerun()
 
 def show_season_end():
     sync_team_ratings()
@@ -1815,7 +1829,6 @@ def show_season_end():
         stats = log.get("Stats")
         opp_ovr = log.get("OppOVR", "?")
         
-        # FIXED V2.6: Use columns instead of potentially buggy HTML card
         with st.container():
             col1, col2 = st.columns([1, 2])
             with col1:
@@ -1958,6 +1971,7 @@ def show_postseason():
                 st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
 
     elif data.get("Type") == "CFP":
+        # FIXED LOGIC: V2.5 Dedicated Round 5 Handler
         render_cfp_bracket_tree(st.session_state.postseason_data)
         st.divider()
         user_match = None
@@ -2023,7 +2037,7 @@ def show_postseason():
 
             if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
                 rng = game_rng(st.session_state.year, 20, opp, mode="PLAY")
-                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
+                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
                 
                 try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
                 except: my_s, opp_s = 0, 0
@@ -2217,18 +2231,16 @@ def show_recruiting_wrap():
 
 def show_fired():
     st.title("🔥 FIRED")
-    st.markdown(UIComponents.gradient_header("YOU'VE BEEN FIRED", "The Athletic Director has decided to make a change"))
+    st.markdown(UIComponents.gradient_header("YOU'VE BEEN FIRED", "The Athletic Director has decided to make a change"), unsafe_allow_html=True)
     if st.button("Start New Dynasty"):
         st.session_state.clear(); st.rerun()
 
 def show_retirement():
-    st.title("🏆 RETIREMENT")
-    st.markdown(UIComponents.gradient_header("HALL OF FAME CEREMONY", "Congratulations on a legendary career"))
+    # V2.8: Fixed missing unsafe_allow_html=True
+    st.markdown(UIComponents.gradient_header("HALL OF FAME CEREMONY", "Congratulations on a legendary career"), unsafe_allow_html=True)
     
-    # --- V2.7: All-Time Leaderboard ---
-    st.subheader("🐐 All-Time Greatest Coaches")
-    
-    # 1. Build Data
+    # 1. Stats and Ranking
+    st.subheader("🐐 The GOAT Debate")
     my_stats = {
         "Name": f"{st.session_state.get('ad_name','You')} (You)", 
         "Titles": st.session_state.career_stats['titles'],
@@ -2237,17 +2249,39 @@ def show_retirement():
         "BowlWins": st.session_state.career_stats['bowl_w']
     }
     
+    # Combine user with legends
     all_coaches = GameConfig.LEGENDS + [my_stats]
-    
-    # 2. Sort by Titles (Desc), then Wins (Desc)
     all_coaches.sort(key=lambda x: (x["Titles"], x["Wins"]), reverse=True)
-    
-    # 3. Find User Rank
     user_rank = next((i+1 for i, c in enumerate(all_coaches) if c["Name"] == my_stats["Name"]), 99)
     
-    st.info(f"You finished as the #{user_rank} Greatest Coach of All Time!")
+    # V2.8: Calculate Career Grade
+    score = (my_stats["Titles"] * 50) + (my_stats["Wins"] * 2) + (my_stats["BowlWins"] * 5)
+    if score > 500: grade = "S"; label = "🐐 GOAT STATUS"; st.balloons()
+    elif score > 300: grade = "A"; label = "🏛️ LEGEND"; st.balloons()
+    elif score > 150: grade = "B"; label = "⭐ GREAT"; st.snow()
+    elif score > 80: grade = "C"; label = "✅ GOOD"; st.snow()
+    else: grade = "D"; label = "😐 AVERAGE"; st.snow()
+
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.metric("Final Rank", f"#{user_rank} All-Time")
+        st.metric("Career Score", score)
+        st.markdown(f"### Grade: {grade}")
+        st.caption(label)
     
-    # 4. Display Table
+    with c2:
+        # V2.8: Visual Bar Chart
+        chart_data = pd.DataFrame(all_coaches[:5]) # Top 5 + User if not in top 5? Simplification: Just top 8-10.
+        if user_rank > 5:
+             # Ensure user is in the chart data
+             chart_data = pd.concat([chart_data, pd.DataFrame([my_stats])])
+        
+        st.caption("Career National Titles Comparison")
+        st.bar_chart(chart_data, x="Name", y="Titles", color="#FFD700")
+
+    st.divider()
+    
+    # 2. Table Data
     table_data = []
     for i, c in enumerate(all_coaches):
         table_data.append({
