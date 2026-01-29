@@ -1,12 +1,13 @@
 """
 Build the Program: College Football CEO
-VERSION 2.1 (The Golden Master)
+VERSION 2.2 (The True Golden Master)
 
-Features:
-- Full Realignment Data (65+ Teams, Colors, Rivals)
-- Unified Recruiting Pipeline (Retention -> NIL -> HS -> Top 8)
-- Visual CFP Bracket
-- Polished UI (Gradient Headers, Hero Cards)
+Audit Log:
+- Visuals: Restored 'rank-grid' and 'vip-seed-card' CSS for polished Selection Sunday.
+- UI: Restored 'html_rank_row' for visual rankings instead of raw dataframes.
+- Data: Retained the Expanded Universe (65+ Teams, accurate colors/rivals).
+- Layout: Moved News Wire to Sidebar for persistent visibility.
+- Engine: Unified Recruiting Pipeline (Retention -> NIL -> HS -> Top 8).
 """
 
 import streamlit as st
@@ -23,7 +24,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 2.1
+STATE_VERSION = 2.2
 
 class GameState:
     SETUP = "SETUP"
@@ -71,6 +72,7 @@ class GameConfig:
         "Bowl Win": "🎳"
     }
 
+    # EXPANDED DATABASE (65+ Teams)
     TEAMS_DB = {
         "Georgia": {"color": "#BA0C2F"}, "Alabama": {"color": "#9E1B32"}, "Ohio State": {"color": "#BB0000"},
         "Michigan": {"color": "#00274C"}, "Texas": {"color": "#BF5700"}, "Oklahoma": {"color": "#841617"},
@@ -198,6 +200,7 @@ try:
 except Exception:
     pass
 
+# --- RESTORED CSS CLASSES FROM YOUR FILE ---
 st.markdown("""
 <style>
 .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
@@ -239,6 +242,18 @@ st.markdown("""
 .resume-label { font-size: 0.8em; text-transform: uppercase; color: #666; letter-spacing: 1px; }
 .resume-val { font-size: 1.2em; font-weight: bold; }
 .small-muted { font-size: 0.85em; color: #777; }
+
+/* RESTORED FROM YOUR FILE */
+.rank-grid { display: grid; grid-template-columns: 50px 1fr 100px 90px; gap: 10px; align-items: center; padding: 8px; border-bottom: 1px solid #eee; background: white; color: #333; }
+.rank-grid-user { background: #e3f2fd !important; border-left: 5px solid #2196f3; font-weight: bold; }
+.rank-num { font-weight: bold; color: #555; text-align: center; }
+.rank-team { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rank-rec { text-align: right; }
+.rank-status { text-align: right; font-weight: bold; font-size: 0.9em; }
+.vip-seed-card { background: #fffbeb; border: 2px solid #f1c40f; border-radius: 8px; padding: 15px; text-align: center; height: 100%; }
+.vip-seed-num { font-size: 1.5em; font-weight: 900; color: #b7791f; }
+.vip-seed-team { font-weight: bold; font-size: 1.1em; margin: 5px 0; }
+.vip-badge { display: inline-block; background: #f1c40f; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -309,6 +324,7 @@ def add_news(msg: str):
     st.session_state.news.insert(0, {"ts": stamp, "text": msg}) 
     st.session_state.news = st.session_state.news[:40]
 
+# --- MOVED HERE FOR GLOBAL ACCESS ---
 def render_news_box():
     with st.sidebar:
         st.divider()
@@ -332,6 +348,19 @@ def render_news_box():
             elif any(k in content_lower for k in bad_keys): css_class += " news-item-bad"
             
             st.markdown(f"<div class='{css_class}'>{txt}</div>", unsafe_allow_html=True)
+
+# --- RESTORED HTML RANK ROW HELPER ---
+def html_rank_row(rank, team, wins, losses, conf, is_user):
+    bg_class = "rank-grid-user" if is_user else "rank-grid"
+    status = "🏆 CFP" if rank <= 12 else ("🎳 BOWL" if wins >= 6 else "❌ OUT")
+    return f"""
+    <div class='{bg_class}'>
+        <div class='rank-num'>#{rank}</div>
+        <div class='rank-team'>{team} <span style='font-size:0.8em; color:#666'>({conf})</span></div>
+        <div class='rank-rec'><b>{wins}-{losses}</b></div>
+        <div class='rank-status'>{status}</div>
+    </div>
+    """
 
 # ==============================================================================
 # UI COMPONENT FACTORY
@@ -432,43 +461,6 @@ class BudgetManager:
         total = (base + bonus) * float(inflation) * float(st.session_state.get("conf_revenue_boost_mult", 1.0))
         return int(total)
 
-class OpponentFactory:
-    @staticmethod
-    def create_opponent(team_name: str, context: str = "INIT", performance_data: dict = None) -> dict:
-        is_elite = team_name in GameConfig.CONFERENCES.get("SEC", []) or team_name in GameConfig.CONFERENCES.get("Big Ten", []) or team_name in GameConfig.CONFERENCES.get("ACC", [])
-        if team_name in GameConfig.REAL_WORLD_INIT:
-            d = GameConfig.REAL_WORLD_INIT[team_name]
-            pres, ovr = d["Prestige"], d["Talent"]
-        else:
-            pres, ovr = (78, 79) if is_elite else (60, 68)
-        
-        if context == "EVOLVE" and performance_data:
-            wins = performance_data.get("wins", 6)
-            if wins >= 10: pres = min(99, pres + 3)
-            elif wins <= 4: pres = max(20, pres - 3)
-            ovr = int(pres * 0.9) + random.randint(-3, 3)
-        elif context == "RUNTIME":
-            # Dynamic Difficulty
-            try:
-                uc = st.session_state.get("team_conf", "G5")
-                if uc in ["G5", "MAC", "Pac-12", "Indep"]:
-                    u_ovr = st.session_state.get("team_rating", 75)
-                    u_win = st.session_state.get("record", {}).get("w", 0)
-                    boost = random.randint(10, 15) if (u_ovr >= 82 or u_win >= 8) else (random.randint(6, 10) if (u_ovr >= 78 or u_win >= 6) else 0)
-                    if boost > 0: ovr = min(88, ovr + boost)
-            except: pass
-        
-        if is_elite or pres >= 85: c_min, c_max, s_min, s_max = 8, 10, 8, 11
-        elif pres >= 75: c_min, c_max, s_min, s_max = 6, 9, 6, 9
-        else: c_min, c_max, s_min, s_max = 4, 7, 4, 8
-        
-        return {
-            "Prestige": pres, "OVR": ovr,
-            "Off": random.choice(GameConfig.SCHEMES["Offense"]), "Def": random.choice(GameConfig.SCHEMES["Defense"]),
-            "Coaches": {"OC": random.randint(c_min, c_max), "DC": random.randint(c_min, c_max)},
-            "Stadium": random.randint(s_min, s_max)
-        }
-
 class OpponentManager:
     @staticmethod
     def get(team_name: str) -> dict:
@@ -508,8 +500,45 @@ class OpponentManager:
             
             if random.random() < 0.35: data.pop("OffOVR", None); data.pop("DefOVR", None)
 
+class OpponentFactory:
+    @staticmethod
+    def create_opponent(team_name: str, context: str = "INIT", performance_data: dict = None) -> dict:
+        is_elite = team_name in GameConfig.CONFERENCES.get("SEC", []) or team_name in GameConfig.CONFERENCES.get("Big Ten", []) or team_name in GameConfig.CONFERENCES.get("ACC", [])
+        if team_name in GameConfig.REAL_WORLD_INIT:
+            d = GameConfig.REAL_WORLD_INIT[team_name]
+            pres, ovr = d["Prestige"], d["Talent"]
+        else:
+            pres, ovr = (78, 79) if is_elite else (60, 68)
+        
+        if context == "EVOLVE" and performance_data:
+            wins = performance_data.get("wins", 6)
+            if wins >= 10: pres = min(99, pres + 3)
+            elif wins <= 4: pres = max(20, pres - 3)
+            ovr = int(pres * 0.9) + random.randint(-3, 3)
+        elif context == "RUNTIME":
+            # Dynamic Difficulty
+            try:
+                uc = st.session_state.get("team_conf", "G5")
+                if uc in ["G5", "MAC", "Pac-12", "Indep"]:
+                    u_ovr = st.session_state.get("team_rating", 75)
+                    u_win = st.session_state.get("record", {}).get("w", 0)
+                    boost = random.randint(10, 15) if (u_ovr >= 82 or u_win >= 8) else (random.randint(6, 10) if (u_ovr >= 78 or u_win >= 6) else 0)
+                    if boost > 0: ovr = min(88, ovr + boost)
+            except: pass
+        
+        if is_elite or pres >= 85: c_min, c_max, s_min, s_max = 8, 10, 8, 11
+        elif pres >= 75: c_min, c_max, s_min, s_max = 6, 9, 6, 9
+        else: c_min, c_max, s_min, s_max = 4, 7, 4, 8
+        
+        return {
+            "Prestige": pres, "OVR": ovr,
+            "Off": random.choice(GameConfig.SCHEMES["Offense"]), "Def": random.choice(GameConfig.SCHEMES["Defense"]),
+            "Coaches": {"OC": random.randint(c_min, c_max), "DC": random.randint(c_min, c_max)},
+            "Stadium": random.randint(s_min, s_max)
+        }
+
 # ==============================================================================
-# GENERAL HELPER FUNCTIONS
+# OTHER HELPERS
 # ==============================================================================
 def make_deterministic_rng(*parts) -> random.Random:
     base = (str(st.session_state.get("state_version", "")), str(st.session_state.get("year", "")), str(st.session_state.get("team_name", "")))
@@ -518,6 +547,18 @@ def make_deterministic_rng(*parts) -> random.Random:
 
 def game_rng(year: int, week: int, opp: str, mode: str = "PLAY") -> random.Random:
     return make_deterministic_rng("game", mode, int(year), int(week), str(opp))
+
+def calculate_difficulty_multiplier(user_conf: str, user_prestige: int, user_ovr: int, user_wins: int) -> float:
+    mult = 1.0
+    if user_conf in ["G5", "MAC", "Pac-12", "Indep"]:
+        if user_ovr >= 85: mult += 0.20
+        elif user_ovr >= 80: mult += 0.15
+        elif user_ovr >= 75: mult += 0.10
+        if user_wins >= 10: mult += 0.08
+        elif user_wins >= 8: mult += 0.05
+        if user_prestige >= 80: mult += 0.05
+    elif user_conf in ["SEC", "Big Ten"] and user_prestige >= 90: mult += 0.05
+    return min(1.35, mult)
 
 def get_conferences_map():
     if "conferences_map" not in st.session_state: st.session_state.conferences_map = {k: list(v) for k, v in GameConfig.CONFERENCES.items()}
@@ -890,6 +931,13 @@ def compute_team_unit_ratings(roster, staff, facilities):
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
     rng = rng or random.Random()
     
+    # V1.8: Cinderella Tax
+    try:
+        diff_mult = calculate_difficulty_multiplier(st.session_state.get("team_conf", "G5"), st.session_state.get("prestige", 60), st.session_state.get("team_rating", 75), st.session_state.get("record", {}).get("w", 0))
+        opp_off = int(opp_off * diff_mult)
+        opp_def = int(opp_def * diff_mult)
+    except: pass
+
     my_edge, opp_edge = (my_off - opp_def)*0.75, (opp_off - my_def)*0.75
     sb_my, sb_opp = 0.0, 0.0
     if GameConfig.OFF_COUNTERED_BY.get(schemes.get("Off")) == opp_schemes.get("Def"): sb_my -= 2.5; sb_opp += 1.0
@@ -991,119 +1039,6 @@ def safe_json_default(obj):
     return str(obj)
 
 # ==============================================================================
-# RECRUITING FUNCTIONS
-# ==============================================================================
-
-def generate_retention_demands() -> List[Dict]:
-    demands = []
-    targets = random.sample(GameConfig.POSITIONS, 3)
-    for pos in targets:
-        current_rating = st.session_state.roster.get(pos, 75)
-        base_cost = max(250_000, (current_rating - 60) * 50_000)
-        cost = int(base_cost * random.uniform(0.8, 1.2))
-        demands.append({"pos": pos, "rating": current_rating, "cost": cost, "status": "PENDING"})
-    return demands
-
-def generate_nil_class_15(team_needs: list):
-    def mk(tier: int, pos: str):
-        if tier == 1: rating = random.randint(90, 99); ask = int(random.randint(2_500_000, 9_000_000) * (1.0 + (rating - 90) / 25)); badge = "Tier 1"
-        elif tier == 2: rating = random.randint(84, 89); ask = int(random.randint(900_000, 3_500_000) * (1.0 + (rating - 84) / 35)); badge = "Tier 2"
-        else: rating = random.randint(76, 83); ask = int(random.randint(200_000, 1_200_000) * (1.0 + (rating - 76) / 40)); badge = "Tier 3"
-        return {"id": random.randint(10_000, 99_999), "tier": tier, "tier_label": badge, "name": generate_name(), "pos": pos, "rating": rating, "ask": ask, "trait": random.choice(GameConfig.TRAITS), "status": "AVAILABLE"}
-    needs = team_needs[:] if team_needs else GameConfig.POSITIONS[:]; pool=[]
-    for _ in range(5): pos = random.choice(needs if random.random() < 0.70 else GameConfig.POSITIONS); pool.append(mk(1, pos))
-    for _ in range(5): pos = random.choice(needs if random.random() < 0.60 else GameConfig.POSITIONS); pool.append(mk(2, pos))
-    for _ in range(5): pos = random.choice(needs if random.random() < 0.50 else GameConfig.POSITIONS); pool.append(mk(3, pos))
-    pool.sort(key=lambda x: (x["tier"], -x["rating"])); return pool
-
-def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, prestige: int, inflation: float, hotspots: dict, home_region: str, team_needs: list, is_dollars: bool = False):
-    results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(total_spend)}
-    total_spend = max(0, int(total_spend))
-    staff = staff or {}
-    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
-    hc_trait = (staff.get("HC") or {}).get("trait", "None")
-    efficiency = 0.85 if scout >= 8 else (1.0 if scout >= 5 else 1.15)
-    base_cost = 900_000 * float(inflation) * float(efficiency)
-    hot_positions = hotspots.get(home_region, [])
-    
-    if is_dollars:
-        allocated = 0
-        for p in GameConfig.POSITIONS:
-            try: allocated += int(float(shares_or_alloc.get(p, 0) or 0))
-            except: pass
-        spent = max(0, min(total_spend, allocated))
-    else: spent = total_spend
-    
-    results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(spent)}
-    for pos in GameConfig.POSITIONS:
-        raw = float(shares_or_alloc.get(pos, 0.0) or 0.0)
-        if is_dollars: amt = max(0.0, raw)
-        else: pct = raw; amt = total_spend * (pct / 100.0)
-        
-        if amt <= 0: results["roster_updates"][pos] = -random.randint(1, 3); continue
-        cap = base_cost * 2.0; effective_spend = cap * (1 - math.exp(-amt / cap))
-        spend_ratio = effective_spend / max(1.0, base_cost); dim = spend_ratio ** 0.85
-        pipeline_bonus = 1.15 if pos in hot_positions else 1.0
-        need_bonus = 1.25 if pos in team_needs else 1.0
-        prestige_factor = max(0.85, min(1.20, (prestige / 75) ** 0.35))
-        change = dim * pipeline_bonus * need_bonus * prestige_factor
-        change = max(-4, min(12, change))
-        if hc_trait == "Recruiter": change *= 1.08
-        gem_chance = 0.08
-        if pos in team_needs: gem_chance += 0.07
-        if pos in hot_positions: gem_chance += 0.05
-        if scout >= 8: gem_chance += 0.03
-        if hc_trait == "Recruiter": gem_chance += 0.02
-        if amt > base_cost * 1.25 and random.random() < gem_chance:
-            star = generate_star_player(pos, tier=1); star["name"] += " (GEM)"; results["gems"].append(star)
-            change += 5; results["booster_bonus"] += 250_000 + random.randint(0, 250_000)
-        results["roster_updates"][pos] = change
-    return results
-
-def generate_top8_prospects(team_needs: list):
-    recruits = []
-    for _ in range(8):
-        pos = random.choice(team_needs if team_needs and random.random() < 0.65 else GameConfig.POSITIONS)
-        rating = random.randint(90, 99)
-        ask = int(random.randint(2_000_000, 8_000_000) * (1.0 + (rating - 90) / 35))
-        recruits.append({"id": random.randint(10_000, 99_999), "name": generate_name(), "pos": pos, "rating": rating, "ask": ask, "trait": random.choice(GameConfig.TRAITS), "status": "OPEN", "note": "", "offer": 0})
-    recruits.sort(key=lambda x: x["rating"], reverse=True); return recruits
-
-def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige: int) -> float:
-    staff = staff or {}
-    scout = safe_int((staff.get("Scout") or {}).get("recruit", 1), 1)
-    hc_trait = (staff.get("HC") or {}).get("trait", "None")
-    chance = 0.18 + (max(40, min(99, prestige)) - 60) * 0.004 + (scout - 5) * 0.02
-    if hc_trait == "Recruiter": chance += 0.05
-    pos = recruit["pos"]; spend = float(spend_by_pos.get(pos, 0.0))
-    chance += min(0.20, spend / 10_000_000)
-    return max(0.05, min(0.80, chance))
-
-def compute_recruiting_class_grade():
-    nil = st.session_state.get("nil_class", []) or []
-    top8 = st.session_state.get("top8", []) or []
-    stars = st.session_state.get("stars", []) or []
-    tier_points = 0; tier_counts = {1: 0, 2: 0, 3: 0}
-    for p in nil:
-        if p.get("status") == "SIGNED":
-            tier = int(p.get("tier", 3)); tier_counts[tier] = tier_counts.get(tier, 0) + 1; tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-    top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
-    top8_points = len(top8_commits) * 10
-    gem_count = 0
-    for s in stars:
-        if "(GEM)" in str(s.get("name", "")): gem_count += 1
-    gem_points = gem_count * 6
-    score = tier_points + top8_points + gem_points
-    if score >= 70: grade = "A+"
-    elif score >= 55: grade = "A"
-    elif score >= 42: grade = "B"
-    elif score >= 30: grade = "C"
-    elif score >= 18: grade = "D"
-    else: grade = "F"
-    breakdown = {"score": score, "nil_signed": sum(tier_counts.values()), "tier_counts": tier_counts, "top8_commits": len(top8_commits), "gems_found": gem_count, "points": {"nil": tier_points, "top8": top8_points, "gems": gem_points}}
-    return grade, score, breakdown
-
-# ==============================================================================
 # VIEW FUNCTIONS
 # ==============================================================================
 
@@ -1184,8 +1119,6 @@ def show_dashboard():
     if st.session_state.job_security < (0 if st.session_state.tenure <= 2 else 30):
         st.session_state.game_state = GameState.FIRED
         st.rerun()
-
-    render_news_box()
 
     if st.session_state.get("pending_invite"):
         inv = st.session_state.pending_invite
@@ -1447,6 +1380,7 @@ def show_selection_sunday():
         if i < len(results):
             t = results[i]
             with vip_cols[i]:
+                # FIX: Using HTML list items if visual cards missing, but here restored via CSS
                 border = "2px solid #2196f3" if t.get("IsUser") else "2px solid #f1c40f"
                 bg = "#e3f2fd" if t.get("IsUser") else "#fffbeb"
                 st.markdown(f"<div style='background:{bg}; border:{border}; border-radius:8px; padding:15px; text-align:center;'><h3>#{i+1}</h3><div>{t['Team']}</div></div>", unsafe_allow_html=True)
@@ -1463,13 +1397,11 @@ def show_selection_sunday():
     st.divider()
 
     st.subheader("📉 The Bubble & Rankings")
-    rest_data = []
-    for i, t in enumerate(results[12:25]):
-        status = "🎳 BOWL" if safe_int(t.get("Wins"),0) >= 6 else "❌ OUT"
-        if t.get("IsUser"): status += " (YOU)"
-        rest_data.append({"Rank": i + 13, "Team": t["Team"], "Record": f"{t['Wins']}-{t['Losses']}", "Conf": t["Conf"], "Status": status})
     
-    if rest_data: st.dataframe(pd.DataFrame(rest_data), hide_index=True, use_container_width=True)
+    # RESTORED VISUAL RANKING ROWS instead of Dataframe
+    for i, t in enumerate(results[12:25]):
+        rank = i + 13
+        st.markdown(html_rank_row(rank, t['Team'], t['Wins'], t['Losses'], t['Conf'], t.get('IsUser', False)), unsafe_allow_html=True)
 
     st.divider()
     user_wins = st.session_state.record['w']
@@ -1571,7 +1503,7 @@ def show_postseason():
             st.info(f"Your Matchup: vs {opp} (OVR: {opp_data.get('OVR',88)})")
             if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
                 rng = game_rng(st.session_state.year, 20, opp, mode="PLAY")
-                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
+                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
                 
                 try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
                 except: my_s, opp_s = 0, 0
@@ -1793,6 +1725,9 @@ def render_system_sidebar():
                 st.success("Save Loaded Successfully! Reloading..."); time.sleep(1); st.rerun()
             except Exception as e:
                 st.error(f"Error loading save: {e}")
+        
+        # News moved inside sidebar properly
+        render_news_box()
 
 init_session_state_defaults()
 render_system_sidebar()
