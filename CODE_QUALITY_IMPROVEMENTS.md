@@ -42,7 +42,7 @@ This document summarizes the code quality improvements made to the College Footb
   - Score variance and randomization
 
 ### 4. Code Organization ✅
-- **Removed Duplicate Code**: Eliminated 5 duplicate function definitions:
+- **Removed Duplicate Code**: Eliminated 6 duplicate function definitions:
   - `generate_career_highlights()`
   - `render_career_highlights_carousel()`
   - `render_dynasty_timeline_infographic()`
@@ -58,7 +58,7 @@ This document summarizes the code quality improvements made to the College Footb
 | Syntax Errors | 2 | 0 | ✅ Fixed |
 | Bare Except Clauses | 11 | 0 | ✅ Eliminated |
 | Documented Functions | ~5 | 34 | +580% |
-| Duplicate Functions | 5 | 0 | ✅ Removed |
+| Duplicate Functions | 6 | 0 | ✅ Removed |
 | Lines of Code | 2,929 | 3,137 | +7% (documentation) |
 
 ## Remaining Opportunities

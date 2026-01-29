@@ -2263,9 +2263,9 @@ def show_offseason_top8_v8():
                         else:
                             r["status"] = "LOST"
                             st.session_state.top8_resolved.add(rid)
-                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
-                safe_toast(f"❌ LOST: {r['name']}")
-                st.rerun()
+                            add_news(f"{r['name']} commits elsewhere. Lost recruit.")
+                            safe_toast(f"❌ LOST: {r['name']}")
+                            st.rerun()
     st.divider()
     if st.button("Finish Top-8 & Continue →", type="primary"):
         st.session_state.offseason_step = 5
