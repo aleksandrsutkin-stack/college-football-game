@@ -2032,34 +2032,32 @@ def show_offseason_top8_v8():
                 r["offer"] = int(offer)
                 
                 st.divider()
-                
-               if r.get("status") == "COMMITTED":
-                    st.success("✅ COMMITTED")
-                elif r.get("status") == "LOST":
-                    st.error("❌ LOST")
-                else:
-                    disabled = already or r["offer"] <= 0
-                    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
-                        if not validate_budget_input(r["offer"], BudgetManager.get_current(), f"recruit {r['name']}"):
-                            st.error("Cannot afford this offer!")
-                        else:
-                            chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
-                            if random.random() < chance:
-                                BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
-                                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
-                                r["status"] = "COMMITTED"
-                                st.session_state.top8_resolved.add(rid)
-                                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
-                                sync_team_ratings()
-                                safe_toast(f"✅ COMMITTED: {r['name']}")
-                                st.rerun()
-                            else:
-                                r["status"] = "LOST"
-                                st.session_state.top8_resolved.add(rid)
-                                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
-                                safe_toast(f"❌ LOST: {r['name']}")
-                                st.rerun()
-
+   if r.get("status") == "COMMITTED":
+    st.success("✅ COMMITTED")
+elif r.get("status") == "LOST":
+    st.error("❌ LOST")
+else:
+    disabled = already or r["offer"] <= 0
+    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
+        if not validate_budget_input(r["offer"], BudgetManager.get_current(), f"recruit {r['name']}"):
+            st.error("Cannot afford this offer!")
+        else:
+            chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
+            if random.random() < chance:
+                BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
+                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
+                r["status"] = "COMMITTED"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
+                sync_team_ratings()
+                safe_toast(f"✅ COMMITTED: {r['name']}")
+                st.rerun()
+            else:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
+                safe_toast(f"❌ LOST: {r['name']}")
+                st.rerun()
     st.divider()
     if st.button("Finish Top-8 & Continue →", type="primary"):
         st.session_state.offseason_step = 5
