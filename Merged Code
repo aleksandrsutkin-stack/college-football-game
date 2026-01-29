@@ -2070,55 +2070,48 @@ def show_offseason_top8_v8():
     for r in st.session_state.top8:
         rid = int(r["id"]); pos = r["pos"]; ask = int(r["ask"])
         already = rid in st.session_state.top8_resolved
-        c1, c2, c3 = st.columns([4, 2, 2])
-        with c1: 
-            st.markdown(f"⭐ **{pos} {r['name']} ({r['rating']})**")
-            st.caption(f"Wants: {helper_format_cash(ask)} | Trait: {r.get('trait','')}")
-        with c2:
-            row_budget = int(st.session_state.get("budget", 0) or 0)
-            max_offer = max(0, min(row_budget, max(ask * 2, 250_000)))
-            default_offer = int(r.get("offer", 0) or 0)
-            default_offer = max(0, min(default_offer, max_offer))
-            offer = st.slider(f"Offer vs Want ({helper_format_cash(ask)})", 0, max_offer, default_offer, step=250_000, key=f"offer_{rid}")
-            r["offer"] = int(offer)
+        
+        with st.container(border=True):
+            # Header
+            st.markdown(f"### {pos} {r['name']} ({r['rating']}) {r.get('trait', '')}")
+            st.caption(f"💰 Asking Price: {helper_format_cash(ask)}")
             
-            offer_val = int(r.get("offer", 0) or 0)
-            if offer_val <= 0: st.caption("Set an offer to pitch.")
-            elif offer_val < ask: st.warning("Below ask")
-            elif offer_val < int(ask * 1.25): st.success("Meets ask")
-            else: st.success("Overpay (strong pitch)")
-
-        with c3:
-            if r.get("status") == "COMMITTED": st.success("✅ COMMITTED")
-            elif r.get("status") == "LOST": st.error("❌ LOST")
-            else:
+            c1, c2 = st.columns([2, 1])
+            
+            with c1:
+                # INTEREST METER
                 chance = top8_commit_chance(
-                    r, 
-                    {pos: float(r.get("offer", 0) or 0)}, 
-                    st.session_state.staff, 
+                    r,
+                    {pos: float(r.get("offer", 0) or 0)},
+                    st.session_state.staff,
                     st.session_state.prestige
                 )
-                st.write(f"Chance: **{int(chance*100)}%**")
-                if st.button("Pitch", key=f"pitch_{rid}", disabled=already or r["offer"]<=0):
-                    if BudgetManager.spend(r["offer"], "pitch"):
-                        if random.random() < chance:
-                            r["status"] = "COMMITTED"
-                            st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
-                            safe_toast("Committed!")
-                        else:
-                            r["status"] = "LOST" 
-                            safe_toast("Lost recruit.")
-                        st.session_state.top8_resolved.add(rid)
-                        st.rerun()
-
-    st.divider()
-    if st.button("Simulate Remaining Pitches"):
-        for r in st.session_state.top8:
-            rid = int(r["id"])
-            if rid not in st.session_state.top8_resolved and r.get("status") == "OPEN":
-                st.session_state.top8_resolved.add(rid)
-                r["status"] = "LOST" 
-        st.rerun()
+                st.markdown(render_interest_meter(r, chance, {}), unsafe_allow_html=True)
+            
+            with c2:
+                # Offer slider
+                row_budget = int(st.session_state.get("budget", 0) or 0)
+                max_offer = max(0, min(row_budget, max(ask * 2, 250_000)))
+                default_offer = int(r.get("offer", 0) or 0)
+                default_offer = max(0, min(default_offer, max_offer))
+                
+                offer = st.slider(
+                    "Your Offer",
+                    0, max_offer, default_offer,
+                    step=250_000,
+                    key=f"offer_{rid}"
+                )
+                r["offer"] = int(offer)
+                
+                st.divider()
+                
+                if r.get("status") == "COMMITTED":
+                    st.success("✅ COMMITTED")
+                elif r.get("status") == "LOST":
+                    st.error("❌ LOST")
+                else:
+                    disabled = already or r["offer"] <= 0
+                    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
 
 # ==============================================================================
 # MAIN VIEW CONTROLLERS
