@@ -1,12 +1,11 @@
 """
 Build the Program: College Football CEO
-VERSION 2.3 (The Hard Mode Update)
+VERSION 2.5 (The Championship Fix)
 
 Audit Log:
-- Bug Fix: Reordered Recruiting Functions to prevent NameError crash.
-- Difficulty: Tier 1 teams buffed to 98 OVR; Gray teams buffed to Coach Tier 5.
-- Logic: G5 teams now forced to play 2 "Money Games" vs Top 25 opponents.
-- Data: Updated REAL_WORLD_INIT to reflect new power rankings.
+- Critical Fix: Solved "Infinite Loop" after winning National Title by adding a dedicated Round 5 state.
+- UI: Fully confirmed V2.4 UI (Gradient Headers, Hero Cards, Detailed Game Results) is present.
+- Data: Confirmed V2.3 Hard Mode Ratings (Tier 1 = 98 OVR) are present.
 """
 
 import streamlit as st
@@ -23,7 +22,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 2.3
+STATE_VERSION = 2.5
 
 class GameState:
     SETUP = "SETUP"
@@ -83,7 +82,6 @@ class GameConfig:
         "Tulane": {"color": "#006747"}, "App State": {"color": "#FFCC00"}, "Toledo": {"color": "#15397F"}
     }
 
-    # UPDATED V2.3: HARD MODE RATINGS
     REAL_WORLD_INIT = {
         # TIER 1 (BOSSES) - Base 98
         "Georgia": {"Prestige": 99, "Talent": 98, "Tier": 1, "Rival": "Florida"},
@@ -401,6 +399,37 @@ class UIComponents:
     def star_rating(rating: int, max_stars: int = 10) -> str:
         return "⭐" * rating + "☆" * (max_stars - rating)
 
+    @staticmethod
+    def game_result_card(week: int, opponent: str, score: str, 
+                        is_win: bool, is_rival: bool = False, 
+                        is_pending: bool = False, stats: dict = None) -> str:
+        
+        if is_pending:
+            css = "game-card-rival" if is_rival else "game-card-pending"
+            return f"<div class='game-card {css}'>Week {week} vs {opponent}</div>"
+        
+        css = "game-card-win" if is_win else "game-card-loss"
+        stats_html = ""
+        
+        if stats:
+            stats_html = f"""
+            <div class='stat-grid'>
+                <div class='stat-row'><span>🔥 QB Duel</span><span>{stats.get('qb_duel', ['?','?'])[0]} vs {stats.get('qb_duel', ['?','?'])[1]}</span></div>
+                <div class='stat-row'><span>⚔️ OFF vs DEF</span><span>{stats.get('off_vs_def', ['?','?'])[0]} vs {stats.get('off_vs_def', ['?','?'])[1]}</span></div>
+                <div class='stat-row'><span>🛡️ DEF vs OFF</span><span>{stats.get('def_vs_off', ['?','?'])[0]} vs {stats.get('def_vs_off', ['?','?'])[1]}</span></div>
+            </div>
+            """
+            
+        return f"""
+        <div class='game-card {css}'>
+            <div class='card-header'>
+                <span>{score}</span>
+                <span>vs {opponent}</span>
+            </div>
+            {stats_html}
+        </div>
+        """
+
 # ==============================================================================
 # GENERATORS
 # ==============================================================================
@@ -503,7 +532,6 @@ class OpponentFactory:
             d = GameConfig.REAL_WORLD_INIT[team_name]
             pres, ovr = d["Prestige"], d["Talent"]
         else:
-            # UPDATED V2.3: Buffed Generic Teams (Gray Teams)
             pres, ovr = (78, 79) if is_elite else (60, 70) 
         
         if context == "EVOLVE" and performance_data:
@@ -521,11 +549,10 @@ class OpponentFactory:
                     if boost > 0: ovr = min(88, ovr + boost)
             except: pass
         
-        # UPDATED V2.3: Harder Tiers
         if is_elite or pres >= 90: c_min, c_max, s_min, s_max = 9, 10, 10, 11
         elif pres >= 85: c_min, c_max, s_min, s_max = 9, 10, 9, 11
         elif pres >= 75: c_min, c_max, s_min, s_max = 7, 9, 7, 9
-        else: c_min, c_max, s_min, s_max = 5, 8, 5, 8 # Buffed low tier coaches
+        else: c_min, c_max, s_min, s_max = 5, 8, 5, 8 
         
         return {
             "Prestige": pres, "OVR": ovr,
@@ -806,7 +833,7 @@ def render_cfp_bracket_tree(data: dict):
         html += "</div><div class='bracket-round'><div class='bracket-round-title'>National Championship</div>"
         html += "<div class='bracket-matchup active' style='padding:30px;text-align:center;'><div style='font-size:2em;'>🏆</div><div style='color:#666;margin-top:10px;'>Awaiting Semifinals</div></div></div>"
     
-    else:  # Final
+    elif round_num == 4:  # Final
         html += "<div class='bracket-round'><div class='bracket-round-title'>National Championship</div>"
         seed_map = data.get("SeedMap", {})
         for m in matches:
@@ -816,6 +843,10 @@ def render_cfp_bracket_tree(data: dict):
             if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
             html += f"<div class='{cls}' style='min-width:300px;'><div style='text-align:center;font-size:1.5em;margin-bottom:10px;'>🏆</div><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div></div>"
         html += "</div>"
+
+    elif round_num == 5: # Champion
+         html += "<div class='bracket-round'><div class='bracket-round-title'>National Champions</div>"
+         html += "<div class='bracket-matchup completed' style='padding:30px;text-align:center;border:4px solid #FFD700;background:#FFF9C4'><div style='font-size:3em;'>🏆</div><div style='font-weight:900;font-size:1.5em;margin-top:10px;color:#B7791F'>CHAMPION</div></div></div>"
     
     html += "</div>"
     st.markdown(html, unsafe_allow_html=True)
@@ -939,6 +970,13 @@ def compute_team_unit_ratings(roster, staff, facilities):
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
     rng = rng or random.Random()
     
+    # V1.8: Cinderella Tax
+    try:
+        diff_mult = calculate_difficulty_multiplier(st.session_state.get("team_conf", "G5"), st.session_state.get("prestige", 60), st.session_state.get("team_rating", 75), st.session_state.get("record", {}).get("w", 0))
+        opp_off = int(opp_off * diff_mult)
+        opp_def = int(opp_def * diff_mult)
+    except: pass
+
     my_edge, opp_edge = (my_off - opp_def)*0.75, (opp_off - my_def)*0.75
     sb_my, sb_opp = 0.0, 0.0
     if GameConfig.OFF_COUNTERED_BY.get(schemes.get("Off")) == opp_schemes.get("Def"): sb_my -= 2.5; sb_opp += 1.0
@@ -1664,7 +1702,8 @@ def show_dashboard():
                 if played:
                     is_win = played["Score"].startswith("W")
                     css = "game-card-win" if is_win else "game-card-loss"
-                    st.markdown(f"<div class='game-card {css}'>Week {i+1}: {played['Score']} vs {opp}</div>", unsafe_allow_html=True)
+                    # Fixed V2.4: Show detailed stats on dashboard too
+                    st.markdown(UIComponents.game_result_card(i+1, f"{opp} ({played.get('OppOVR','?')})", played['Score'], is_win, stats=played.get('Stats')), unsafe_allow_html=True)
                 else:
                     css = "game-card-rival" if opp==st.session_state.team_rival else "game-card-pending"
                     st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
@@ -1676,7 +1715,7 @@ def show_dashboard():
                 if played:
                     is_win = played["Score"].startswith("W")
                     css = "game-card-win" if is_win else "game-card-loss"
-                    st.markdown(f"<div class='game-card {css}'>Week {i+1}: {played['Score']} vs {opp}</div>", unsafe_allow_html=True)
+                    st.markdown(UIComponents.game_result_card(i+1, f"{opp} ({played.get('OppOVR','?')})", played['Score'], is_win, stats=played.get('Stats')), unsafe_allow_html=True)
                 else:
                     css = "game-card-rival" if opp==st.session_state.team_rival else "game-card-pending"
                     st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
@@ -1707,9 +1746,8 @@ def show_season_end():
         score = log["Score"]
         is_win = score.startswith("W")
         stats = log.get("Stats")
-        css = "game-card-win" if is_win else "game-card-loss"
-        s = stats or {}
-        st.markdown(f"<div class='game-card {css}'><div class='card-header'><span>{score}</span><span>vs {opp}</span></div></div>", unsafe_allow_html=True)
+        opp_ovr = log.get("OppOVR", "?")
+        st.markdown(UIComponents.game_result_card(wk, f"{opp} ({opp_ovr})", score, is_win, is_rival=(opp == st.session_state.team_rival), stats=stats), unsafe_allow_html=True)
 
     st.divider(); c1, c2 = st.columns(2)
     if c1.button("Enter Selection Sunday (Reveal Rankings) 🏆", type="primary"):
@@ -1770,8 +1808,6 @@ def show_selection_sunday():
     st.divider()
 
     st.subheader("📉 The Bubble & Rankings")
-    
-    # RESTORED VISUAL RANKING ROWS instead of Dataframe
     for i, t in enumerate(results[12:25]):
         rank = i + 13
         st.markdown(html_rank_row(rank, t['Team'], t['Wins'], t['Losses'], t['Conf'], t.get('IsUser', False)), unsafe_allow_html=True)
@@ -1822,7 +1858,8 @@ def show_postseason():
         if "postseason_flash" in st.session_state:
             flash = st.session_state.postseason_flash; res = flash["res"]
             css = "game-card-win" if res["result"]=="W" else "game-card-loss"
-            st.markdown(f"<div class='game-card {css}'><div class='card-header'><span>{res['score']}</span><span>vs {flash['opp']}</span></div></div>", unsafe_allow_html=True)
+            st.markdown(UIComponents.game_result_card(0, flash['opp'], res['score'], res["result"]=="W", stats=res.get("stats")), unsafe_allow_html=True)
+            
             if st.button("Continue ->", type="primary"):
                 w = st.session_state.record["w"] + (1 if res["result"]=="W" else 0)
                 l = st.session_state.record["l"] + (1 if res["result"]=="L" else 0)
@@ -1837,7 +1874,7 @@ def show_postseason():
                 st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
 
     elif data.get("Type") == "CFP":
-        # FIX V1.7 Logic
+        # FIXED LOGIC: V2.5 Dedicated Round 5 Handler
         render_cfp_bracket_tree(st.session_state.postseason_data)
         st.divider()
         user_match = None
@@ -1851,8 +1888,16 @@ def show_postseason():
                 st.session_state.game_state = GameState.SEASON_RECAP
                 st.rerun()
             return
-        
-        # Check if user has a match this round
+            
+        # V2.5: Dedicated "Round 5" for post-championship celebration
+        if round_num == 5:
+             st.balloons()
+             st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
+             if st.button("Finish Season & Celebrate", type="primary"):
+                 st.session_state.game_state = GameState.SEASON_RECAP
+                 st.rerun()
+             return
+
         for m in matches:
             if m.get("t1") == st.session_state.team_name or m.get("t2") == st.session_state.team_name: user_match = m; break
 
@@ -1872,9 +1917,7 @@ def show_postseason():
                     
                 seeds = data.get("Seeds", []); new_matches = []
                 if len(seeds) >= 4:
-                    # Logic to build QF bracket based on winners
                     winners = [m["winner"] for m in matches]
-                    # Simple advancement logic (real brackets are more complex but this works for game)
                     qf_seeds = data.get("QF_Seeds", seeds[:4])
                     if len(winners) >= 4:
                          new_matches = [
@@ -1905,10 +1948,9 @@ def show_postseason():
                 if user_match.get("t1") == st.session_state.team_name: user_match["s1"], user_match["s2"] = my_s, opp_s
                 else: user_match["s1"], user_match["s2"] = opp_s, my_s
 
-                # Simulate other games in this round
+                # Simulate other games
                 for m in matches:
                     if m is not user_match:
-                         # Quick sim other games
                         t1, t2 = m.get("t1"), m.get("t2")
                         if not t1 or not t2: continue
                         o1 = st.session_state.opponents_db.get(t1, {"OVR": 82}).get("OVR", 82); o2 = st.session_state.opponents_db.get(t2, {"OVR": 82}).get("OVR", 82)
@@ -1923,7 +1965,7 @@ def show_postseason():
                     user_match["winner"] = st.session_state.team_name
                     add_news(f"{st.session_state.team_name} advances in the CFP!"); safe_toast("VICTORY! Advancing...")
                     BudgetManager.add(5_000_000, "CFP Round Bonus")
-                    st.rerun() # Re-run to process advancement
+                    st.rerun() 
                 else:
                     user_match["winner"] = opp
                     st.session_state.postseason_data["UserAlive"] = False
@@ -1932,38 +1974,31 @@ def show_postseason():
                     st.rerun()
 
         elif user_match and user_match.get("winner"):
-             # User won previous round, waiting to advance round
              st.success("✅ Round Complete!")
              if st.button("Advance to Next Round →", type="primary"):
-                 # Build next round matches based on winners
                  winners = [m["winner"] for m in matches]
                  new_matches = []
-                 # Simple linear progression for game purposes
                  if len(winners) >= 2:
                      for i in range(0, len(winners), 2):
                          if i+1 < len(winners):
                              new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None})
                  
                  if not new_matches and round_num >= 4:
-                      # End of tournament
-                      pass
-                 else:
-                     st.session_state.postseason_data["Matches"] = new_matches
-                     st.session_state.postseason_data["Round"] = round_num + 1
-                 
-                 # Check for Championship
-                 if round_num == 4 and user_alive:
-                      st.session_state.last_postseason_result = "TITLE"
-                      st.session_state.career_stats["titles"] += 1
-                      BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
-                      award_trophy("National Title")
-                      st.balloons()
-                      st.success("NATIONAL CHAMPIONS!")
-                      st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
-                      if st.button("Finish Season"):
+                      # If this was the Championship, move to Round 5 (Victory Lap)
+                      if user_alive:
+                          st.session_state.last_postseason_result = "TITLE"
+                          st.session_state.career_stats["titles"] += 1
+                          BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
+                          award_trophy("National Title")
+                          st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
+                          st.session_state.postseason_data["Round"] = 5
+                          st.rerun()
+                      else:
                           st.session_state.game_state = GameState.SEASON_RECAP
                           st.rerun()
                  else:
+                     st.session_state.postseason_data["Matches"] = new_matches
+                     st.session_state.postseason_data["Round"] = round_num + 1
                      st.rerun()
 
 def show_season_recap():
