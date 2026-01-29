@@ -2935,7 +2935,7 @@ def render_system_sidebar():
         st.caption(f"Version {STATE_VERSION}")
         if st.button("Export Save File"):
             state_copy = dict(st.session_state)
-            if "top8_resolved" in state_copy: 
+            if "top8_resolved" in state_copy:
                 state_copy["top8_resolved"] = list(state_copy["top8_resolved"])
             export_data = {k: v for k, v in state_copy.items() if k in ALLOWED_SAVE_KEYS}
             json_str = json.dumps(export_data, default=safe_json_default)
