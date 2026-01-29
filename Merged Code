@@ -303,6 +303,21 @@ st.markdown("""
 .news-item { padding: 6px 10px; border-bottom: 1px solid #f1f1f1; font-size: 0.9em; }
 .news-item-good { border-left: 4px solid #28a745; background-color: #f0fff4; }
 .news-item-bad { border-left: 4px solid #dc3545; background-color: #fff5f5; }
+
+/* STAT COMPARISON BARS - MISSING CLASSES */
+.stat-comparison { margin: 8px 0; }
+.stat-label { font-size: 0.85em; color: #666; margin-bottom: 3px; }
+.stat-bars-container { 
+    display: grid; 
+    grid-template-columns: 1fr auto 1fr; 
+    gap: 8px; 
+    align-items: center; 
+}
+.mvp-star {
+    color: #FFD700;
+    font-size: 1.2em;
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.6);
+}
 </style>
 """, unsafe_allow_html=True)
 
