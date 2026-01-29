@@ -1,6 +1,6 @@
 """
 Build the Program: College Football CEO
-VERSION 4.0 (The Ultimate UI Update)
+VERSION 4.1 (The Ultimate UI Update)
 
 Audit Log:
 - MERGE: Combined V3.0 Logic (Hard Mode, Scheduling, Bug Fixes) with V2.9 UI Suite.
@@ -303,6 +303,21 @@ st.markdown("""
 .news-item { padding: 6px 10px; border-bottom: 1px solid #f1f1f1; font-size: 0.9em; }
 .news-item-good { border-left: 4px solid #28a745; background-color: #f0fff4; }
 .news-item-bad { border-left: 4px solid #dc3545; background-color: #fff5f5; }
+
+/* STAT COMPARISON BARS - MISSING CLASSES */
+.stat-comparison { margin: 8px 0; }
+.stat-label { font-size: 0.85em; color: #666; margin-bottom: 3px; }
+.stat-bars-container { 
+    display: grid; 
+    grid-template-columns: 1fr auto 1fr; 
+    gap: 8px; 
+    align-items: center; 
+}
+.mvp-star {
+    color: #FFD700;
+    font-size: 1.2em;
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.6);
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -901,9 +916,7 @@ class UIComponents:
     @staticmethod
     def progress_bar_gradient(label: str, value: int, max_value: int = 100, team_color: str = "#2196F3") -> str:
         pct = min(100, (value / max_value) * 100)
-        return f"<div style='margin: 10px 0;'><div style='display: flex; justify-content: space-between; margin-bottom: 5px;'><span style='font-weight: bold;'>{label}</span><span>{value}/{max_value}</span></div><div style='background: #e0e0e0; height: 24px; border-radius: 12px; overflow: hidden;'><div style='width: {pct}%; height: 100%; background: linear-gradient(90deg, {team_color} 0%, rgba({int(team_color[1:3], 16)}, {int(team_color[3:5], 16)}, {int(team_color[5:7], 16)}, 0.5) 100%); transition: width 0.3s ease;'></div></div></div>"
-    
-    @staticmethod
+        return f"<div style='margin: 10px 0;'><div style='display: flex; justify-content: space-between; margin-bottom: 5px;'><span style='font-weight: bold;'>{label}</span><span>{value}/{max_value}</span></div><div style='background: #e0e0e0; height: 24px; border-radius: 12px; overflow: hidden;'><div style='width: {pct}%; height: 100%; background: {team_color}; transition: width 0.3s ease;'></div></div></div>"
     def star_rating(rating: int, max_stars: int = 10) -> str:
         return "⭐" * rating + "☆" * (max_stars - rating)
 
@@ -1133,6 +1146,14 @@ def trophy_icon(name: str) -> str:
 def award_trophy(trophy_name: str):
     if "trophies" not in st.session_state: st.session_state.trophies = []
     st.session_state.trophies.append({"Year": st.session_state.year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
+    
+    # Update trophy stats
+    if "trophy_stats" not in st.session_state: initialize_trophy_tracking()
+    
+    if "National" in trophy_name or "Championship" in trophy_name:
+        st.session_state.trophy_stats["titles"] += 1
+    if "Bowl" in trophy_name:
+        st.session_state.trophy_stats["bowl_wins"] += 1
 
 def calculate_saban_score(career_stats, prestige):
     return int((career_stats.get("w", 0)*1) + (career_stats.get("bowl_w", 0)*5) + (career_stats.get("titles", 0)*50) + (prestige*0.5))
@@ -1196,10 +1217,20 @@ def check_and_award_achievements():
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
         st.session_state.achievements.append("Perfect Season"); safe_toast("🏆 Achievement Unlocked: Perfect Season")
     
-    # New V2.9 Trackers
+    # Trophy Stats Tracking
     if "trophy_stats" not in st.session_state: initialize_trophy_tracking()
-    if st.session_state.get("last_postseason_result", "").startswith("CFP"): st.session_state.trophy_stats["cfp_appearances"] += 1
-    if st.session_state.record['w'] >= 10: st.session_state.trophy_stats["ten_win_seasons"] += 1
+    
+    # CFP Appearances
+    if st.session_state.get("last_postseason_result", "").startswith("CFP"):
+        st.session_state.trophy_stats["cfp_appearances"] += 1
+    
+    # Perfect Seasons
+    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12:
+        st.session_state.trophy_stats["perfect_seasons"] += 1
+    
+    # 10+ Win Seasons
+    if st.session_state.record['w'] >= 10:
+        st.session_state.trophy_stats["ten_win_seasons"] += 1
 
 def build_season_summary_dict():
     w = safe_int(st.session_state.record.get("w", 0), 0); l = safe_int(st.session_state.record.get("l", 0), 0)
@@ -2057,55 +2088,48 @@ def show_offseason_top8_v8():
     for r in st.session_state.top8:
         rid = int(r["id"]); pos = r["pos"]; ask = int(r["ask"])
         already = rid in st.session_state.top8_resolved
-        c1, c2, c3 = st.columns([4, 2, 2])
-        with c1: 
-            st.markdown(f"⭐ **{pos} {r['name']} ({r['rating']})**")
-            st.caption(f"Wants: {helper_format_cash(ask)} | Trait: {r.get('trait','')}")
-        with c2:
-            row_budget = int(st.session_state.get("budget", 0) or 0)
-            max_offer = max(0, min(row_budget, max(ask * 2, 250_000)))
-            default_offer = int(r.get("offer", 0) or 0)
-            default_offer = max(0, min(default_offer, max_offer))
-            offer = st.slider(f"Offer vs Want ({helper_format_cash(ask)})", 0, max_offer, default_offer, step=250_000, key=f"offer_{rid}")
-            r["offer"] = int(offer)
+        
+        with st.container(border=True):
+            # Header
+            st.markdown(f"### {pos} {r['name']} ({r['rating']}) {r.get('trait', '')}")
+            st.caption(f"💰 Asking Price: {helper_format_cash(ask)}")
             
-            offer_val = int(r.get("offer", 0) or 0)
-            if offer_val <= 0: st.caption("Set an offer to pitch.")
-            elif offer_val < ask: st.warning("Below ask")
-            elif offer_val < int(ask * 1.25): st.success("Meets ask")
-            else: st.success("Overpay (strong pitch)")
-
-        with c3:
-            if r.get("status") == "COMMITTED": st.success("✅ COMMITTED")
-            elif r.get("status") == "LOST": st.error("❌ LOST")
-            else:
+            c1, c2 = st.columns([2, 1])
+            
+            with c1:
+                # INTEREST METER
                 chance = top8_commit_chance(
-                    r, 
-                    {pos: float(r.get("offer", 0) or 0)}, 
-                    st.session_state.staff, 
+                    r,
+                    {pos: float(r.get("offer", 0) or 0)},
+                    st.session_state.staff,
                     st.session_state.prestige
                 )
-                st.write(f"Chance: **{int(chance*100)}%**")
-                if st.button("Pitch", key=f"pitch_{rid}", disabled=already or r["offer"]<=0):
-                    if BudgetManager.spend(r["offer"], "pitch"):
-                        if random.random() < chance:
-                            r["status"] = "COMMITTED"
-                            st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
-                            safe_toast("Committed!")
-                        else:
-                            r["status"] = "LOST" 
-                            safe_toast("Lost recruit.")
-                        st.session_state.top8_resolved.add(rid)
-                        st.rerun()
-
-    st.divider()
-    if st.button("Simulate Remaining Pitches"):
-        for r in st.session_state.top8:
-            rid = int(r["id"])
-            if rid not in st.session_state.top8_resolved and r.get("status") == "OPEN":
-                st.session_state.top8_resolved.add(rid)
-                r["status"] = "LOST" 
-        st.rerun()
+                st.markdown(render_interest_meter(r, chance, {}), unsafe_allow_html=True)
+            
+            with c2:
+                # Offer slider
+                row_budget = int(st.session_state.get("budget", 0) or 0)
+                max_offer = max(0, min(row_budget, max(ask * 2, 250_000)))
+                default_offer = int(r.get("offer", 0) or 0)
+                default_offer = max(0, min(default_offer, max_offer))
+                
+                offer = st.slider(
+                    "Your Offer",
+                    0, max_offer, default_offer,
+                    step=250_000,
+                    key=f"offer_{rid}"
+                )
+                r["offer"] = int(offer)
+                
+                st.divider()
+                
+                if r.get("status") == "COMMITTED":
+                    st.success("✅ COMMITTED")
+                elif r.get("status") == "LOST":
+                    st.error("❌ LOST")
+                else:
+                    disabled = already or r["offer"] <= 0
+                    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
 
 # ==============================================================================
 # MAIN VIEW CONTROLLERS
