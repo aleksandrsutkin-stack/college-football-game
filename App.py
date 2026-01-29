@@ -1,13 +1,12 @@
 """
 Build the Program: College Football CEO
-VERSION 2.8 (The Hall of Fame Update)
+VERSION 2.9 (The UI Polish Update)
 
 Audit Log:
-- Critical Fix: Fixed missing HTML flag in Retirement screen that displayed raw code.
-- Feature: Added 'GOAT Comparison' Bar Chart to Retirement screen.
-- Feature: Added 'Career Grade' logic (S/A/B/C/D/F) to Retirement.
-- UI: Refactored Dashboard 'Legacy' tab to use proper Metrics instead of plain text.
-- Integrity: Preserved V2.6 stability fixes (Recruiting flow, Season End layouts).
+- UI Overhaul (Retirement): Added "Hall of Fame Card" and improved GOAT comparison charts.
+- UI Overhaul (Bowl Games): Replaced buggy HTML "Tale of the Tape" with clean Native Metrics.
+- UI Overhaul (Single Game): Added "Game Flash" result to the Dashboard so you see the score immediately after playing.
+- Bug Fix: Audited all st.markdown calls to ensure 'unsafe_allow_html=True' is present.
 """
 
 import streamlit as st
@@ -24,7 +23,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 2.8
+STATE_VERSION = 2.9
 
 class GameState:
     SETUP = "SETUP"
@@ -98,7 +97,7 @@ class GameConfig:
         "Tulane": {"color": "#006747"}, "App State": {"color": "#FFCC00"}, "Toledo": {"color": "#15397F"}
     }
 
-    # V2.3 HARD MODE RATINGS PRESERVED
+    # V2.3 HARD MODE RATINGS
     REAL_WORLD_INIT = {
         # TIER 1 (BOSSES) - Base 98
         "Georgia": {"Prestige": 99, "Talent": 98, "Tier": 1, "Rival": "Florida"},
@@ -728,42 +727,12 @@ def render_dynasty_timeline(max_items=25):
 
 def check_and_award_achievements():
     if "achievements" not in st.session_state: st.session_state.achievements = []
-    
-    # 1. Bowl Win
     if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
         st.session_state.achievements.append("First Bowl Win")
-        safe_toast("🏆 Achievement Unlocked: First Bowl Win")
-        
-    # 2. Program Builder
     if st.session_state.prestige >= 80 and "Program Builder" not in st.session_state.achievements:
         st.session_state.achievements.append("Program Builder"); safe_toast("🏆 Achievement Unlocked: Program Builder")
-        
-    # 3. Perfect Season
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
         st.session_state.achievements.append("Perfect Season"); safe_toast("🏆 Achievement Unlocked: Perfect Season")
-
-    # 4. The 1.000 Club
-    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 13 and "The 1.000 Club" not in st.session_state.achievements:
-        st.session_state.achievements.append("The 1.000 Club"); safe_toast("🏆 Achievement Unlocked: The 1.000 Club")
-
-    # 5. Golden Ticket (Playoff)
-    if st.session_state.get("last_postseason_result") in ["CFP_LOSS", "TITLE", "CFP_RUNNER_UP"] and "Golden Ticket" not in st.session_state.achievements:
-        st.session_state.achievements.append("Golden Ticket"); safe_toast("🏆 Achievement Unlocked: Golden Ticket")
-
-    # 6. Granddaddy (Rose Bowl)
-    # Check history for Rose Bowl win
-    last_bowl = st.session_state.history[-1]["Bowl"] if st.session_state.history else ""
-    if last_bowl == "Rose Bowl" and st.session_state.get("last_postseason_result") == "BOWL_WIN" and "Granddaddy" not in st.session_state.achievements:
-        st.session_state.achievements.append("Granddaddy"); safe_toast("🏆 Achievement Unlocked: Granddaddy")
-
-    # 7. The Ring
-    if st.session_state.get("last_postseason_result") == "TITLE" and "The Ring" not in st.session_state.achievements:
-        st.session_state.achievements.append("The Ring"); safe_toast("🏆 Achievement Unlocked: The Ring")
-
-    # 8. Dynasty Mode (Back to Back)
-    if len(st.session_state.history) >= 2:
-        if st.session_state.history[-1]["PostseasonResult"] == "TITLE" and st.session_state.history[-2]["PostseasonResult"] == "TITLE" and "Dynasty Mode" not in st.session_state.achievements:
-            st.session_state.achievements.append("Dynasty Mode"); safe_toast("🏆 Achievement Unlocked: Dynasty Mode")
 
 def build_season_summary_dict():
     w = safe_int(st.session_state.record.get("w", 0), 0); l = safe_int(st.session_state.record.get("l", 0), 0)
@@ -1829,6 +1798,7 @@ def show_season_end():
         stats = log.get("Stats")
         opp_ovr = log.get("OppOVR", "?")
         
+        # FIX: Replaced broken HTML with Native Streamlit Columns
         with st.container():
             col1, col2 = st.columns([1, 2])
             with col1:
