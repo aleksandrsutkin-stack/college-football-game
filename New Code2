@@ -22,6 +22,54 @@ import pandas as pd
 import copy
 from typing import List, Dict, Optional, Set
 
+try:
+    st.set_page_config(page_title="Build the Program: College Football CEO", page_icon="🏈", layout="wide")
+except Exception:
+    pass
+
+st.markdown("""
+<style>
+.stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
+.game-card, .staff-card, .news-box, .security-box, .trophy-tile, .resume-box { color: #111111 !important; }
+.security-box { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; text-align: center; margin-bottom: 10px; }
+.security-safe { color: #28a745; font-weight: bold; }
+.security-warm { color: #fd7e14; font-weight: bold; }
+.security-hot { color: #dc3545; font-weight: bold; }
+.finance-alert { background-color: #d1e7dd; color: #0f5132 !important; border: 1px solid #badbcc; padding: 15px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-weight: bold; }
+.nil-alert { background-color: #cff4fc; color: #055160 !important; border: 1px solid #b6effb; padding: 18px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-size: 1.1em; font-weight: bold; }
+.game-card { padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; background: white !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #111111 !important; }
+.game-card-win { border-left: 5px solid #28a745; background: #f8fff9 !important; }
+.game-card-loss { border-left: 5px solid #dc3545; background: #fff8f8 !important; }
+.game-card-pending { border-left: 5px solid #6c757d; background: #f8f9fa !important; }
+.game-card-rival { border-left: 5px solid #fd7e14; background: #fff4e6 !important; }
+.card-header { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px; color: #111111 !important; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.85em; color: #111111 !important; }
+.stat-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #eee; color: #111111 !important; }
+.staff-card { background: white; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+.staff-role { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.staff-name { font-size: 1.1em; font-weight: 800; color: #333; }
+.badge { padding: 2px 6px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-right: 5px; display: inline-block;}
+.badge-tier-s { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+.badge-tier-a { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.badge-tier-f { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.badge-trait { background: #e2e3e5; color: #383d41; }
+.recruiting-intel { background-color: #e0f7fa; color: #006064 !important; border-left: 5px solid #006064; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
+.news-box { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.news-item { padding: 6px 10px; border-bottom: 1px solid #f1f1f1; font-size: 0.9em; }
+.news-item-good { border-left: 4px solid #28a745; background-color: #f0fff4; }
+.news-item-bad { border-left: 4px solid #dc3545; background-color: #fff5f5; }
+.trophy-tile { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 10px; }
+.newspaper-head { font-family: 'Georgia', serif; font-size: 2em; text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 20px; color: #2c3e50; background: #fdfbf7; padding-top: 20px; }
+.newspaper-sub { font-family: 'Georgia', serif; font-style: italic; text-align: center; color: #555; margin-bottom: 20px; }
+.booster-meter-container { background: #eee; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden; border: 1px solid #ccc; }
+.booster-meter-fill { height: 100%; transition: width 0.5s; }
+.resume-box { background-color: #fff; border: 2px solid #333; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+.resume-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center; }
+.resume-label { font-size: 0.8em; text-transform: uppercase; color: #666; letter-spacing: 1px; }
+.resume-val { font-size: 1.2em; font-weight: bold; }
+.small-muted { font-size: 0.85em; color: #777; }
+</style>
+""", unsafe_allow_html=True)
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
@@ -1305,10 +1353,912 @@ def apply_conference_move(to_conf: str, boost_mult: float):
     add_news(f"{tm} joins the {to_conf}.")
 
 def render_cfp_bracket_tree(data: dict):
-    # Copy the ENTIRE function from V1.7 lines 598-693
-    # This is the fixed bracket visualization
-    pass  # Replace with full function
+    """Renders the CFP playoff bracket with visual tree structure"""
+    st.subheader("🏆 College Football Playoff Bracket")
+    seeds = data.get("Seeds", ["TBD"]*12)
+    matches = data.get("Matches", [])
+    round_num = data.get("Round", 1)
+    user_team = st.session_state.team_name
+    
+    st.markdown("""<style>
+.bracket-container{display:flex;justify-content:space-around;gap:20px;margin:20px 0;overflow-x:auto}
+.bracket-round{display:flex;flex-direction:column;justify-content:space-around;min-width:200px}
+.bracket-matchup{background:white;border:2px solid #e0e0e0;border-radius:8px;padding:12px;margin:8px 0}
+.bracket-matchup.active{border-color:#2196F3;box-shadow:0 0 10px rgba(33,150,243,0.3)}
+.bracket-matchup.completed{background:#f5f5f5;border-color:#4CAF50}
+.bracket-matchup.user-involved{border:3px solid #FF9800;background:#FFF3E0}
+.bracket-seed{display:inline-block;background:#333;color:white;width:24px;height:24px;line-height:24px;text-align:center;border-radius:50%;font-weight:bold;font-size:0.8em;margin-right:8px}
+.bracket-team{font-weight:bold;color:#333;margin:4px 0;padding:4px;display:flex;align-items:center;justify-content:space-between}
+.bracket-team.winner{background:#E8F5E9;border-left:4px solid #4CAF50}
+.bracket-team.loser{color:#999;text-decoration:line-through}
+.bracket-score{font-weight:bold;margin-left:10px;color:#666}
+.bracket-round-title{text-align:center;font-weight:bold;text-transform:uppercase;color:#666;margin-bottom:10px;font-size:0.9em;letter-spacing:1px}
+.bracket-bye{background:#E3F2FD;border:2px dashed #2196F3;color:#1976D2;font-style:italic;text-align:center}
+</style>""", unsafe_allow_html=True)
+    
+    html = "<div class='bracket-container'>"
+    
+    if round_num == 1:
+        html += "<div class='bracket-round'><div class='bracket-round-title'>Opening Round</div>"
+        ordered_matches = matches if len(matches) < 4 else [matches[3], matches[0], matches[1], matches[2]]
+        for m in ordered_matches:
+            cls = "bracket-matchup"
+            if m.get("winner"): cls += " completed"
+            if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
+            
+            html += f"<div class='{cls}'>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div>"
+            html += "</div>"
+        
+        html += "</div><div class='bracket-round'><div class='bracket-round-title'>Quarterfinals</div>"
+        qf_seeds = data.get("QF_Seeds", seeds[:4])
+        for i, s in enumerate(qf_seeds):
+            cls = "bracket-matchup bracket-bye"
+            if user_team == s: cls += " user-involved"
+            html += f"<div class='{cls}'>"
+            html += f"<div class='bracket-team'><span><span class='bracket-seed'>{i+1}</span>{s}</span></div>"
+            html += f"<div style='text-align:center;color:#666;font-size:0.85em;margin-top:8px;'>BYE</div>"
+            html += "</div>"
+        
+        html += "</div><div class='bracket-round'><div class='bracket-round-title'>Semifinals</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.4;text-align:center;padding:20px;color:#999;'>TBD</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.4;text-align:center;padding:20px;color:#999;'>TBD</div>"
+        html += "</div>"
+    
+    elif round_num == 2:
+        html += "<div class='bracket-round'><div class='bracket-round-title'>Quarterfinals</div>"
+        seed_map = data.get("SeedMap", {})
+        for m in matches:
+            cls = "bracket-matchup"
+            if m.get("winner"): cls += " completed"
+            else: cls += " active"
+            if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
+            
+            html += f"<div class='{cls}'>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span>"
+            html += f"<span class='bracket-score'>{m.get('s1','')}</span></div>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span>"
+            html += f"<span class='bracket-score'>{m.get('s2','')}</span></div>"
+            html += "</div>"
+        
+        html += "</div><div class='bracket-round'><div class='bracket-round-title'>Semifinals</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.6;text-align:center;padding:20px;color:#999;'>Awaiting QF</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.6;text-align:center;padding:20px;color:#999;'>Awaiting QF</div>"
+        html += "</div><div class='bracket-round'><div class='bracket-round-title'>Championship</div>"
+        html += "<div class='bracket-matchup' style='opacity:0.3;text-align:center;padding:30px;color:#999;'>🏆</div>"
+        html += "</div>"
+    
+    elif round_num == 3:
+        html += "<div class='bracket-round'><div class='bracket-round-title'>Semifinals</div>"
+        seed_map = data.get("SeedMap", {})
+        for m in matches:
+            cls = "bracket-matchup"
+            if m.get("winner"): cls += " completed"
+            else: cls += " active"
+            if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
+            
+            html += f"<div class='{cls}'>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span>"
+            html += f"<span class='bracket-score'>{m.get('s1','')}</span></div>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span>"
+            html += f"<span class='bracket-score'>{m.get('s2','')}</span></div>"
+            html += "</div>"
+        
+        html += "</div><div class='bracket-round'><div class='bracket-round-title'>National Championship</div>"
+        html += "<div class='bracket-matchup active' style='padding:30px;text-align:center;'>"
+        html += "<div style='font-size:2em;'>🏆</div>"
+        html += "<div style='color:#666;margin-top:10px;'>Awaiting Semifinals</div>"
+        html += "</div></div>"
+    
+    else:  # Final
+        html += "<div class='bracket-round'><div class='bracket-round-title'>National Championship</div>"
+        seed_map = data.get("SeedMap", {})
+        for m in matches:
+            cls = "bracket-matchup"
+            if m.get("winner"): cls += " completed"
+            else: cls += " active"
+            if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
+            
+            html += f"<div class='{cls}' style='min-width:300px;'>"
+            html += "<div style='text-align:center;font-size:1.5em;margin-bottom:10px;'>🏆</div>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span>"
+            html += f"<span class='bracket-score'>{m.get('s1','')}</span></div>"
+            html += f"<div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'>"
+            html += f"<span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span>"
+            html += f"<span class='bracket-score'>{m.get('s2','')}</span></div>"
+            html += "</div>"
+        html += "</div>"
+    
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
+
 
 def init_playoff_bracket(user_rank, user_team_name):
-    # Copy from V1.7 lines 695-718
-    pass  # Replace with full function
+    """Initialize CFP bracket with user team properly seeded"""
+    results = st.session_state.get("selection_sunday_results", []) or []
+    top12 = [t.get("Team") for t in results[:12] if t.get("Team")]
+    
+    # Pad to 12 teams
+    while len(top12) < 12:
+        top12.append("FCS East")
+    
+    # Remove duplicates
+    seen = set()
+    for i in range(len(top12)):
+        nm = top12[i]
+        if nm in seen:
+            top12[i] = "FCS East"
+        else:
+            seen.add(nm)
+    
+    # Create seed map
+    seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
+    
+    # Ensure user team is correctly positioned
+    try:
+        ur = int(user_rank)
+    except:
+        ur = 999
+    
+    if 1 <= ur <= 12:
+        target_idx = ur - 1
+        top12[target_idx] = user_team_name
+        seed_map[user_team_name] = ur
+        
+        # Remove user from other positions
+        for i in range(len(top12)):
+            if i != target_idx and top12[i] == user_team_name:
+                top12[i] = "FCS East"
+    
+    # Create first round matchups (5v12, 6v11, 7v10, 8v9)
+    r1_matches = [
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9], "winner": None},
+        {"seed_high": 8, "seed_low": 9, "t1": top12[7], "t2": top12[8], "winner": None},
+    ]
+    
+    return {
+        "Type": "CFP",
+        "Round": 1,
+        "Seeds": top12,
+        "QF_Seeds": top12[:4],
+        "Matches": r1_matches,
+        "UserAlive": True,
+        "Rank": int(ur),
+        "SeedMap": seed_map
+    }
+"""
+Build the Program: College Football CEO
+MERGED VERSION 2.1 - PART 5: VIEW FUNCTIONS
+
+This file contains all screen/view functions:
+- Setup
+- Dashboard  
+- Season End
+- Selection Sunday
+- Postseason
+- Season Recap
+- Fired
+- Retirement
+"""
+
+# ==============================================================================
+# SETUP SCREEN
+# ==============================================================================
+
+def run_setup():
+    st.title("🏆 Build the Program: CEO")
+    st.markdown("### Dynasty Mode Setup")
+    c1, c2 = st.columns(2)
+    name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
+    diff = c2.selectbox("Difficulty", ["Normal", "Hard", "Easy"])
+    
+    teams = sorted(GameConfig.REAL_WORLD_INIT.keys()) + sorted([t for t in GameConfig.ALL_TEAMS if t not in GameConfig.REAL_WORLD_INIT])
+    team = st.selectbox("Select Team", teams)
+    
+    if team in GameConfig.REAL_WORLD_INIT:
+        d = GameConfig.REAL_WORLD_INIT[team]
+        tier, budget, conf, rival = d["Tier"], {1:25000000, 2:15000000}.get(d["Tier"], 5000000), get_conference(team), d.get("Rival", "Rival")
+    else:
+        tier, budget, conf, rival = 3, 5000000, get_conference(team), "Rival"
+        
+    expect = {1: 10, 2: 8, 3: 6}.get(tier, 4)
+    st.info(f"**{team}** | Conf: {conf} | Tier: {tier} | Budget: {helper_format_cash(budget)} | Rival: {rival}")
+    st.caption(f"Expectation: {expect}+ Wins")
+    
+    if st.button("Start Dynasty", type="primary"):
+        st.session_state.year = 2026
+        st.session_state.tenure = 1
+        st.session_state.job_security = 75
+        st.session_state.ad_name = name
+        st.session_state.team_name = team
+        st.session_state.team_color = GameConfig.TEAMS_DB.get(team, {}).get("color", "#333333")
+        st.session_state.team_conf = conf
+        st.session_state.team_rival = rival
+        st.session_state.home_region = "South"
+        st.session_state.school_tier = tier
+        st.session_state.expected_wins = expect
+        st.session_state.budget = int(budget * (0.75 if diff == "Hard" else 1.25 if diff == "Easy" else 1.0))
+        st.session_state.roster = engine_generate_roster(tier, GameConfig.REAL_WORLD_INIT.get(team, {}).get("Talent"))
+        st.session_state.prestige = GameConfig.REAL_WORLD_INIT.get(team, {}).get("Prestige", 60)
+        st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
+        st.session_state.staff = {r: engine_generate_coach(r, tier) for r in ["HC", "OC", "DC", "Scout"]}
+        val = 10 if tier == 1 else 5
+        st.session_state.facilities = {"Marketing": val, "Training": val, "Stadium": val}
+        
+        # Initialize opponents database with OpponentFactory
+        st.session_state.opponents_db = {}
+        for opp in GameConfig.ALL_TEAMS:
+            st.session_state.opponents_db[opp] = OpponentFactory.create_opponent(opp, "INIT")
+            
+        st.session_state.conferences_map = {k: list(v) for k, v in GameConfig.CONFERENCES.items()}
+        if conf not in st.session_state.conferences_map: st.session_state.conferences_map[conf] = []
+        if team not in st.session_state.conferences_map[conf]: st.session_state.conferences_map[conf].append(team)
+        
+        st.session_state.hotspots = generate_hotspots()
+        st.session_state.schedule = engine_generate_schedule(team, conf, rival)
+        st.session_state.week_index = 0
+        st.session_state.record = {"w": 0, "l": 0}
+        st.session_state.season_logs = []
+        st.session_state.season_simulated = False
+        st.session_state.season_end_ready = False
+        st.session_state.offseason_step = 1
+        st.session_state.nil_class = []
+        st.session_state.hs_total_spend = 0
+        st.session_state.top8 = []
+        st.session_state.top8_resolved = set()
+        st.session_state.trophies = []
+        st.session_state.conf_revenue_boost_mult = 1.0
+        st.session_state.pending_invite = None
+        st.session_state.booster_rating = 50
+        st.session_state.ai_records = []
+        st.session_state.selection_sunday_results = []
+        st.session_state.last_postseason_result = "NONE"
+        st.session_state.achievements = []
+        st.session_state.hs_last_results = None
+        st.session_state.recruiting_summary = None
+        st.session_state.retention_data = []
+        
+        for p in GameConfig.POSITIONS: st.session_state[f"hs_pos_input_{p}_v28"] = 0
+        
+        add_news(f"{team} hires {st.session_state.staff['HC']['name']} as HC.")
+        st.session_state.game_state = GameState.DASHBOARD
+        st.rerun()
+
+# ==============================================================================
+# DASHBOARD SCREEN
+# ==============================================================================
+
+def show_dashboard():
+    sync_team_ratings()
+    if st.session_state.job_security < (0 if st.session_state.tenure <= 2 else 30):
+        st.session_state.game_state = GameState.FIRED
+        st.rerun()
+
+    render_news_box()
+
+    if st.session_state.get("pending_invite"):
+        inv = st.session_state.pending_invite
+        st.markdown(f"<div style='background: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 2px solid #f1c40f;'><h3>📨 Conference Invite: {inv['to_conf']}</h3><p>{inv['note']}</p></div>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        if c1.button("✅ Accept"):
+            apply_conference_move(inv['to_conf'], inv['boost_mult'])
+            st.session_state.pending_invite = None
+            st.rerun()
+        if c2.button("❌ Decline"):
+            st.session_state.pending_invite = None
+            st.rerun()
+
+    if st.session_state.season_end_ready:
+        st.markdown("<div style='background:#ffcccb; padding:10px; border-radius:5px; text-align:center; border:2px solid #e00; color: #333;'><h3>🚨 SEASON COMPLETE</h3></div>", unsafe_allow_html=True)
+        if st.button("Resume Postseason / Season End", type="primary"):
+            st.session_state.game_state = GameState.SEASON_END
+            st.rerun()
+
+    if st.session_state.revenue_report:
+        st.markdown(f"<div class='finance-alert'>{st.session_state.revenue_report}</div>", unsafe_allow_html=True)
+
+    sec_cls = "security-safe" if st.session_state.job_security > 75 else ("security-warm" if st.session_state.job_security > 40 else "security-hot")
+    st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{st.session_state.job_security}%</span></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'><h2>{st.session_state.team_name}</h2></div>", unsafe_allow_html=True)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Budget", helper_format_cash(st.session_state.budget))
+    c2.metric("OVR", st.session_state.team_rating)
+    c3.metric("OFF", st.session_state.team_off)
+    c4.metric("DEF", st.session_state.team_def)
+    c5.metric("Legacy", calculate_saban_score(st.session_state.career_stats, st.session_state.prestige))
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Strategy", "Staff", "Facilities", "Season", "Legacy"])
+
+    with tab1:
+        c1, c2 = st.columns(2)
+        st.session_state.my_schemes["Off"] = c1.selectbox("Offense", GameConfig.SCHEMES["Offense"], index=GameConfig.SCHEMES["Offense"].index(st.session_state.my_schemes.get("Off", "Pro Style")))
+        st.session_state.my_schemes["Def"] = c2.selectbox("Defense", GameConfig.SCHEMES["Defense"], index=GameConfig.SCHEMES["Defense"].index(st.session_state.my_schemes.get("Def", "Man Coverage")))
+        st.write("### Unit Strength")
+        for p, v in st.session_state.roster.items():
+            label = f"{p}" + (" (RENTAL)" if st.session_state.active_transfers.get(p) else "")
+            st.markdown(UIComponents.progress_bar_gradient(label, int(v), 100, st.session_state.team_color), unsafe_allow_html=True)
+
+    with tab2:
+        st.markdown("### 🧢 Current Staff")
+        cols = st.columns(4)
+        for i, role in enumerate(["HC", "OC", "DC", "Scout"]):
+            with cols[i]:
+                if role in st.session_state.staff:
+                    c = st.session_state.staff[role]
+                    st.markdown(f"<div class='staff-card'><div class='staff-role'>{role}</div><div class='staff-name'>{c['name']}</div><div style='margin:8px 0;'>{UIComponents.star_rating(role_rating(c,role))}</div><div><span class='badge badge-trait'>Trait: {c.get('trait','None')}</span></div></div>", unsafe_allow_html=True)
+                    if st.button("Fire", key=f"fire_{role}"):
+                        del st.session_state.staff[role]
+                        add_news(f"Fired {role} {c['name']}")
+                        st.rerun()
+                else: st.warning(f"{role} VACANT")
+        
+        st.divider()
+        st.markdown("### 📋 Job Market")
+        vacancies = [r for r in ["HC", "OC", "DC", "Scout"] if r not in st.session_state.staff]
+        if vacancies:
+            for role in vacancies:
+                if role not in st.session_state.candidates:
+                    st.session_state.candidates[role] = [engine_generate_coach(role, random.randint(1, 3)) for _ in range(3)]
+                cols = st.columns(3)
+                for j, cand in enumerate(st.session_state.candidates[role]):
+                    with cols[j]:
+                        rtg = role_rating(cand, role)
+                        vis = f"{rtg}" if cand.get("scouted") else get_letter_grade(rtg)
+                        st.markdown(f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>", unsafe_allow_html=True)
+                        b1, b2 = st.columns(2)
+                        if b1.button("Hire", key=f"hire_{role}_{j}"):
+                            if BudgetManager.spend(cand["salary"], f"Hire {role}"):
+                                st.session_state.staff[role] = cand
+                                add_news(f"Hired {cand['name']} as {role}")
+                                del st.session_state.candidates[role]
+                                st.rerun()
+                        if not cand.get("scouted") and b2.button("Scout", key=f"sc_{role}_{j}"):
+                            if BudgetManager.spend(25000, "Scout Coach"):
+                                cand["scouted"] = True; st.rerun()
+        else: st.info("No vacancies.")
+
+    with tab3:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(f"### 📢 Marketing")
+            st.metric("Level", st.session_state.facilities["Marketing"])
+            if st.button("Upgrade ($1M)", key="um"):
+                if BudgetManager.spend(1000000, "Upgrade Marketing"):
+                    st.session_state.facilities["Marketing"] += 1; st.rerun()
+        with c2:
+            st.markdown(f"### 🏋️ Training")
+            st.metric("Level", st.session_state.facilities["Training"])
+            if st.button("Upgrade ($3M)", key="ut"):
+                if BudgetManager.spend(3000000, "Upgrade Training"):
+                    st.session_state.facilities["Training"] += 1; st.rerun()
+        with c3:
+            st.markdown(f"### 🏟️ Stadium")
+            st.metric("Level", st.session_state.facilities["Stadium"])
+            if st.button("Upgrade ($10M)", key="us"):
+                if BudgetManager.spend(10000000, "Upgrade Stadium"):
+                    st.session_state.facilities["Stadium"] += 1
+                    st.session_state.prestige = min(99, st.session_state.prestige + 1)
+                    st.rerun()
+
+    with tab4:
+        if len(st.session_state.staff) < 4: st.error("Fill Staff First!"); return
+        if not st.session_state.schedule:
+            st.session_state.schedule = engine_generate_schedule(st.session_state.team_name, st.session_state.team_conf, st.session_state.team_rival)
+
+        sched = st.session_state.schedule
+        if not st.session_state.season_simulated:
+            wk = st.session_state.week_index
+            if wk >= len(sched): end_regular_season_and_stay_on_results(); st.rerun()
+            
+            opp = sched[wk]
+            opp_data = OpponentManager.get(opp)
+            
+            st.subheader(f"Next Game: Week {wk+1} vs {opp}")
+            st.caption(f"Matchup: OFF {st.session_state.team_off} vs DEF {opp_data.get('DefOVR')} | DEF {st.session_state.team_def} vs OFF {opp_data.get('OffOVR')}")
+            
+            c1, c2, c3 = st.columns([1,2,2])
+            with c1:
+                st.markdown("Strategy")
+                st.session_state.game_plan = st.selectbox("Plan", ["Conservative", "Normal", "Aggressive"], index=["Conservative", "Normal", "Aggressive"].index(st.session_state.game_plan), label_visibility="collapsed")
+            with c2:
+                st.markdown("Action")
+                if st.button(f"Play Week {wk+1}", type="primary", use_container_width=True):
+                    rng = game_rng(st.session_state.year, wk+1, opp, "PLAY")
+                    res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
+                    
+                    st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
+                    if res["result"] == "W":
+                        st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
+                        st.session_state.job_security = min(100, st.session_state.job_security + (5 if opp==st.session_state.team_rival else 2))
+                    else:
+                        st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
+                        st.session_state.job_security = max(0, st.session_state.job_security - 2)
+                    st.session_state.week_index += 1
+                    if st.session_state.week_index >= 12: end_regular_season_and_stay_on_results()
+                    st.rerun()
+            with c3:
+                st.markdown("Simulate")
+                if st.button("Sim Season", use_container_width=True):
+                    while not st.session_state.season_simulated and st.session_state.week_index < 12:
+                        wk = st.session_state.week_index
+                        opp = sched[wk]
+                        opp_data = OpponentManager.get(opp)
+                        rng = game_rng(st.session_state.year, wk+1, opp, "SIM")
+                        res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
+                        st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
+                        if res["result"] == "W":
+                            st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
+                        else:
+                            st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
+                        st.session_state.week_index += 1
+                    end_regular_season_and_stay_on_results()
+                    st.rerun()
+
+            st.divider()
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.caption("Weeks 1-6")
+            for i in range(min(6, len(sched))):
+                opp = sched[i]
+                played = next((x for x in st.session_state.season_logs if x["Week"] == i+1), None)
+                if played:
+                    is_win = played["Score"].startswith("W")
+                    css = "game-card-win" if is_win else "game-card-loss"
+                    st.markdown(f"<div class='game-card {css}'>Week {i+1}: {played['Score']} vs {opp}</div>", unsafe_allow_html=True)
+                else:
+                    css = "game-card-rival" if opp==st.session_state.team_rival else "game-card-pending"
+                    st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
+        with c2:
+            st.caption("Weeks 7-12")
+            for i in range(6, min(12, len(sched))):
+                opp = sched[i]
+                played = next((x for x in st.session_state.season_logs if x["Week"] == i+1), None)
+                if played:
+                    is_win = played["Score"].startswith("W")
+                    css = "game-card-win" if is_win else "game-card-loss"
+                    st.markdown(f"<div class='game-card {css}'>Week {i+1}: {played['Score']} vs {opp}</div>", unsafe_allow_html=True)
+                else:
+                    css = "game-card-rival" if opp==st.session_state.team_rival else "game-card-pending"
+                    st.markdown(f"<div class='game-card {css}'>Week {i+1} vs {opp}</div>", unsafe_allow_html=True)
+
+    with tab5:
+        st.subheader("Legacy")
+        cs = st.session_state.career_stats
+        st.write(f"Titles: {cs['titles']} | Bowl: {cs['bowl_w']}-{cs['bowl_l']} | Career: {cs['w']}-{cs['l']}")
+        render_trophy_gallery()
+        render_achievements_panel()
+        render_dynasty_timeline()
+        st.divider()
+        if st.button("Retire"): st.session_state.game_state = GameState.RETIREMENT; st.rerun()
+
+# ==============================================================================
+# SEASON END SCREEN
+# ==============================================================================
+
+def show_season_end():
+    sync_team_ratings()
+    st.title("📊 Season End — Results Hub")
+    st.markdown(f"<div class='nil-alert'>Regular season complete. Record: <b>{st.session_state.record['w']}-{st.session_state.record['l']}</b> | Budget: <b>{helper_format_cash(st.session_state.budget)}</b></div>", unsafe_allow_html=True)
+    
+    avg_sos, best_win, worst_loss = get_season_metrics()
+    st.divider(); st.subheader("🏆 Your Tournament Resume")
+    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-val'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-val'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-val'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-val'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
+    
+    st.subheader("Game-by-game recap")
+    for log in st.session_state.season_logs:
+        wk = log["Week"]
+        opp = log["Opponent"]
+        score = log["Score"]
+        is_win = score.startswith("W")
+        stats = log.get("Stats")
+        css = "game-card-win" if is_win else "game-card-loss"
+        s = stats or {}
+        st.markdown(f"<div class='game-card {css}'><div class='card-header'><span>{score}</span><span>vs {opp}</span></div></div>", unsafe_allow_html=True)
+
+    st.divider(); c1, c2 = st.columns(2)
+    if c1.button("Enter Selection Sunday (Reveal Rankings) 🏆", type="primary"):
+        st.session_state.last_postseason_result = "NONE"
+        if not st.session_state.ai_records: st.session_state.ai_records = simulate_ai_regular_season_seeded(st.session_state.year)
+        all_teams = st.session_state.ai_records[:]
+        user_score = calculate_committee_score(st.session_state.team_name, st.session_state.record['w'], st.session_state.record['l'], st.session_state.team_conf, avg_sos)
+        all_teams.append({"Team": st.session_state.team_name, "Wins": st.session_state.record['w'], "Losses": st.session_state.record['l'], "Conf": st.session_state.team_conf, "Score": user_score, "IsUser": True})
+        for t in all_teams:
+            if "Score" not in t:
+                t["Score"] = calculate_committee_score(t["Team"], t["Wins"], t["Losses"], t["Conf"], t.get("SOS", 60)); t["IsUser"] = False
+        all_teams.sort(key=lambda x: x["Score"], reverse=True)
+        st.session_state.selection_sunday_results = all_teams
+        st.session_state.game_state = GameState.SELECTION_SUNDAY; st.rerun()
+    
+    st.divider()
+
+# ==============================================================================
+# SELECTION SUNDAY SCREEN  
+# ==============================================================================
+
+def show_selection_sunday():
+    sync_team_ratings()
+    st.markdown(UIComponents.gradient_header("🏆 SELECTION SUNDAY", "The Committee Has Spoken"), unsafe_allow_html=True)
+    
+    results = st.session_state.selection_sunday_results
+    user_rank = -1
+    for i, t in enumerate(results):
+        if t.get("IsUser"): user_rank = i + 1; break
+    if user_rank == -1: 
+        for i, t in enumerate(results):
+            if t.get("Team") == st.session_state.team_name: user_rank = i + 1; t["IsUser"] = True; break
+    if user_rank == -1: user_rank = 999
+    
+    user_row = next((t for t in results if t.get("IsUser") or t.get("Team") == st.session_state.team_name), None)
+    if user_row:
+        outcome = "BYE" if user_rank <= 4 else ("PLAYOFF" if user_rank <= 12 else ("BOWL" if user_row['Wins'] >= 6 else "ELIMINATED"))
+        st.markdown(UIComponents.hero_card(user_rank, user_row['Team'], user_row['Wins'], user_row['Losses'], user_row['Conf'], outcome), unsafe_allow_html=True)
+        st.divider()
+
+    if user_rank <= 4: st.success(f"✅ Top-4 Seed (#{user_rank}): You receive a First Round BYE.")
+    
+    st.subheader("🛡️ First Round Byes (Seeds #1 - #4)")
+    vip_cols = st.columns(4)
+    for i in range(4):
+        if i < len(results):
+            t = results[i]
+            with vip_cols[i]:
+                border = "2px solid #2196f3" if t.get("IsUser") else "2px solid #f1c40f"
+                bg = "#e3f2fd" if t.get("IsUser") else "#fffbeb"
+                st.markdown(f"<div style='background:{bg}; border:{border}; border-radius:8px; padding:15px; text-align:center;'><h3>#{i+1}</h3><div>{t['Team']}</div></div>", unsafe_allow_html=True)
+    st.divider()
+
+    st.subheader("⚔️ First Round Matchups")
+    m_cols = st.columns(4)
+    pairs = [(4, 11), (5, 10), (6, 9), (7, 8)]
+    for idx, (h, l) in enumerate(pairs):
+        if l < len(results):
+            high, low = results[h], results[l]
+            with m_cols[idx]:
+                st.markdown(f"<div style='background:white; border:1px solid #ddd; border-radius:8px; padding:10px; text-align:center;'><b>Match {idx+1}</b><br>#{h+1} {high['Team']}<br>vs<br>#{l+1} {low['Team']}</div>", unsafe_allow_html=True)
+    st.divider()
+
+    st.subheader("📉 The Bubble & Rankings")
+    rest_data = []
+    for i, t in enumerate(results[12:25]):
+        status = "🎳 BOWL" if safe_int(t.get("Wins"),0) >= 6 else "❌ OUT"
+        if t.get("IsUser"): status += " (YOU)"
+        rest_data.append({"Rank": i + 13, "Team": t["Team"], "Record": f"{t['Wins']}-{t['Losses']}", "Conf": t["Conf"], "Status": status})
+    
+    if rest_data: st.dataframe(pd.DataFrame(rest_data), hide_index=True, use_container_width=True)
+
+    st.divider()
+    user_wins = st.session_state.record['w']
+    if user_wins < 6:
+        st.error("❌ You did not qualify for a bowl game (less than 6 wins).")
+        st.session_state.last_postseason_result = "NO_BOWL"
+        if st.button("End Season -> Offseason", type="primary"):
+            st.session_state.history.append({"Year": st.session_state.year, "Record": f"{user_wins}-{st.session_state.record['l']}", "Rank": "NR", "Bowl": "None", "PostseasonResult": "NO_BOWL"})
+            st.session_state.game_state = GameState.SEASON_RECAP; st.rerun()
+    elif user_rank <= 12:
+        st.success(f"🎉 You made the COLLEGE FOOTBALL PLAYOFF! (Rank #{user_rank})")
+        if st.button("Advance to CFP 🏆", type="primary"):
+            st.session_state.postseason_data = init_playoff_bracket(user_rank, st.session_state.team_name)
+            st.session_state.game_state = GameState.POSTSEASON; st.rerun()
+    else:
+        st.info(f"🎳 You are invited to a Bowl Game! (Rank #{user_rank})")
+        if st.button("Accept Bowl Invite", type="primary"):
+            bowl = get_bowl_name(user_rank); candidates = [t["Team"] for t in results if not t.get("IsUser")]
+            opp = random.choice(candidates) if candidates else "FCS West"
+            st.session_state.postseason_data = {"Type": "BOWL", "Bowl": bowl, "Rank": user_rank, "Opponent": opp, "OppData": OpponentManager.get(opp)}
+            st.session_state.game_state = GameState.POSTSEASON; st.rerun()
+
+# ==============================================================================
+# POSTSEASON SCREEN
+# ==============================================================================
+
+def show_postseason():
+    sync_team_ratings()
+    st.title("Postseason Hub")
+    data = st.session_state.postseason_data or {}
+    if not data.get("Type"): st.warning("Data missing."); st.session_state.game_state = GameState.SEASON_END; st.rerun()
+
+    if data.get("Type") == "BOWL":
+        bowl, opp = data.get("Bowl", "Bowl"), data.get("Opponent", "Opp")
+        opp_data = OpponentManager.get(opp)
+        st.markdown(UIComponents.gradient_header(f"{st.session_state.team_name} VS {opp}", bowl, "135deg, #ff6b6b 0%, #feca57 100%"), unsafe_allow_html=True)
+        
+        c1, c2, c3 = st.columns([1, 0.2, 1])
+        with c1: st.markdown(UIComponents.team_stat_card(st.session_state.team_name, f"{st.session_state.record['w']}-{st.session_state.record['l']}", st.session_state.team_rating, st.session_state.team_off, st.session_state.team_def, st.session_state.facilities.get("Stadium",7), True), unsafe_allow_html=True)
+        with c2: st.markdown("<h1 style='text-align:center'>VS</h1>", unsafe_allow_html=True)
+        with c3: st.markdown(UIComponents.team_stat_card(opp, "Est. 9-3", opp_data.get("OVR",80), opp_data.get("OffOVR",80), opp_data.get("DefOVR",80), opp_data.get("Stadium",7), False), unsafe_allow_html=True)
+        
+        st.divider()
+        if st.button("PLAY BOWL GAME 🏈", type="primary"):
+            res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), False, False, st.session_state.facilities.get("Stadium"), opp_data.get("Stadium"), random.Random())
+            st.session_state.postseason_flash = {"res": res, "bowl": bowl, "opp": opp}
+            st.rerun()
+            
+        if "postseason_flash" in st.session_state:
+            flash = st.session_state.postseason_flash; res = flash["res"]
+            css = "game-card-win" if res["result"]=="W" else "game-card-loss"
+            st.markdown(f"<div class='game-card {css}'><div class='card-header'><span>{res['score']}</span><span>vs {flash['opp']}</span></div></div>", unsafe_allow_html=True)
+            if st.button("Continue ->", type="primary"):
+                w = st.session_state.record["w"] + (1 if res["result"]=="W" else 0)
+                l = st.session_state.record["l"] + (1 if res["result"]=="L" else 0)
+                st.session_state.last_postseason_result = "BOWL_WIN" if res["result"]=="W" else "BOWL_LOSS"
+                if res["result"]=="W": 
+                    BudgetManager.add(2000000, "Bowl Win"); st.session_state.career_stats["bowl_w"]+=1; award_trophy(flash['bowl'])
+                else: st.session_state.career_stats["bowl_l"]+=1
+                
+                st.session_state.history.append({"Year": st.session_state.year, "Record": f"{w}-{l}", "Rank": f"#{data.get('Rank','?')}", "Bowl": flash['bowl'], "PostseasonResult": st.session_state.last_postseason_result})
+                check_and_award_achievements()
+                del st.session_state.postseason_flash
+                st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
+
+    elif data.get("Type") == "CFP":
+        render_cfp_bracket_tree(st.session_state.postseason_data)
+        st.divider()
+        st.info("CFP playoff logic not fully implemented in this merge. Use V1.7 for complete CFP experience.")
+        if st.button("End Season"): st.session_state.game_state = GameState.SEASON_RECAP; st.rerun()
+
+# ==============================================================================
+# SEASON RECAP SCREEN
+# ==============================================================================
+
+def show_season_recap():
+    sync_team_ratings()
+    st.title(f"SEASON RECAP: {st.session_state.year}")
+    summary = build_season_summary_dict()
+    st.markdown(UIComponents.gradient_header("SEASON COMPLETE", f"Record: {summary['Record']} | Rank: {summary['FinalRank']}"), unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Record", summary["Record"]); c2.metric("Rank", summary["FinalRank"]); c3.metric("SOS", summary["SOS"]); c4.metric("Bowl", summary["Postseason"])
+    
+    st.divider()
+    if st.button("Proceed to Offseason ->", type="primary"):
+        apply_roster_attrition()
+        st.session_state.game_state = GameState.OFFSEASON; st.session_state.offseason_step = 1; st.rerun()
+
+# ==============================================================================
+# FIRED SCREEN
+# ==============================================================================
+
+def show_fired():
+    st.title("🔥 FIRED")
+    st.markdown(UIComponents.gradient_header("YOU'VE BEEN FIRED", "The Athletic Director has decided to make a change"))
+    if st.button("Start New Dynasty"):
+        st.session_state.clear(); st.rerun()
+
+# ==============================================================================
+# RETIREMENT SCREEN
+# ==============================================================================
+
+def show_retirement():
+    st.title("🏆 RETIREMENT")
+    st.markdown(UIComponents.gradient_header("HALL OF FAME CEREMONY", "Congratulations on a legendary career"))
+    render_trophy_gallery()
+    if st.button("Start New Dynasty"):
+        st.session_state.clear(); st.rerun()
+"""
+Build the Program: College Football CEO
+MERGED VERSION 2.1 - PART 6: OFFSEASON HANDLER
+
+This is the master offseason controller that routes through all 4 recruiting phases.
+"""
+
+def show_offseason():
+    """Master offseason controller - routes through retention, NIL, HS outreach, and Top-8"""
+    sync_team_ratings()
+    year = safe_int(st.session_state.get("year", 2026), 2026)
+    st.title(f"🏈 Offseason {year}")
+    
+    budget = safe_int(st.session_state.get("budget", 0), 0)
+    prestige = safe_int(st.session_state.get("prestige", 60), 60)
+    st.markdown(
+        f"<div class='nil-alert'>Budget: <b>{helper_format_cash(budget)}</b> | "
+        f"Prestige: <b>{prestige}</b></div>",
+        unsafe_allow_html=True
+    )
+    
+    step = safe_int(st.session_state.get("offseason_step", 1), 1)
+    
+    # PHASE 1: RETENTION
+    if step == 1:
+        show_retention_phase()
+        
+    # PHASE 2: NIL RECRUITING
+    elif step == 2:
+        show_offseason_nil_v8()
+        st.divider()
+        if st.button("Continue to HS Outreach →", type="primary"):
+            st.session_state.offseason_step = 3
+            st.rerun()
+            
+    # PHASE 3: HS OUTREACH
+    elif step == 3:
+        show_offseason_hs_outreach()
+        # Note: HS Outreach has its own navigation via render_hs_results_summary()
+        # which automatically advances to step 4 when dismissed
+
+    # PHASE 4: TOP-8 BATTLES
+    elif step == 4:
+        show_offseason_top8_v8()
+        st.divider()
+        
+        # FINISH RECRUITING BUTTON
+        if st.button("Finish Recruiting & Advance Season →", type="primary"):
+            # Calculate recruiting grade
+            grade, score, breakdown = compute_recruiting_class_grade()
+            
+            # Update last season's history entry with recruiting grade
+            last_hist = st.session_state.history[-1] if st.session_state.history else None
+            if last_hist and safe_int(last_hist.get("Year", 0), 0) == year:
+                last_hist["RecruitingGrade"] = grade
+            
+            add_news(f"Recruiting class grade: {grade} ({score} pts)")
+            
+            # ADVANCE TO NEXT SEASON
+            st.session_state.year += 1
+            st.session_state.tenure += 1
+            st.session_state.inflation = safe_float(st.session_state.get("inflation", 1.0), 1.0) * 1.02
+            
+            # Evolve AI opponents
+            OpponentManager.evolve_universe()
+            
+            # Conference realignment
+            invite = maybe_generate_conference_invite()
+            if not invite:
+                ai_conference_swap_lightweight()
+            
+            # Generate new schedule
+            st.session_state.schedule = engine_generate_schedule(
+                st.session_state.team_name, 
+                st.session_state.team_conf, 
+                st.session_state.team_rival
+            )
+            
+            # Reset season state
+            st.session_state.week_index = 0
+            st.session_state.record = {"w": 0, "l": 0}
+            st.session_state.season_logs = []
+            st.session_state.season_simulated = False
+            st.session_state.season_end_ready = False
+            st.session_state.revenue_report = None
+            
+            # Reset recruiting state
+            st.session_state.nil_class = []
+            st.session_state.hs_total_spend = 0
+            st.session_state.top8 = []
+            st.session_state.top8_resolved = set()
+            st.session_state.offseason_step = 1
+            
+            # Update team needs and hotspots
+            st.session_state.team_needs = compute_team_needs(st.session_state.roster, k=3)
+            st.session_state.hotspots = generate_hotspots()
+            
+            # Sync ratings
+            sync_team_ratings()
+            
+            # Clear recruiting UI state
+            st.session_state.hs_last_results = None
+            st.session_state.retention_data = []
+            for p in GameConfig.POSITIONS:
+                st.session_state[f"hs_pos_input_{p}_v28"] = 0
+            st.session_state.hs_alloc_by_pos = {p: 0 for p in GameConfig.POSITIONS}
+            
+            # Store recruiting summary for wrap screen
+            st.session_state.recruiting_summary = {
+                "grade": grade, 
+                "score": score, 
+                "breakdown": breakdown
+            }
+            
+            # Move to recruiting wrap screen
+            st.session_state.game_state = GameState.RECRUITING_WRAP
+            st.rerun()
+"""
+Build the Program: College Football CEO
+MERGED VERSION 2.1 - PART 7: ROUTER & INITIALIZATION
+
+This contains:
+- Initialization
+- Main game router
+- System sidebar with save/load
+"""
+
+# ==============================================================================
+# SYSTEM SIDEBAR (Save/Load)
+# ==============================================================================
+
+def render_system_sidebar():
+    """Renders news and save/load system in sidebar"""
+    with st.sidebar:
+        st.header("💾 CEO System")
+        st.caption(f"Version {STATE_VERSION}")
+        
+        # SAVE SYSTEM
+        if st.button("Export Save File"):
+            state_copy = dict(st.session_state)
+            if "top8_resolved" in state_copy: 
+                state_copy["top8_resolved"] = list(state_copy["top8_resolved"])
+            export_data = {k: v for k, v in state_copy.items() if k in ALLOWED_SAVE_KEYS}
+            json_str = json.dumps(export_data, default=safe_json_default)
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+            st.download_button(
+                label="📥 Download JSON", 
+                data=json_str, 
+                file_name=f"CFB_CEO_Save_{timestamp}.json", 
+                mime="application/json"
+            )
+        
+        # LOAD SYSTEM
+        uploaded_file = st.file_uploader("Import Save File", type=["json"])
+        if uploaded_file is not None:
+            try:
+                data = json.load(uploaded_file)
+                for k, v in data.items():
+                    if k in ALLOWED_SAVE_KEYS:
+                        if k == "top8_resolved": 
+                            st.session_state[k] = set(v) if isinstance(v, list) else set()
+                        else: 
+                            st.session_state[k] = v
+                migrate_state()
+                st.session_state.candidates = {}
+                sync_team_ratings()
+                st.success("Save Loaded Successfully! Reloading...")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error loading save: {e}")
+
+# ==============================================================================
+# MAIN INITIALIZATION
+# ==============================================================================
+
+init_session_state_defaults()
+render_system_sidebar()
+
+# ==============================================================================
+# MAIN ROUTER
+# ==============================================================================
+
+if st.session_state.game_state == GameState.SETUP:
+    run_setup()
+
+elif st.session_state.game_state == GameState.FIRED:
+    show_fired()
+
+elif st.session_state.game_state == GameState.DASHBOARD:
+    show_dashboard()
+
+elif st.session_state.game_state == GameState.SEASON_END:
+    show_season_end()
+
+elif st.session_state.game_state == GameState.SELECTION_SUNDAY:
+    show_selection_sunday()
+
+elif st.session_state.game_state == GameState.POSTSEASON:
+    show_postseason()
+
+elif st.session_state.game_state == GameState.SEASON_RECAP:
+    show_season_recap()
+
+elif st.session_state.game_state == GameState.OFFSEASON:
+    show_offseason()
+
+elif st.session_state.game_state == GameState.RECRUITING_WRAP:
+    show_recruiting_wrap()
+
+elif st.session_state.game_state == GameState.RETIREMENT:
+    show_retirement()
+
+else:
+    # Fallback to dashboard if unknown state
+    st.session_state.game_state = GameState.DASHBOARD
+    st.rerun()
