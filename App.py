@@ -1,13 +1,13 @@
 """
 Build the Program: College Football CEO
-VERSION 2.6 (The Stability & UX Update)
+VERSION 2.7 (The Legacy & Polish Update)
 
 Audit Log:
-- UI Fix: 'Season End' game logs now use native Streamlit columns to prevent HTML rendering errors.
-- Feature Restore: 'Promote GA' button now appears immediately in empty staff slots.
-- Feature Add: 'Universe Report' added to Offseason transition to track rival evolution.
-- UX Fix: Auto-scroll to top on state change.
-- Base: V2.5 (Championship Fix + Hard Mode Data).
+- Critical Fix: Removed duplicate widget rendering in Offseason that caused crashes.
+- Feature: 'Mount Rushmore' Retirement screen comparing user vs. Saban, Bryant, etc.
+- Feature: Expanded Achievements (Undefeated, Rose Bowl, Dynasty, Giant Slayer).
+- UI: Enforced native layouts for Season End to prevent HTML errors.
+- Data: Retained V2.3 Hard Mode ratings and G5 scheduling logic.
 """
 
 import streamlit as st
@@ -24,7 +24,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 2.6
+STATE_VERSION = 2.7
 
 class GameState:
     SETUP = "SETUP"
@@ -71,6 +71,20 @@ class GameConfig:
         "Las Vegas Bowl": "🎰", "Gasparilla Bowl": "🏴‍☠️", "Boca Raton Bowl": "🌴", "Potato Bowl": "🥔", 
         "Bowl Win": "🎳"
     }
+
+    # LEGENDS DATABASE FOR RETIREMENT COMPARISON
+    LEGENDS = [
+        {"Name": "Nick Saban", "Titles": 7, "Wins": 292, "Losses": 71, "BowlWins": 19},
+        {"Name": "Bear Bryant", "Titles": 6, "Wins": 323, "Losses": 85, "BowlWins": 15},
+        {"Name": "Bernie Bierman", "Titles": 5, "Wins": 153, "Losses": 65, "BowlWins": 8},
+        {"Name": "Howard Jones", "Titles": 5, "Wins": 194, "Losses": 64, "BowlWins": 9},
+        {"Name": "Frank Leahy", "Titles": 4, "Wins": 107, "Losses": 13, "BowlWins": 6},
+        {"Name": "John McKay", "Titles": 4, "Wins": 127, "Losses": 40, "BowlWins": 10},
+        {"Name": "Urban Meyer", "Titles": 3, "Wins": 187, "Losses": 32, "BowlWins": 12},
+        {"Name": "Tom Osborne", "Titles": 3, "Wins": 255, "Losses": 49, "BowlWins": 12},
+        {"Name": "Kirby Smart", "Titles": 2, "Wins": 94, "Losses": 16, "BowlWins": 9},
+        {"Name": "Dabo Swinney", "Titles": 2, "Wins": 170, "Losses": 43, "BowlWins": 12},
+    ]
 
     TEAMS_DB = {
         "Georgia": {"color": "#BA0C2F"}, "Alabama": {"color": "#9E1B32"}, "Ohio State": {"color": "#BB0000"},
@@ -536,7 +550,6 @@ class OpponentManager:
                 movers.append(f"{team} ({'+' if diff>0 else ''}{diff})")
         
         if movers:
-            # Show top 3 movers
             report = ", ".join(movers[:3])
             add_news(f"Universe Report: {report}")
 
@@ -714,12 +727,42 @@ def render_dynasty_timeline(max_items=25):
 
 def check_and_award_achievements():
     if "achievements" not in st.session_state: st.session_state.achievements = []
+    
+    # 1. Bowl Win
     if st.session_state.get("last_postseason_result") == "BOWL_WIN" and "First Bowl Win" not in st.session_state.achievements:
         st.session_state.achievements.append("First Bowl Win")
+        safe_toast("🏆 Achievement Unlocked: First Bowl Win")
+        
+    # 2. Program Builder
     if st.session_state.prestige >= 80 and "Program Builder" not in st.session_state.achievements:
         st.session_state.achievements.append("Program Builder"); safe_toast("🏆 Achievement Unlocked: Program Builder")
+        
+    # 3. Perfect Season
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
         st.session_state.achievements.append("Perfect Season"); safe_toast("🏆 Achievement Unlocked: Perfect Season")
+
+    # 4. The 1.000 Club
+    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 13 and "The 1.000 Club" not in st.session_state.achievements:
+        st.session_state.achievements.append("The 1.000 Club"); safe_toast("🏆 Achievement Unlocked: The 1.000 Club")
+
+    # 5. Golden Ticket (Playoff)
+    if st.session_state.get("last_postseason_result") in ["CFP_LOSS", "TITLE", "CFP_RUNNER_UP"] and "Golden Ticket" not in st.session_state.achievements:
+        st.session_state.achievements.append("Golden Ticket"); safe_toast("🏆 Achievement Unlocked: Golden Ticket")
+
+    # 6. Granddaddy (Rose Bowl)
+    # Check history for Rose Bowl win
+    last_bowl = st.session_state.history[-1]["Bowl"] if st.session_state.history else ""
+    if last_bowl == "Rose Bowl" and st.session_state.get("last_postseason_result") == "BOWL_WIN" and "Granddaddy" not in st.session_state.achievements:
+        st.session_state.achievements.append("Granddaddy"); safe_toast("🏆 Achievement Unlocked: Granddaddy")
+
+    # 7. The Ring
+    if st.session_state.get("last_postseason_result") == "TITLE" and "The Ring" not in st.session_state.achievements:
+        st.session_state.achievements.append("The Ring"); safe_toast("🏆 Achievement Unlocked: The Ring")
+
+    # 8. Dynasty Mode (Back to Back)
+    if len(st.session_state.history) >= 2:
+        if st.session_state.history[-1]["PostseasonResult"] == "TITLE" and st.session_state.history[-2]["PostseasonResult"] == "TITLE" and "Dynasty Mode" not in st.session_state.achievements:
+            st.session_state.achievements.append("Dynasty Mode"); safe_toast("🏆 Achievement Unlocked: Dynasty Mode")
 
 def build_season_summary_dict():
     w = safe_int(st.session_state.record.get("w", 0), 0); l = safe_int(st.session_state.record.get("l", 0), 0)
@@ -1297,7 +1340,7 @@ def render_hs_results_summary() -> bool:
         delta = pos_changes.get(p, 0)
         st.write(f"{p}: **{format_position_delta(delta)}**")
     
-    if st.button("Dismiss & Continue to Top-8 →", type="primary"):
+    if st.button("Dismiss & Continue to Top-8 →", type="primary", key="dismiss_hs_summary"):
         st.session_state.hs_last_results = None
         st.session_state.offseason_step = 4
         st.rerun()
@@ -1342,7 +1385,10 @@ def execute_hs_outreach(budget: int, alloc: dict, needs: List[str]) -> None:
     st.rerun()
 
 def show_offseason_hs_outreach():
-    if render_hs_results_summary(): return
+    # If results exist, show them and STOP here. The "Dismiss" button will advance state.
+    if render_hs_results_summary(): 
+        return
+
     st.subheader("3) HS Outreach: The War Room")
     st.write("Directly invest in position groups to find talent.")
     
@@ -1604,7 +1650,6 @@ def show_dashboard():
                         add_news(f"Fired {role} {c['name']}")
                         st.rerun()
                 else: 
-                    # FIX: Show "Promote GA" immediately for vacancies
                     st.warning(f"{role} VACANT")
                     if st.button(f"Promote GA (Free)", key=f"quick_ga_{role}"):
                         ga = generate_ga_coach(role)
@@ -1770,7 +1815,7 @@ def show_season_end():
         stats = log.get("Stats")
         opp_ovr = log.get("OppOVR", "?")
         
-        # FIX: Replaced broken HTML with Native Streamlit Columns
+        # FIXED V2.6: Use columns instead of potentially buggy HTML card
         with st.container():
             col1, col2 = st.columns([1, 2])
             with col1:
@@ -1896,6 +1941,7 @@ def show_postseason():
         if "postseason_flash" in st.session_state:
             flash = st.session_state.postseason_flash; res = flash["res"]
             css = "game-card-win" if res["result"]=="W" else "game-card-loss"
+            # Show detailed stats in bowl result too
             st.markdown(UIComponents.game_result_card(0, flash['opp'], res['score'], res["result"]=="W", stats=res.get("stats")), unsafe_allow_html=True)
             
             if st.button("Continue ->", type="primary"):
@@ -1912,7 +1958,6 @@ def show_postseason():
                 st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
 
     elif data.get("Type") == "CFP":
-        # FIXED LOGIC: V2.5 Dedicated Round 5 Handler
         render_cfp_bracket_tree(st.session_state.postseason_data)
         st.divider()
         user_match = None
@@ -1978,7 +2023,7 @@ def show_postseason():
 
             if st.button("PLAY PLAYOFF GAME 🏈", type="primary"):
                 rng = game_rng(st.session_state.year, 20, opp, mode="PLAY")
-                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
+                res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
                 
                 try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
                 except: my_s, opp_s = 0, 0
@@ -2065,6 +2110,12 @@ def show_offseason():
         unsafe_allow_html=True
     )
     
+    # --- V2.6: Universe Report (Show this once per offseason start) ---
+    if "offseason_report_shown" not in st.session_state or st.session_state.get("offseason_report_year") != year:
+        OpponentManager.evolve_universe()
+        st.session_state.offseason_report_shown = True
+        st.session_state.offseason_report_year = year
+
     step = safe_int(st.session_state.get("offseason_step", 1), 1)
     
     if step == 1:
@@ -2079,7 +2130,8 @@ def show_offseason():
             
     elif step == 3:
         show_offseason_hs_outreach()
-        if render_hs_results_summary(): pass # Handled by button inside
+        # V2.7 FIX: Do not call render_hs_results_summary here explicitly
+        # It is handled inside show_offseason_hs_outreach logic
 
     elif step == 4:
         show_offseason_top8_v8()
@@ -2094,7 +2146,7 @@ def show_offseason():
             st.session_state.year += 1
             st.session_state.tenure += 1
             st.session_state.inflation = safe_float(st.session_state.get("inflation", 1.0), 1.0) * 1.02
-            OpponentManager.evolve_universe()
+            
             invite = maybe_generate_conference_invite()
             if not invite: ai_conference_swap_lightweight()
             
@@ -2172,8 +2224,45 @@ def show_fired():
 def show_retirement():
     st.title("🏆 RETIREMENT")
     st.markdown(UIComponents.gradient_header("HALL OF FAME CEREMONY", "Congratulations on a legendary career"))
-    render_trophy_gallery()
-    if st.button("Start New Dynasty"):
+    
+    # --- V2.7: All-Time Leaderboard ---
+    st.subheader("🐐 All-Time Greatest Coaches")
+    
+    # 1. Build Data
+    my_stats = {
+        "Name": f"{st.session_state.get('ad_name','You')} (You)", 
+        "Titles": st.session_state.career_stats['titles'],
+        "Wins": st.session_state.career_stats['w'],
+        "Losses": st.session_state.career_stats['l'],
+        "BowlWins": st.session_state.career_stats['bowl_w']
+    }
+    
+    all_coaches = GameConfig.LEGENDS + [my_stats]
+    
+    # 2. Sort by Titles (Desc), then Wins (Desc)
+    all_coaches.sort(key=lambda x: (x["Titles"], x["Wins"]), reverse=True)
+    
+    # 3. Find User Rank
+    user_rank = next((i+1 for i, c in enumerate(all_coaches) if c["Name"] == my_stats["Name"]), 99)
+    
+    st.info(f"You finished as the #{user_rank} Greatest Coach of All Time!")
+    
+    # 4. Display Table
+    table_data = []
+    for i, c in enumerate(all_coaches):
+        table_data.append({
+            "Rank": i+1,
+            "Coach": c["Name"],
+            "Nat'l Titles": c["Titles"],
+            "Career Wins": c["Wins"],
+            "Bowl Wins": c["BowlWins"]
+        })
+    st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
+    
+    st.divider()
+    render_trophy_gallery("🏆 Your Trophy Case")
+    
+    if st.button("Start New Dynasty", type="primary"):
         st.session_state.clear(); st.rerun()
 
 # ==============================================================================
@@ -2208,7 +2297,7 @@ def render_system_sidebar():
         
         render_news_box()
 
-# --- V2.6: Auto-Scroll Fix via JS ---
+# --- V2.6: Auto-Scroll Fix ---
 st.markdown("""
 <script>
     var body = window.parent.document.querySelector(".main");
