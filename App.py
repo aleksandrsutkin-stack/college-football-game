@@ -806,17 +806,6 @@ def safe_json_default(obj):
     if isinstance(obj, set): return list(obj)
     if isinstance(obj, (datetime.date, datetime.datetime)): return obj.isoformat()
     return str(obj)
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 2: RECRUITING SYSTEM
-
-This file contains all recruiting functions from V1.7:
-- Retention Phase
-- NIL Recruiting
-- HS Outreach
-- Top-8 Battles
-- Recruiting Wrap
-"""
 
 # ==============================================================================
 # RECRUITING HELPER FUNCTIONS
@@ -2015,12 +2004,6 @@ def show_retirement():
     render_trophy_gallery()
     if st.button("Start New Dynasty"):
         st.session_state.clear(); st.rerun()
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 6: OFFSEASON HANDLER
-
-This is the master offseason controller that routes through all 4 recruiting phases.
-"""
 
 def show_offseason():
     """Master offseason controller - routes through retention, NIL, HS outreach, and Top-8"""
@@ -2132,15 +2115,6 @@ def show_offseason():
             # Move to recruiting wrap screen
             st.session_state.game_state = GameState.RECRUITING_WRAP
             st.rerun()
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 7: ROUTER & INITIALIZATION
-
-This contains:
-- Initialization
-- Main game router
-- System sidebar with save/load
-"""
 
 # ==============================================================================
 # SYSTEM SIDEBAR (Save/Load)
