@@ -111,11 +111,12 @@ grade, desc = data_helpers.compute_recruiting_class_grade(total_rating, num_recr
 
 ### Backwards Compatibility
 
-All original functions remain in `App.py` for backwards compatibility. The application will work with or without the new modules:
+All original functions remain in `App.py` for backwards compatibility. The new modules (`ui_components.py` and `data_helpers.py`) are optional enhancements:
 
-- If modules are available, App.py imports them
-- If modules are not available, App.py uses internal functions
-- No breaking changes to existing code
+- App.py includes optional imports that won't break if modules are missing
+- All original functions in App.py have been enhanced with validation
+- The modules provide alternative validated implementations
+- No functional changes to existing App.py behavior
 
 ## Benefits
 
@@ -180,8 +181,7 @@ No changes needed - all original functions in App.py have been updated with vali
 2. **Type Safety** - Type checking prevents crashes from unexpected data types
 3. **Range Clamping** - Numeric values are clamped to prevent overflow/underflow
 4. **Division by Zero** - All division operations check for zero divisor
-5. **SQL Injection Protection** - Not applicable (no SQL in this app)
-6. **XSS Protection** - HTML is generated server-side with validated inputs
+5. **HTML Generation** - HTML is generated server-side with controlled inputs (Note: user-provided strings are not HTML-escaped; implement HTML escaping for full XSS protection if accepting user input)
 
 ## Performance
 

@@ -331,7 +331,7 @@ st.markdown("""
 }
 
 /* GAME CARD STATES */
-.game-card { background: white; border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; margin-bottom: 12px; }
+.game-card { background: white; border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; margin-bottom: 12px; } /* Base style for game cards */
 .game-card-win { background: linear-gradient(145deg, #e8f5e9 0%, #f1f8e9 100%); border: 2px solid #4CAF50; }
 .game-card-loss { background: linear-gradient(145deg, #ffebee 0%, #fff3e0 100%); border: 2px solid #f44336; }
 .game-card-rival { background: linear-gradient(145deg, #fff3e0 0%, #ffe0b2 100%); border: 3px solid #ff9800; box-shadow: 0 0 12px rgba(255, 152, 0, 0.4); }

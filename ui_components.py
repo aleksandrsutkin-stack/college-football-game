@@ -11,6 +11,9 @@ def validate_dict(value, default=None):
     """Validate that a value is a dict, return default if not."""
     if default is None:
         default = {}
+    else:
+        # Create new instance to avoid mutable default issues
+        default = dict(default)
     return value if isinstance(value, dict) else default
 
 

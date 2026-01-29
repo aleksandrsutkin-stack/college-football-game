@@ -25,6 +25,9 @@ def validate_dict(value, default=None):
     """Validate that a value is a dict."""
     if default is None:
         default = {}
+    else:
+        # Create new instance to avoid mutable default issues
+        default = dict(default)
     return value if isinstance(value, dict) else default
 
 
@@ -32,6 +35,9 @@ def validate_list(value, default=None):
     """Validate that a value is a list."""
     if default is None:
         default = []
+    else:
+        # Create new instance to avoid mutable default issues
+        default = list(default)
     return value if isinstance(value, list) else default
 
 
@@ -78,6 +84,10 @@ def normalize_shares(shares: Dict[str, float]) -> Dict[str, float]:
     """
     shares = validate_dict(shares)
     
+    # Handle empty dictionary case
+    if not shares:
+        return {}
+    
     def _val(d: dict, k: str) -> float:
         """Safely extract float value from dict."""
         try:
@@ -90,7 +100,9 @@ def normalize_shares(shares: Dict[str, float]) -> Dict[str, float]:
     # Prevent division by zero
     if total <= 0:
         # Equal distribution if all zeros
-        num_keys = len(shares) if shares else 1
+        num_keys = len(shares)
+        if num_keys == 0:
+            return {}
         return {k: 100.0 / num_keys for k in shares.keys()}
     
     # Normalize to 100%
