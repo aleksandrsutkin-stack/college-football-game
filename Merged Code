@@ -1146,6 +1146,14 @@ def trophy_icon(name: str) -> str:
 def award_trophy(trophy_name: str):
     if "trophies" not in st.session_state: st.session_state.trophies = []
     st.session_state.trophies.append({"Year": st.session_state.year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
+    
+    # Update trophy stats
+    if "trophy_stats" not in st.session_state: initialize_trophy_tracking()
+    
+    if "National" in trophy_name or "Championship" in trophy_name:
+        st.session_state.trophy_stats["titles"] += 1
+    if "Bowl" in trophy_name:
+        st.session_state.trophy_stats["bowl_wins"] += 1
 
 def calculate_saban_score(career_stats, prestige):
     return int((career_stats.get("w", 0)*1) + (career_stats.get("bowl_w", 0)*5) + (career_stats.get("titles", 0)*50) + (prestige*0.5))
@@ -1209,10 +1217,20 @@ def check_and_award_achievements():
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12 and "Perfect Season" not in st.session_state.achievements:
         st.session_state.achievements.append("Perfect Season"); safe_toast("🏆 Achievement Unlocked: Perfect Season")
     
-    # New V2.9 Trackers
+    # Trophy Stats Tracking
     if "trophy_stats" not in st.session_state: initialize_trophy_tracking()
-    if st.session_state.get("last_postseason_result", "").startswith("CFP"): st.session_state.trophy_stats["cfp_appearances"] += 1
-    if st.session_state.record['w'] >= 10: st.session_state.trophy_stats["ten_win_seasons"] += 1
+    
+    # CFP Appearances
+    if st.session_state.get("last_postseason_result", "").startswith("CFP"):
+        st.session_state.trophy_stats["cfp_appearances"] += 1
+    
+    # Perfect Seasons
+    if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12:
+        st.session_state.trophy_stats["perfect_seasons"] += 1
+    
+    # 10+ Win Seasons
+    if st.session_state.record['w'] >= 10:
+        st.session_state.trophy_stats["ten_win_seasons"] += 1
 
 def build_season_summary_dict():
     w = safe_int(st.session_state.record.get("w", 0), 0); l = safe_int(st.session_state.record.get("l", 0), 0)
