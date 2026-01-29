@@ -26,6 +26,7 @@ from typing import List, Dict, Optional, Set
 STATE_VERSION = 4.0
 
 class GameState:
+    """Game state constants representing different screens/phases of the game."""
     SETUP = "SETUP"
     DASHBOARD = "DASHBOARD"
     SEASON_END = "SEASON_END"
@@ -38,6 +39,7 @@ class GameState:
     RETIREMENT = "RETIREMENT"
 
 class GameConfig:
+    """Central configuration class containing all game constants and settings."""
     POSITIONS = ["QB", "RB", "WR", "OL", "DL", "LB", "DB"]
     REGION_STRENGTH = {"South": 1.08, "Midwest": 1.05, "West": 1.05, "North": 1.02}
     
@@ -879,43 +881,98 @@ def generate_ga_coach(role: str) -> dict:
 # ==============================================================================
 
 class BudgetManager:
+    """
+    Manages team budget operations including spending, revenue, and validation.
+    All operations interact with st.session_state.budget.
+    """
+    
     @staticmethod
     def get_current() -> int:
+        """Get current budget amount from session state."""
         return safe_int(st.session_state.get("budget", 0), 0)
     
     @staticmethod
     def spend(amount: int, description: str, show_toast: bool = True) -> bool:
+        """
+        Spend budget on an item with validation.
+        
+        Args:
+            amount: Amount to spend
+            description: Description of purchase for notifications
+            show_toast: Whether to show success toast notification
+            
+        Returns:
+            bool: True if successful, False if insufficient funds
+        """
         amount = safe_int(amount, 0)
-        if not validate_budget_input(amount, BudgetManager.get_current(), description): return False
+        if not validate_budget_input(amount, BudgetManager.get_current(), description):
+            return False
         st.session_state.budget = BudgetManager.get_current() - amount
         clamp_budget()
-        if show_toast: safe_toast(f"Spent {helper_format_cash(amount)} on {description}")
+        if show_toast:
+            safe_toast(f"Spent {helper_format_cash(amount)} on {description}")
         return True
     
     @staticmethod
     def add(amount: int, description: str, show_toast: bool = True) -> None:
+        """
+        Add money to budget.
+        
+        Args:
+            amount: Amount to add
+            description: Description of income source
+            show_toast: Whether to show notification toast
+        """
         amount = safe_int(amount, 0)
         st.session_state.budget = BudgetManager.get_current() + amount
         clamp_budget()
-        if show_toast and amount > 0: safe_toast(f"Received {helper_format_cash(amount)}: {description}")
-        if description: add_news(description)
+        if show_toast and amount > 0:
+            safe_toast(f"Received {helper_format_cash(amount)}: {description}")
+        if description:
+            add_news(description)
     
     @staticmethod
     def calculate_revenue(tier: int, marketing_level: int, inflation: float) -> int:
+        """
+        Calculate annual revenue based on tier, marketing, and conference multipliers.
+        
+        Args:
+            tier: School tier (1=Elite, 2=High, 3=Mid, 4=Low)
+            marketing_level: Marketing department level (adds 1.5M per level)
+            inflation: Inflation multiplier for year
+            
+        Returns:
+            int: Total calculated revenue
+        """
         base = {1: 22_000_000, 2: 14_000_000, 3: 6_000_000, 4: 3_000_000}.get(tier, 3_000_000)
         bonus = safe_int(marketing_level, 0) * 1_500_000
         total = (base + bonus) * float(inflation) * float(st.session_state.get("conf_revenue_boost_mult", 1.0))
         return int(total)
 
 class OpponentManager:
+    """
+    Manages opponent team data and ensures consistency across game sessions.
+    """
+    
     @staticmethod
     def get(team_name: str) -> dict:
-        if "opponents_db" not in st.session_state: st.session_state.opponents_db = {}
+        """
+        Get or create opponent data for a given team.
+        
+        Args:
+            team_name: Name of the opponent team
+            
+        Returns:
+            dict: Opponent data dictionary with ratings and stats
+        """
+        if "opponents_db" not in st.session_state:
+            st.session_state.opponents_db = {}
         if team_name not in st.session_state.opponents_db:
             st.session_state.opponents_db[team_name] = OpponentFactory.create_opponent(team_name, context="RUNTIME")
         
         opp = st.session_state.opponents_db[team_name]
-        opp.setdefault("Prestige", 60); opp.setdefault("OVR", 75)
+        opp.setdefault("Prestige", 60)
+        opp.setdefault("OVR", 75)
         
         if "OffOVR" not in opp or "DefOVR" not in opp:
             base = safe_int(opp.get("OVR", 75), 75)
@@ -1007,18 +1064,54 @@ def make_deterministic_rng(*parts) -> random.Random:
     return random.Random(seed_str)
 
 def game_rng(year: int, week: int, opp: str, mode: str = "PLAY") -> random.Random:
+    """
+    Create a deterministic random number generator for game simulation.
+    
+    Args:
+        year: Current game year
+        week: Current week number
+        opp: Opponent team name
+        mode: Game mode (e.g., "PLAY", "SIM")
+        
+    Returns:
+        random.Random: Seeded random number generator for reproducible results
+    """
     return make_deterministic_rng("game", mode, int(year), int(week), str(opp))
 
 def calculate_difficulty_multiplier(user_conf: str, user_prestige: int, user_ovr: int, user_wins: int) -> float:
+    """
+    Calculate difficulty multiplier for lower-tier teams (Cinderella Tax).
+    
+    Teams from weaker conferences face tougher opponents when they perform well,
+    making it harder to maintain success (simulating real playoff committee bias).
+    
+    Args:
+        user_conf: User's conference name
+        user_prestige: Team prestige rating (0-100)
+        user_ovr: Team overall rating (0-99)
+        user_wins: Current season wins
+        
+    Returns:
+        float: Difficulty multiplier (1.0 - 1.35), applied to opponent strength
+    """
     mult = 1.0
+    # G5 teams face increased difficulty when successful
     if user_conf in ["G5", "MAC", "Pac-12", "Indep"]:
-        if user_ovr >= 85: mult += 0.20
-        elif user_ovr >= 80: mult += 0.15
-        elif user_ovr >= 75: mult += 0.10
-        if user_wins >= 10: mult += 0.08
-        elif user_wins >= 8: mult += 0.05
-        if user_prestige >= 80: mult += 0.05
-    elif user_conf in ["SEC", "Big Ten"] and user_prestige >= 90: mult += 0.05
+        if user_ovr >= 85:
+            mult += 0.20
+        elif user_ovr >= 80:
+            mult += 0.15
+        elif user_ovr >= 75:
+            mult += 0.10
+        if user_wins >= 10:
+            mult += 0.08
+        elif user_wins >= 8:
+            mult += 0.05
+        if user_prestige >= 80:
+            mult += 0.05
+    # Elite P5 teams get slight boost
+    elif user_conf in ["SEC", "Big Ten"] and user_prestige >= 90:
+        mult += 0.05
     return min(1.35, mult)
 
 def get_conferences_map():
@@ -1068,10 +1161,31 @@ def generate_hotspots():
     return out
 
 def calculate_committee_score(team_name, wins, losses, conf, sos_score):
+    """
+    Calculate College Football Playoff committee ranking score.
+    
+    Simulates the real CFP committee's bias toward power conferences and
+    penalizes G5 teams with any losses.
+    
+    Args:
+        team_name: Team name (currently unused but kept for interface)
+        wins: Number of wins
+        losses: Number of losses
+        conf: Conference name
+        sos_score: Strength of schedule score
+        
+    Returns:
+        int: Committee score used for ranking teams
+    """
     score = (wins * 105) - (losses * 115) + (sos_score * 3.0)
-    if conf in ["SEC", "Big Ten"]: score += 140
-    elif conf in ["ACC", "Big 12"]: score += 80
-    if conf in ["G5", "MAC", "Indep"] and losses > 0: score -= 300
+    # Power conference bonuses
+    if conf in ["SEC", "Big Ten"]:
+        score += 140
+    elif conf in ["ACC", "Big 12"]:
+        score += 80
+    # G5 penalty for any loss
+    if conf in ["G5", "MAC", "Indep"] and losses > 0:
+        score -= 300
     return int(score)
 
 def trophy_icon(name: str) -> str:
@@ -1538,6 +1652,28 @@ def compute_team_unit_ratings(roster, staff, facilities):
     return (int(max(40, min(99, off))), int(max(40, min(99, deff))), int(max(40, min(99, sum(r.values())/7))))
 
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
+    """
+    Main game simulation engine that calculates game outcome based on team stats and game factors.
+    
+    Args:
+        my_off: User's offensive rating
+        my_def: User's defensive rating
+        opp_off: Opponent's offensive rating
+        opp_def: Opponent's defensive rating
+        staff: User's coaching staff dictionary
+        schemes: User's offensive and defensive schemes
+        opp_schemes: Opponent's schemes
+        game_plan: User's game plan ("Aggressive", "Conservative", "Balanced")
+        opp_coaches: Opponent coaching stats
+        is_home: Whether user is playing at home
+        is_rival: Whether this is a rivalry game
+        my_stadium_level: User's stadium level (affects home field advantage)
+        opp_stadium_level: Opponent's stadium level
+        rng: Optional random number generator for deterministic results
+        
+    Returns:
+        dict: Game result with score, win/loss, and stats
+    """
     rng = rng or random.Random()
     
     # V1.8: Cinderella Tax - Apply difficulty multiplier for lower-tier teams
@@ -1554,35 +1690,70 @@ def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_sc
         # If difficulty calculation fails, use original opponent ratings
         pass
 
+    # Calculate team edges (offense vs defense matchups)
     my_edge, opp_edge = (my_off - opp_def)*0.75, (opp_off - my_def)*0.75
+    
+    # Scheme bonuses/penalties based on matchups
     sb_my, sb_opp = 0.0, 0.0
-    if GameConfig.OFF_COUNTERED_BY.get(schemes.get("Off")) == opp_schemes.get("Def"): sb_my -= 2.5; sb_opp += 1.0
-    if GameConfig.DEF_COUNTERS.get(opp_schemes.get("Def")) == schemes.get("Off"): sb_my += 2.5; sb_opp -= 1.0
+    if GameConfig.OFF_COUNTERED_BY.get(schemes.get("Off")) == opp_schemes.get("Def"):
+        sb_my -= 2.5  # User's offense is countered
+        sb_opp += 1.0
+    if GameConfig.DEF_COUNTERS.get(opp_schemes.get("Def")) == schemes.get("Off"):
+        sb_my += 2.5  # User's offense counters their defense
+        sb_opp -= 1.0
     
-    my_c, opp_c = (get_tier_bonus(safe_int(staff.get("OC",{}).get("off",3))) - get_tier_bonus(safe_int(opp_coaches.get("DC",5))))*1.2, (get_tier_bonus(safe_int(opp_coaches.get("OC",5))) - get_tier_bonus(safe_int(staff.get("DC",{}).get("def",3))))*1.2
+    # Coaching bonuses (coordinator quality differential)
+    my_c = (get_tier_bonus(safe_int(staff.get("OC",{}).get("off",3))) - 
+            get_tier_bonus(safe_int(opp_coaches.get("DC",5))))*1.2
+    opp_c = (get_tier_bonus(safe_int(opp_coaches.get("OC",5))) - 
+             get_tier_bonus(safe_int(staff.get("DC",{}).get("def",3))))*1.2
     
+    # Head coach trait bonuses
     hc_t = staff.get("HC", {}).get("trait", "None")
-    if hc_t == "Tactician": my_c += 0.9
-    elif hc_t == "Recruiter": my_c += 0.25
-    if staff.get("OC", {}).get("trait") == schemes.get("Off"): sb_my += 1.0
+    if hc_t == "Tactician":
+        my_c += 0.9  # Tactician trait gives game boost
+    elif hc_t == "Recruiter":
+        my_c += 0.25  # Recruiter trait gives small game boost
     
+    # Scheme specialist coordinator bonus
+    if staff.get("OC", {}).get("trait") == schemes.get("Off"):
+        sb_my += 1.0  # OC specialist in user's offensive scheme
+    
+    # Home field advantage
     hf = home_field_points(my_stadium_level) if is_home else 0.0
     opp_hf = home_field_points(opp_stadium_level) if not is_home else 0.0
     
-    var = 1.35 if is_rival else 1.0
-    if game_plan == "Aggressive": var *= 1.25
-    elif game_plan == "Conservative": var *= 0.85
+    # Variance multipliers
+    var = 1.35 if is_rival else 1.0  # Rivalry games more unpredictable
+    if game_plan == "Aggressive":
+        var *= 1.25  # Aggressive increases variance
+    elif game_plan == "Conservative":
+        var *= 0.85  # Conservative reduces variance
     
+    # Calculate expected scores (clamped between 10-50)
     exp_my = max(10, min(50, 27.5 + my_edge + sb_my + my_c + hf))
     exp_opp = max(10, min(50, 27.5 + opp_edge + sb_opp + opp_c + opp_hf))
     
+    # Generate actual scores using gaussian distribution
     ms = int(round(rng.gauss(exp_my, 5.5 * var)))
     os = int(round(rng.gauss(exp_opp, 5.5 * var)))
-    if ms == os: ms += rng.choice([0, 3, 7]); os += rng.choice([0, 0, 3])
     
+    # Handle ties (slightly favor user)
+    if ms == os:
+        ms += rng.choice([0, 3, 7])
+        os += rng.choice([0, 0, 3])
+    
+    # Clamp scores to realistic range (0-70)
     ms, os = max(0, min(70, ms)), max(0, min(70, os))
     
-    stats = {"qb_duel": [int(st.session_state.roster["QB"]), int(opp_off)], "off_vs_def": [int(my_off), int(opp_def)], "def_vs_off": [int(my_def), int(opp_off)], "staff": ["?","?"], "raw_roster": int((my_off+my_def)/2)}
+    # Build stats dictionary for display
+    stats = {
+        "qb_duel": [int(st.session_state.roster["QB"]), int(opp_off)],
+        "off_vs_def": [int(my_off), int(opp_def)],
+        "def_vs_off": [int(my_def), int(opp_off)],
+        "staff": ["?","?"],
+        "raw_roster": int((my_off+my_def)/2)
+    }
     return {"result": "W" if ms > os else "L", "score": f"{ms}-{os}", "stats": stats, "explain": {}}
 
 def simulate_ai_regular_season_seeded(seed: int):
