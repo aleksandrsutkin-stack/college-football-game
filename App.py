@@ -731,18 +731,41 @@ def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20
     return full_html
 
 def calculate_percentile(user_score: int, all_coaches: List[Dict]) -> int:
+    """
+    Calculate the user's percentile rank among all coaches based on career score.
+    
+    Args:
+        user_score: User's calculated career score (Titles * 50 + Wins * 2)
+        all_coaches: List of all coach dictionaries with Titles and Wins
+        
+    Returns:
+        int: Percentile rank (0-100), where 100 is the best
+    """
     scores = sorted([coach.get("Titles", 0) * 50 + coach.get("Wins", 0) * 2 for coach in all_coaches], reverse=True)
-    if not scores: return 100
+    if not scores:
+        return 100
     user_position = len([s for s in scores if s > user_score])
     percentile = int(((len(scores) - user_position) / len(scores)) * 100)
     return percentile
 
 def render_mount_rushmore(top_coaches: List[Dict], user_data: Dict, user_rank: int) -> str:
+    """
+    Render the Mount Rushmore display showing the top 4 coaches of all time.
+    
+    Args:
+        top_coaches: List of top coach dictionaries
+        user_data: Current user's coach data
+        user_rank: User's ranking position
+        
+    Returns:
+        str: HTML string for the Mount Rushmore display
+    """
     heads_html = ""
     for i, coach in enumerate(top_coaches):
         is_user = (coach.get("Name", "").endswith("(You)"))
         circle_class = "rushmore-circle-user" if is_user else "rushmore-circle"
-        if is_user: display = "YOU"
+        if is_user:
+            display = "YOU"
         else:
             name = coach.get("Name", "?")
             parts = name.split()
@@ -778,7 +801,7 @@ def generate_career_highlights(history: List[Dict], career_stats: Dict) -> List[
             if win_count >= 50 and len(highlights) < 5:
                 highlights.append({"year": h.get("Year"), "text": f"Reached 50 Career Wins!", "color": "linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)"})
                 break
-        except: pass
+        except (ValueError, IndexError, AttributeError): pass
     
     for h in history:
         if "CFP" in h.get("PostseasonResult", ""):
@@ -959,7 +982,9 @@ class OpponentFactory:
                     u_win = st.session_state.get("record", {}).get("w", 0)
                     boost = random.randint(10, 15) if (u_ovr >= 82 or u_win >= 8) else (random.randint(6, 10) if (u_ovr >= 78 or u_win >= 6) else 0)
                     if boost > 0: ovr = min(88, ovr + boost)
-            except: pass
+            except (KeyError, AttributeError):
+                # Skip if conference data not available
+                pass
         
         if is_elite or pres >= 90: c_min, c_max, s_min, s_max = 9, 10, 10, 11
         elif pres >= 85: c_min, c_max, s_min, s_max = 9, 10, 9, 11
@@ -1088,11 +1113,24 @@ def end_regular_season_and_stay_on_results():
     st.session_state.game_state = GameState.SEASON_END
 
 def normalize_shares(shares: dict):
+    """
+    Normalize position budget shares to percentages summing to 100%.
+    
+    Args:
+        shares: Dictionary mapping positions to budget amounts
+        
+    Returns:
+        dict: Normalized percentages for each position
+    """
     def _val(pos):
-        try: return max(0.0, float(shares.get(pos, 0.0)))
-        except: return 0.0
+        try:
+            return max(0.0, float(shares.get(pos, 0.0)))
+        except (ValueError, TypeError):
+            return 0.0
+    
     total = sum(_val(p) for p in GameConfig.POSITIONS)
-    if total <= 0: return {p: 100.0/len(GameConfig.POSITIONS) for p in GameConfig.POSITIONS}
+    if total <= 0:
+        return {p: 100.0/len(GameConfig.POSITIONS) for p in GameConfig.POSITIONS}
     return {p: (_val(p)/total)*100.0 for p in GameConfig.POSITIONS}
 
 def render_trophy_gallery(title_text: str = "🏆 Trophy Gallery"):
@@ -1297,8 +1335,10 @@ def init_playoff_bracket(user_rank, user_team_name):
         if nm in seen: top12[i] = "FCS East"
         else: seen.add(nm)
     seed_map = {tm: idx for idx, tm in enumerate(top12, start=1)}
-    try: ur = int(user_rank)
-    except: ur = 999
+    try:
+        ur = int(user_rank)
+    except (ValueError, TypeError):
+        ur = 999
     if 1 <= ur <= 12:
         target_idx = ur - 1; top12[target_idx] = user_team_name; seed_map[user_team_name] = ur
         for i in range(len(top12)):
@@ -1333,10 +1373,14 @@ def organize_trophies_by_category(all_trophies: List[Dict]) -> Dict[str, List[Di
 def categorize_season(record: str, postseason: str) -> str:
     try:
         wins, losses = map(int, record.split('-'))
-        if "TITLE" in postseason or "CHAMPIONSHIP" in postseason: return "championship"
-        elif wins >= 10: return "win"
-        else: return "loss"
-    except: return "loss"
+        if "TITLE" in postseason or "CHAMPIONSHIP" in postseason:
+            return "championship"
+        elif wins >= 10:
+            return "win"
+        else:
+            return "loss"
+    except (ValueError, AttributeError):
+        return "loss"
 
 def detect_era_boundaries(history: List[Dict]) -> List[Dict]:
     if len(history) < 3: return []
@@ -1401,77 +1445,6 @@ def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20
     
     full_html = f"<div style='margin: 20px 0;'>{era_markers}<div class='timeline-container'><div class='timeline-line'></div>{timeline_html}</div></div>"
     return full_html
-
-def calculate_percentile(user_score: int, all_coaches: List[Dict]) -> int:
-    scores = sorted([coach.get("Titles", 0) * 50 + coach.get("Wins", 0) * 2 for coach in all_coaches], reverse=True)
-    if not scores: return 100
-    user_position = len([s for s in scores if s > user_score])
-    percentile = int(((len(scores) - user_position) / len(scores)) * 100)
-    return percentile
-
-def render_mount_rushmore(top_coaches: List[Dict], user_data: Dict, user_rank: int) -> str:
-    heads_html = ""
-    for i, coach in enumerate(top_coaches):
-        is_user = (coach.get("Name", "").endswith("(You)"))
-        circle_class = "rushmore-circle-user" if is_user else "rushmore-circle"
-        if is_user: display = "YOU"
-        else:
-            name = coach.get("Name", "?")
-            parts = name.split()
-            display = f"{parts[0][0]}{parts[1][0]}" if len(parts) >= 2 else name[:2]
-        
-        heads_html += f"<div class='rushmore-head'><div class='{circle_class}'>{display}</div><div class='rushmore-name'>#{i+1} {coach.get('Name', 'Unknown')}</div><div style='color: white; font-size: 0.85em;'>{coach.get('Titles', 0)} Titles</div></div>"
-    
-    climber_html = ""
-    if user_rank > 4:
-        climber_html = f"<div style='text-align: center; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.2); border-radius: 8px;'><div style='color: white; font-weight: bold; margin-bottom: 5px;'>THE CLIMBERS</div><div style='color: white; font-size: 1.2em;'>#{user_rank} {user_data.get('Name', 'You')}</div><div style='color: rgba(255,255,255,0.8); font-size: 0.9em;'>{user_data.get('Titles', 0)} Titles • {user_data.get('Wins', 0)} Wins</div></div>"
-    
-    html = f"<div class='mount-rushmore'><div style='text-align: center; color: white; font-size: 1.5em; font-weight: bold; margin-bottom: 10px;'>🗻 MOUNT RUSHMORE OF CFB COACHES 🗻</div><div class='rushmore-heads'>{heads_html}</div>{climber_html}</div>"
-    return html
-
-def generate_career_highlights(history: List[Dict], career_stats: Dict) -> List[Dict]:
-    highlights = []
-    championships = [h for h in history if "TITLE" in h.get("PostseasonResult", "")]
-    if championships:
-        first_title = championships[0]
-        highlights.append({"year": first_title.get("Year"), "text": f"Won First National Championship!", "color": "linear-gradient(135deg, #FFD700 0%, #FFA500 100%)"})
-        if len(championships) >= 3:
-            highlights.append({"year": championships[2].get("Year"), "text": f"Dynasty Established - 3rd National Title", "color": "linear-gradient(135deg, #4CAF50 0%, #45a049 100%)"})
-    
-    perfect = [h for h in history if h.get("Record", "").endswith("-0")]
-    if perfect:
-        highlights.append({"year": perfect[0].get("Year"), "text": f"Perfect Season! ({perfect[0].get('Record')})", "color": "linear-gradient(135deg, #2196F3 0%, #1976D2 100%)"})
-    
-    win_count = 0
-    for h in history:
-        try:
-            wins = int(h.get("Record", "0-0").split('-')[0])
-            win_count += wins
-            if win_count >= 50 and len(highlights) < 5:
-                highlights.append({"year": h.get("Year"), "text": f"Reached 50 Career Wins!", "color": "linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)"})
-                break
-        except: pass
-    
-    for h in history:
-        if "CFP" in h.get("PostseasonResult", ""):
-            highlights.append({"year": h.get("Year"), "text": f"Made College Football Playoff", "color": "linear-gradient(135deg, #FF5722 0%, #E64A19 100%)"})
-            break
-            
-    return highlights[:5]
-
-def render_career_highlights_carousel(highlights: List[Dict]) -> str:
-    if not highlights: return ""
-    slides_html = ""
-    for highlight in highlights:
-        slides_html += f"<div class='highlight-slide' style='background: {highlight.get('color', 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)')};'><div class='highlight-year'>{highlight.get('year', '????')}</div><div class='highlight-text'>{highlight.get('text', 'Achievement Unlocked!')}</div></div>"
-    html = f"<div class='career-highlights-carousel'><h3 style='text-align: center; margin-bottom: 20px;'>🎬 Career Highlight Reel</h3>{slides_html}</div>"
-    return html
-
-def render_legacy_report_card(grade: str, score: int, percentile: int) -> str:
-    grade_labels = {"S": "🐐 GOAT STATUS", "A": "🏛️ HALL OF FAME LEGEND", "B": "⭐ CHAMPIONSHIP COACH", "C": "✅ ACCOMPLISHED CAREER", "D": "😐 SOLID EFFORT"}
-    label = grade_labels.get(grade, "Career Complete")
-    html = f"<div class='legacy-report-card'><h2 style='margin-bottom: 10px;'>Legacy Report Card</h2><div class='report-card-grade'>{grade}</div><div style='font-size: 1.5em; font-weight: bold; color: #f57f17; margin: 10px 0;'>{label}</div><div style='font-size: 1.2em; color: #666; margin: 5px 0;'>Career Score: <strong>{score}</strong></div><div class='percentile-badge'>Top {100 - percentile}% of All-Time Coaches</div></div>"
-    return html
 
 # ==============================================================================
 # ENGINE & STATE
@@ -1567,12 +1540,19 @@ def compute_team_unit_ratings(roster, staff, facilities):
 def engine_play_game_v8(my_off, my_def, opp_off, opp_def, staff, schemes, opp_schemes, game_plan, opp_coaches, is_home, is_rival, my_stadium_level, opp_stadium_level, rng=None):
     rng = rng or random.Random()
     
-    # V1.8: Cinderella Tax
+    # V1.8: Cinderella Tax - Apply difficulty multiplier for lower-tier teams
     try:
-        diff_mult = calculate_difficulty_multiplier(st.session_state.get("team_conf", "G5"), st.session_state.get("prestige", 60), st.session_state.get("team_rating", 75), st.session_state.get("record", {}).get("w", 0))
+        diff_mult = calculate_difficulty_multiplier(
+            st.session_state.get("team_conf", "G5"),
+            st.session_state.get("prestige", 60),
+            st.session_state.get("team_rating", 75),
+            st.session_state.get("record", {}).get("w", 0)
+        )
         opp_off = int(opp_off * diff_mult)
         opp_def = int(opp_def * diff_mult)
-    except: pass
+    except (KeyError, ValueError, TypeError):
+        # If difficulty calculation fails, use original opponent ratings
+        pass
 
     my_edge, opp_edge = (my_off - opp_def)*0.75, (opp_off - my_def)*0.75
     sb_my, sb_opp = 0.0, 0.0
@@ -1622,11 +1602,17 @@ def simulate_ai_regular_season_seeded(seed: int):
     return results
 
 def sync_team_ratings():
+    """
+    Synchronize team offensive, defensive, and overall ratings based on current roster, staff, and facilities.
+    Updates st.session_state with calculated ratings.
+    """
     if all(k in st.session_state for k in ["roster", "staff", "facilities"]):
         try:
             res = compute_team_unit_ratings(st.session_state.roster, st.session_state.staff, st.session_state.facilities)
             st.session_state.team_off, st.session_state.team_def, st.session_state.team_rating = res
-        except: pass
+        except (KeyError, ValueError, TypeError) as e:
+            # If rating computation fails, keep existing ratings
+            pass
 
 def migrate_state():
     if "state_version" not in st.session_state: st.session_state.state_version = 0.0
@@ -1663,7 +1649,9 @@ def migrate_state():
         if st.session_state.team_name and st.session_state.team_name != "Unknown U":
             st.session_state.last_known_team_name = st.session_state.team_name
             st.session_state.last_known_team_color = st.session_state.team_color
-    except: pass
+    except (AttributeError, KeyError):
+        # Skip if team name/color not available
+        pass
 
 def init_session_state_defaults():
     if "game_state" not in st.session_state: st.session_state.game_state = GameState.SETUP
@@ -1713,10 +1701,14 @@ def process_hs_outreach(total_spend: int, shares_or_alloc: dict, staff: dict, pr
     if is_dollars:
         allocated = 0
         for p in GameConfig.POSITIONS:
-            try: allocated += int(float(shares_or_alloc.get(p, 0) or 0))
-            except: pass
+            try:
+                allocated += int(float(shares_or_alloc.get(p, 0) or 0))
+            except (ValueError, TypeError):
+                # Skip invalid allocation values
+                pass
         spent = max(0, min(total_spend, allocated))
-    else: spent = total_spend
+    else:
+        spent = total_spend
     
     results = {"roster_updates": {}, "gems": [], "booster_bonus": 0, "spent": int(spent)}
     for pos in GameConfig.POSITIONS:
@@ -2642,8 +2634,11 @@ def show_postseason():
                 rng = game_rng(st.session_state.year, 20, opp, mode="PLAY")
                 res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, int(opp_data.get("OffOVR", 80)), int(opp_data.get("DefOVR", 80)), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off", "Pro Style"), "Def": opp_data.get("Def", "Man Coverage")}, st.session_state.game_plan, opp_data.get("Coaches", {"OC": 5, "DC": 5}), is_home=False, is_rival=False, my_stadium_level=st.session_state.facilities.get("Stadium", 7), opp_stadium_level=opp_data.get("Stadium", 9), rng=rng)
                 
-                try: my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
-                except: my_s, opp_s = 0, 0
+                try:
+                    my_s, opp_s = [int(x) for x in str(res.get("score","0-0")).split("-")]
+                except (ValueError, IndexError):
+                    # Default to 0-0 if score parsing fails
+                    my_s, opp_s = 0, 0
                 if user_match.get("t1") == st.session_state.team_name: user_match["s1"], user_match["s2"] = my_s, opp_s
                 else: user_match["s1"], user_match["s2"] = opp_s, my_s
 
