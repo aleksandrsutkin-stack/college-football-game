@@ -2967,7 +2967,7 @@ st.markdown("""
 
 init_session_state_defaults()
 render_system_sidebar()
-
+# ---
 if st.session_state.game_state == GameState.SETUP:
     run_setup()
 elif st.session_state.game_state == GameState.FIRED:
