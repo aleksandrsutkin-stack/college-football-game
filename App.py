@@ -714,17 +714,6 @@ def render_rankings_table_header() -> str:
         <div>Rank</div><div>Conf</div><div>Team</div><div>Record</div><div>Status</div>
     </div>
     """
-
-
-def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20) -> str:
-    if not history: return "<p style='text-align: center; color: #999;'>No dynasty history yet. Start your legend!</p>"
-    history = sorted(history, key=lambda x: x.get("Year", 0))
-    eras = detect_era_boundaries(history)
-    timeline_html = ""
-    for season in history[-max_years:]:
-        category = categorize_season(season.get("Record", "0-0"), season.get("PostseasonResult", ""))
-        timeline_html += render_timeline_node(season, category)
-    
     era_markers = ""
     for era in eras:
         era_markers += f"<div class='era-marker' style='background: linear-gradient(135deg, {era['color']} 0%, {era['color']}dd 100%);'>📅 {era['name']} ({era['start_year']}-{era['end_year']})</div>"
@@ -2410,8 +2399,8 @@ def show_dashboard():
         traits = [st.session_state.staff.get(r, {}).get('trait', 'None') for r in ["HC", "OC", "DC", "Scout"]]
         has_chemistry = len(set(traits) - {'None'}) >= 3
         if has_chemistry:
-            st.markdown("<div style='background:#fff3e0;border:2px dashed #ff9800;padding:8px;border-radius:8px;text-align:center;margin-top:10px;font-weight:bold;color:#e65100;'>✨ STAFF CHEMISTRY ACTIVE ✨<br>Your diverse coaching staff provides bonus recruiting!</div>", unsafe_allow_html=True)
-
+            st.markdown("<div style='background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);border:3px solid #ff9800;padding:15px;border-radius:12px;text-align:center;margin:15px 0;font-weight:bold;color:#e65100;box-shadow:0 4px 12px rgba(255,152,0,0.3);'>✨ STAFF CHEMISTRY ACTIVE ✨<br><span style='font-size:0.9em;font-weight:normal;'>Your diverse coaching staff provides bonus recruiting!</span></div>", unsafe_allow_html=True)
+            
         cols = st.columns(4)
         for i, role in enumerate(["HC", "OC", "DC", "Scout"]):
             with cols[i]:
