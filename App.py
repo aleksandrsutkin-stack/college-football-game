@@ -1769,14 +1769,14 @@ def compute_recruiting_class_grade():
     stars = st.session_state.get("stars", []) or []
     tier_points = 0; tier_counts = {1: 0, 2: 0, 3: 0}
     for p in nil:
-        if p.get("status") == "SIGNED":
-            tier = int(p.get("tier", 3)); tier_counts[tier] = tier_counts.get(tier, 0) + 1; tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
+    if p.get("status") == "SIGNED":
+    tier = int(p.get("tier", 3)); tier_counts[tier] = tier_counts.get(tier, 0) + 1; tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
     top8_commits = [r for r in top8 
-        if r.get("status") == "COMMITTED"]
+    if r.get("status") == "COMMITTED"]
     top8_points = len(top8_commits) * 10
     gem_count = 0
     for s in stars:
-        if "(GEM)" in str(s.get("name", "")): gem_count += 1
+    if "(GEM)" in str(s.get("name", "")): gem_count += 1
     gem_points = gem_count * 6
     score = tier_points + top8_points + gem_points
     if score >= 70: grade = "A+"
