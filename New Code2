@@ -1,16 +1,4 @@
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 1: CORE & ENGINE
 
-This file contains:
-- Configuration & Constants
-- Core Utilities
-- Factories (Opponent, UI Components)
-- Managers (Budget, Opponent)
-- Helper Functions
-- Game Engine
-- State Management
-"""
 
 import streamlit as st
 import random
@@ -819,17 +807,6 @@ def safe_json_default(obj):
     if isinstance(obj, set): return list(obj)
     if isinstance(obj, (datetime.date, datetime.datetime)): return obj.isoformat()
     return str(obj)
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 2: RECRUITING SYSTEM
-
-This file contains all recruiting functions from V1.7:
-- Retention Phase
-- NIL Recruiting
-- HS Outreach
-- Top-8 Battles
-- Recruiting Wrap
-"""
 
 # ==============================================================================
 # RECRUITING HELPER FUNCTIONS
@@ -1252,9 +1229,6 @@ def show_recruiting_wrap():
         st.session_state.recruiting_summary = None
         st.session_state.game_state = GameState.DASHBOARD
         st.rerun()
-"""
-MISSING HELPER FUNCTIONS - Add these after Part 2
-"""
 
 def render_news_box():
     with st.sidebar:
@@ -1536,27 +1510,13 @@ def init_playoff_bracket(user_rank, user_team_name):
         "Rank": int(ur),
         "SeedMap": seed_map
     }
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 5: VIEW FUNCTIONS
-
-This file contains all screen/view functions:
-- Setup
-- Dashboard  
-- Season End
-- Selection Sunday
-- Postseason
-- Season Recap
-- Fired
-- Retirement
-"""
 
 # ==============================================================================
 # SETUP SCREEN
 # ==============================================================================
 
 def run_setup():
-    st.title("🏆 Build the Program: CEO")
+    st.title("🏆 Build the Program: College Football CEO")
     st.markdown("### Dynasty Mode Setup")
     c1, c2 = st.columns(2)
     name = c1.text_input("AD Name", st.session_state.get("ad_name", "Coach Prime"))
@@ -2045,12 +2005,6 @@ def show_retirement():
     render_trophy_gallery()
     if st.button("Start New Dynasty"):
         st.session_state.clear(); st.rerun()
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 6: OFFSEASON HANDLER
-
-This is the master offseason controller that routes through all 4 recruiting phases.
-"""
 
 def show_offseason():
     """Master offseason controller - routes through retention, NIL, HS outreach, and Top-8"""
@@ -2162,15 +2116,6 @@ def show_offseason():
             # Move to recruiting wrap screen
             st.session_state.game_state = GameState.RECRUITING_WRAP
             st.rerun()
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 7: ROUTER & INITIALIZATION
-
-This contains:
-- Initialization
-- Main game router
-- System sidebar with save/load
-"""
 
 # ==============================================================================
 # SYSTEM SIDEBAR (Save/Load)
