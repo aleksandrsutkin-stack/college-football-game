@@ -814,6 +814,51 @@ def render_legacy_report_card(grade: str, score: int, percentile: int) -> str:
     label = grade_labels.get(grade, "Career Complete")
     html = f"<div class='legacy-report-card'><h2 style='margin-bottom: 10px;'>Legacy Report Card</h2><div class='report-card-grade'>{grade}</div><div style='font-size: 1.5em; font-weight: bold; color: #f57f17; margin: 10px 0;'>{label}</div><div style='font-size: 1.2em; color: #666; margin: 5px 0;'>Career Score: <strong>{score}</strong></div><div class='percentile-badge'>Top {100 - percentile}% of All-Time Coaches</div></div>"
     return html
+def render_trophy_shelf(shelf_name: str, trophies: List[Dict], max_display: int = 8, show_empty: bool = True) -> str:
+    """Render a 3D trophy shelf display with trophies organized by category."""
+    category_data = GameConfig.TROPHY_CATEGORIES.get(shelf_name, {
+        "icon": "🏆", 
+        "color": "#FFD700", 
+        "empty_text": "Earn Trophy",
+        "track_key": "titles"
+    })
+    
+    trophy_html = ""
+    
+    # Render earned trophies
+    for trophy in trophies[:max_display]:
+        year = trophy.get("Year", "????")
+        icon = trophy.get("Icon", category_data["icon"])
+        name = trophy.get("Name", shelf_name)
+        icon_class = "trophy-icon-national" if "National" in shelf_name or "Championship" in name else "trophy-icon"
+        trophy_html += f"""
+        <div class='trophy-item' title='{name} - {year}'>
+            <div class='{icon_class}'>{icon}</div>
+            <div class='trophy-label'>{name}</div>
+            <div class='trophy-year'>{year}</div>
+        </div>
+        """
+    
+    # Render empty trophy slots
+    if show_empty:
+        empty_count = max(0, max_display - len(trophies))
+        for _ in range(empty_count):
+            trophy_html += f"""
+            <div class='trophy-item trophy-empty' title='{category_data["empty_text"]}'>
+                <div class='trophy-icon'>{category_data["icon"]}</div>
+                <div class='trophy-label'>???</div>
+                <div class='trophy-year'>????</div>
+            </div>
+            """
+    
+    # Build complete shelf HTML
+    html = f"""
+    <div class='trophy-shelf'>
+        <div class='trophy-shelf-title'>{shelf_name} ({len(trophies)})</div>
+        <div class='trophy-display'>{trophy_html}</div>
+    </div>
+    """
+    return html
 
 # ==============================================================================
 # UI COMPONENTS
