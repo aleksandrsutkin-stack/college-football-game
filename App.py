@@ -1,16 +1,3 @@
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 1: CORE & ENGINE
-
-This file contains:
-- Configuration & Constants
-- Core Utilities
-- Factories (Opponent, UI Components)
-- Managers (Budget, Opponent)
-- Helper Functions
-- Game Engine
-- State Management
-"""
 
 import streamlit as st
 import random
