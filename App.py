@@ -2965,9 +2965,13 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
+# Initialize the session state and render the system sidebar
 init_session_state_defaults()
 render_system_sidebar()
+
 # ---
+# Function definitions for each game state must be declared beforehand and **not nested** inside any conditional blocks.
+# Run `run_setup()` inside the `if` block and **keep function declarations separate.**
 if st.session_state.game_state == GameState.SETUP:
     run_setup()
 elif st.session_state.game_state == GameState.FIRED:
@@ -2989,5 +2993,6 @@ elif st.session_state.game_state == GameState.RECRUITING_WRAP:
 elif st.session_state.game_state == GameState.RETIREMENT:
     show_retirement()
 else:
+    # If the game state is invalid or missing, default back to the dashboard.
     st.session_state.game_state = GameState.DASHBOARD
     st.rerun()
