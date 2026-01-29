@@ -1,12 +1,6 @@
 """
 Build the Program: College Football CEO
 VERSION 4.1 (The Ultimate UI Update)
-
-Audit Log:
-- MERGE: Combined V3.0 Logic (Hard Mode, Scheduling, Bug Fixes) with V2.9 UI Suite.
-- VISUALS: Added Trading Cards (NIL), Interest Meters (Top 8), 3D Trophy Case, and Mount Rushmore.
-- STABILITY: Preserved V3.0 Native Column fixes for Game Results to prevent rendering errors.
-- DATA: Retained V2.3 Expanded Team Database (65+ teams).
 """
 
 import streamlit as st
@@ -713,97 +707,6 @@ def render_rankings_table_header() -> str:
     </div>
     """
 
-def initialize_trophy_tracking():
-    if "trophy_stats" not in st.session_state:
-        st.session_state.trophy_stats = {
-            "titles": 0, "cfp_appearances": 0, "perfect_seasons": 0, "bowl_wins": 0,
-            "ten_win_seasons": 0, "conf_titles": 0, "rivalry_wins": 0, "top5_finishes": 0
-        }
-
-def render_trophy_shelf(shelf_name: str, trophies: List[Dict], max_display: int = 8, show_empty: bool = True) -> str:
-    category_data = GameConfig.TROPHY_CATEGORIES.get(shelf_name, {"icon": "🏆", "color": "#FFD700", "empty_text": "Earn Trophy"})
-    trophy_html = ""
-    for trophy in trophies[:max_display]:
-        year = trophy.get("Year", "????")
-        icon = trophy.get("Icon", category_data["icon"])
-        name = trophy.get("Name", shelf_name)
-        icon_class = "trophy-icon-national" if "National" in shelf_name or "Championship" in name else "trophy-icon"
-        trophy_html += f"<div class='trophy-item' title='{name} - {year}'><div class='{icon_class}'>{icon}</div><div class='trophy-label'>{name}</div><div class='trophy-year'>{year}</div></div>"
-    
-    if show_empty:
-        empty_count = max(0, max_display - len(trophies))
-        for _ in range(empty_count):
-            trophy_html += f"<div class='trophy-item trophy-empty' title='{category_data['empty_text']}'><div class='trophy-icon'>{category_data['icon']}</div><div class='trophy-label'>???</div><div class='trophy-year'>????</div></div>"
-    
-    html = f"<div class='trophy-shelf'><div class='trophy-shelf-title'>{shelf_name} ({len(trophies)})</div><div class='trophy-display'>{trophy_html}</div></div>"
-    return html
-
-def organize_trophies_by_category(all_trophies: List[Dict]) -> Dict[str, List[Dict]]:
-    categories = {cat: [] for cat in GameConfig.TROPHY_CATEGORIES.keys()}
-    for trophy in all_trophies:
-        name = trophy.get("Name", "")
-        if "National" in name or "Championship" in name: categories["National Championships"].append(trophy)
-        elif "CFP" in name or "Playoff" in name: categories["CFP Appearances"].append(trophy)
-        elif "Bowl" in name: categories["Bowl Victories"].append(trophy)
-        elif "Perfect" in name: categories["Perfect Seasons"].append(trophy)
-        elif "Conference" in name: categories["Conference Titles"].append(trophy)
-    return categories
-
-def categorize_season(record: str, postseason: str) -> str:
-    try:
-        wins, losses = map(int, record.split('-'))
-        if "TITLE" in postseason or "CHAMPIONSHIP" in postseason: return "championship"
-        elif wins >= 10: return "win"
-        else: return "loss"
-    except: return "loss"
-
-def detect_era_boundaries(history: List[Dict]) -> List[Dict]:
-    if len(history) < 3: return []
-    eras = []
-    current_era = None
-    for i, season in enumerate(history):
-        category = categorize_season(season.get("Record", "0-0"), season.get("PostseasonResult", ""))
-        if category == "championship":
-            if current_era and current_era["type"] != "dynasty": eras.append(current_era)
-            current_era = {"name": "Dynasty Peak", "type": "dynasty", "start_year": season.get("Year"), "end_year": season.get("Year"), "color": "#FFD700"}
-        elif current_era is None:
-            current_era = {"name": "The Rebuild", "type": "rebuild", "start_year": season.get("Year"), "end_year": season.get("Year"), "color": "#2196F3"}
-        else:
-            current_era["end_year"] = season.get("Year")
-    if current_era: eras.append(current_era)
-    return eras
-
-def render_timeline_node(season: Dict, category: str) -> str:
-    year = season.get("Year", "????")
-    record = season.get("Record", "?-?")
-    rank = season.get("Rank", "NR")
-    bowl = season.get("Bowl", "None")
-    result = season.get("PostseasonResult", "")
-    
-    dot_class = "timeline-dot"
-    if category == "championship": dot_class += " timeline-dot-championship"
-    elif category == "win": dot_class += " timeline-dot-win"
-    else: dot_class += " timeline-dot-loss"
-    
-    achievements = []
-    if "TITLE" in result or "CHAMPIONSHIP" in result: achievements.append("<span class='timeline-achievement'>🏆 National Champs</span>")
-    if "CFP" in result: achievements.append("<span class='timeline-achievement'>⚔️ CFP Appearance</span>")
-    if record.endswith("-0"): achievements.append("<span class='timeline-achievement'>💯 Perfect Season</span>")
-    
-    achievements_html = " ".join(achievements) if achievements else ""
-    
-    html = f"""
-    <div class='timeline-node'>
-        <div class='{dot_class}'></div>
-        <div class='timeline-content'>
-            <div class='timeline-year'>Year {year}</div>
-            <div class='timeline-record'><strong>{record}</strong> • Rank {rank}</div>
-            <div style='font-size: 0.85em; color: #666; margin-top: 5px;'>{bowl}</div>
-            {achievements_html}
-        </div>
-    </div>
-    """
-    return html
 
 def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20) -> str:
     if not history: return "<p style='text-align: center; color: #999;'>No dynasty history yet. Start your legend!</p>"
@@ -1855,18 +1758,22 @@ def top8_commit_chance(recruit: dict, spend_by_pos: dict, staff: dict, prestige:
     return max(0.05, min(0.80, chance))
 
 def compute_recruiting_class_grade():
-    nil = st.session_state.get("nil_class", []) or []
-    top8 = st.session_state.get("top8", []) or []
-    stars = st.session_state.get("stars", []) or []
-    tier_points = 0; tier_counts = {1: 0, 2: 0, 3: 0}
     for p in nil:
         if p.get("status") == "SIGNED":
-            tier = int(p.get("tier", 3)); tier_counts[tier] = tier_counts.get(tier, 0) + 1; tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
-    top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
-    top8_points = len(top8_commits) * 10
-    gem_count = 0
-    for s in stars:
-        if "(GEM)" in str(s.get("name", "")): gem_count += 1
+            tier = int(p.get("tier", 3))
+            tier_counts[tier] = tier_counts.get(tier, 0) + 1
+            tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
+        for p in nil:
+        if p.get("status") == "SIGNED":
+            tier = int(p.get("tier", 3))
+            tier_counts[tier] = tier_counts.get(tier, 0) + 1
+            tier_points += {1: 12, 2: 7, 3: 3}.get(tier, 3)
+        if r.get("status") == "COMMITTED"]
+           top8_commits = [r for r in top8 if r.get("status") == "COMMITTED"]
+           top8_points = len(top8_commits) * 10
+            gem_count = 0
+        for s in stars:
+    if "(GEM)" in str(s.get("name", "")): gem_count += 1
     gem_points = gem_count * 6
     score = tier_points + top8_points + gem_points
     if score >= 70: grade = "A+"
@@ -2122,14 +2029,36 @@ def show_offseason_top8_v8():
                 r["offer"] = int(offer)
                 
                 st.divider()
-                
-                if r.get("status") == "COMMITTED":
-                    st.success("✅ COMMITTED")
-                elif r.get("status") == "LOST":
-                    st.error("❌ LOST")
-                else:
-                    disabled = already or r["offer"] <= 0
-                    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
+   if r.get("status") == "COMMITTED":
+    st.success("✅ COMMITTED")
+elif r.get("status") == "LOST":
+    st.error("❌ LOST")
+else:
+    disabled = already or r["offer"] <= 0
+    if st.button("Make Pitch", key=f"pitch_{rid}", disabled=disabled, use_container_width=True, type="primary"):
+        if not validate_budget_input(r["offer"], BudgetManager.get_current(), f"recruit {r['name']}"):
+            st.error("Cannot afford this offer!")
+        else:
+            chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
+            if random.random() < chance:
+                BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
+                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
+                r["status"] = "COMMITTED"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
+                sync_team_ratings()
+                safe_toast(f"✅ COMMITTED: {r['name']}")
+                st.rerun()
+            else:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
+                safe_toast(f"❌ LOST: {r['name']}")
+                st.rerun()
+    st.divider()
+    if st.button("Finish Top-8 & Continue →", type="primary"):
+        st.session_state.offseason_step = 5
+        st.rerun()
 
 # ==============================================================================
 # MAIN VIEW CONTROLLERS
@@ -2862,10 +2791,9 @@ def show_fired():
         st.session_state.clear(); st.rerun()
 
 def show_retirement():
-    # V2.8: Fixed missing unsafe_allow_html=True
     st.markdown(UIComponents.gradient_header("HALL OF FAME CEREMONY", "Congratulations on a legendary career"), unsafe_allow_html=True)
     
-    # 1. Stats and Ranking
+    # 1. Career Stats Summary
     st.subheader("🐐 The GOAT Debate")
     my_stats = {
         "Name": f"{st.session_state.get('ad_name','You')} (You)", 
@@ -2875,39 +2803,36 @@ def show_retirement():
         "BowlWins": st.session_state.career_stats['bowl_w']
     }
     
-    # Combine user with legends
+    # Combine with legends
     all_coaches = GameConfig.LEGENDS + [my_stats]
     all_coaches.sort(key=lambda x: (x["Titles"], x["Wins"]), reverse=True)
     user_rank = next((i+1 for i, c in enumerate(all_coaches) if c["Name"] == my_stats["Name"]), 99)
     
-    # V2.8: Calculate Career Grade
+    # Calculate final grade
     score = (my_stats["Titles"] * 50) + (my_stats["Wins"] * 2) + (my_stats["BowlWins"] * 5)
-    if score > 500: grade = "S"; label = "🐐 GOAT STATUS"; st.balloons()
-    elif score > 300: grade = "A"; label = "🏛️ LEGEND"; st.balloons()
-    elif score > 150: grade = "B"; label = "⭐ GREAT"; st.snow()
-    elif score > 80: grade = "C"; label = "✅ GOOD"; st.snow()
-    else: grade = "D"; label = "😐 AVERAGE"; st.snow()
-
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        st.metric("Final Rank", f"#{user_rank} All-Time")
-        st.metric("Career Score", score)
-        st.markdown(f"### Grade: {grade}")
-        st.caption(label)
+    if score > 500: grade = "S"; st.balloons()
+    elif score > 300: grade = "A"; st.balloons()
+    elif score > 150: grade = "B"; st.snow()
+    elif score > 80: grade = "C"; st.snow()
+    else: grade = "D"
     
-    with c2:
-        # V2.8: Visual Bar Chart
-        chart_data = pd.DataFrame(all_coaches[:5]) # Top 5 + User if not in top 5? Simplification: Just top 8-10.
-        if user_rank > 5:
-             # Ensure user is in the chart data
-             chart_data = pd.concat([chart_data, pd.DataFrame([my_stats])])
-        
-        st.caption("Career National Titles Comparison")
-        st.bar_chart(chart_data, x="Name", y="Titles", color="#FFD700")
-
+    # V2.9: MOUNT RUSHMORE
+    top_4 = all_coaches[:4]
+    percentile = calculate_percentile(score, all_coaches)
+    st.markdown(render_mount_rushmore(top_4, my_stats, user_rank), unsafe_allow_html=True)
     st.divider()
     
-    # 2. Table Data
+    # V2.9: CAREER HIGHLIGHTS
+    highlights = generate_career_highlights(st.session_state.history, st.session_state.career_stats)
+    st.markdown(render_career_highlights_carousel(highlights), unsafe_allow_html=True)
+    st.divider()
+    
+    # V2.9: LEGACY REPORT CARD
+    st.markdown(render_legacy_report_card(grade, score, percentile), unsafe_allow_html=True)
+    st.divider()
+    
+    # All-Time Rankings Table
+    st.subheader("📊 All-Time Coaching Rankings")
     table_data = []
     for i, c in enumerate(all_coaches):
         table_data.append({
@@ -2923,8 +2848,8 @@ def show_retirement():
     render_trophy_gallery("🏆 Your Trophy Case")
     
     if st.button("Start New Dynasty", type="primary"):
-        st.session_state.clear(); st.rerun()
-
+        st.session_state.clear()
+        st.rerun()
 # ==============================================================================
 # MAIN ROUTER & SAVE SYSTEM
 # ==============================================================================
@@ -2935,7 +2860,7 @@ def render_system_sidebar():
         st.caption(f"Version {STATE_VERSION}")
         if st.button("Export Save File"):
             state_copy = dict(st.session_state)
-            if "top8_resolved" in state_copy: 
+            if "top8_resolved" in state_copy:
                 state_copy["top8_resolved"] = list(state_copy["top8_resolved"])
             export_data = {k: v for k, v in state_copy.items() if k in ALLOWED_SAVE_KEYS}
             json_str = json.dumps(export_data, default=safe_json_default)
@@ -2965,9 +2890,13 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
+# Initialize the session state and render the system sidebar
 init_session_state_defaults()
 render_system_sidebar()
 
+# ---
+# Function definitions for each game state must be declared beforehand and **not nested** inside any conditional blocks.
+# Run `run_setup()` inside the `if` block and **keep function declarations separate.**
 if st.session_state.game_state == GameState.SETUP:
     run_setup()
 elif st.session_state.game_state == GameState.FIRED:
@@ -2989,5 +2918,6 @@ elif st.session_state.game_state == GameState.RECRUITING_WRAP:
 elif st.session_state.game_state == GameState.RETIREMENT:
     show_retirement()
 else:
+    # If the game state is invalid or missing, default back to the dashboard.
     st.session_state.game_state = GameState.DASHBOARD
     st.rerun()
