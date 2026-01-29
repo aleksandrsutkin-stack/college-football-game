@@ -1,11 +1,13 @@
 """
 Build the Program: College Football CEO
-VERSION 2.5 (The Championship Fix)
+VERSION 2.6 (The Stability & UX Update)
 
 Audit Log:
-- Critical Fix: Solved "Infinite Loop" after winning National Title by adding a dedicated Round 5 state.
-- UI: Fully confirmed V2.4 UI (Gradient Headers, Hero Cards, Detailed Game Results) is present.
-- Data: Confirmed V2.3 Hard Mode Ratings (Tier 1 = 98 OVR) are present.
+- UI Fix: 'Season End' game logs now use native Streamlit columns to prevent HTML rendering errors.
+- Feature Restore: 'Promote GA' button now appears immediately in empty staff slots.
+- Feature Add: 'Universe Report' added to Offseason transition to track rival evolution.
+- UX Fix: Auto-scroll to top on state change.
+- Base: V2.5 (Championship Fix + Hard Mode Data).
 """
 
 import streamlit as st
@@ -22,7 +24,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 2.5
+STATE_VERSION = 2.6
 
 class GameState:
     SETUP = "SETUP"
@@ -328,7 +330,7 @@ def render_news_box():
             st.caption("No headlines yet.")
             return
         
-        good_keys = ["win", "wins", "advances", "upgrade", "signs", "committed", "found", "promotes", "hires"]
+        good_keys = ["win", "wins", "advances", "upgrade", "signs", "committed", "found", "promotes", "hires", "universe update"]
         bad_keys = ["lose", "loses", "falls", "eliminated", "fired", "pressure", "overdraft"]
         
         for it in items[:15]:
@@ -511,10 +513,15 @@ class OpponentManager:
     @staticmethod
     def evolve_universe() -> None:
         if "opponents_db" not in st.session_state: return
+        
+        movers = []
         for team, data in st.session_state.opponents_db.items():
             base_ovr = safe_int(data.get("OVR", 75), 75)
             wins = int((base_ovr / 105) * 12) + random.randint(-3, 3) 
             wins = max(0, min(12, wins))
+            
+            old_pres = safe_int(data.get("Prestige", 60), 60)
+            
             evolved = OpponentFactory.create_opponent(team, context="EVOLVE", performance_data={"wins": wins})
             data["Prestige"] = evolved["Prestige"]; data["OVR"] = evolved["OVR"]
             
@@ -523,6 +530,15 @@ class OpponentManager:
             else: data["Coaches"] = evolved["Coaches"]
             
             if random.random() < 0.35: data.pop("OffOVR", None); data.pop("DefOVR", None)
+            
+            diff = data["Prestige"] - old_pres
+            if abs(diff) >= 3:
+                movers.append(f"{team} ({'+' if diff>0 else ''}{diff})")
+        
+        if movers:
+            # Show top 3 movers
+            report = ", ".join(movers[:3])
+            add_news(f"Universe Report: {report}")
 
 class OpponentFactory:
     @staticmethod
@@ -1587,7 +1603,14 @@ def show_dashboard():
                         del st.session_state.staff[role]
                         add_news(f"Fired {role} {c['name']}")
                         st.rerun()
-                else: st.warning(f"{role} VACANT")
+                else: 
+                    # FIX: Show "Promote GA" immediately for vacancies
+                    st.warning(f"{role} VACANT")
+                    if st.button(f"Promote GA (Free)", key=f"quick_ga_{role}"):
+                        ga = generate_ga_coach(role)
+                        st.session_state.staff[role] = ga
+                        add_news(f"Promoted {ga['name']} to {role}")
+                        st.rerun()
         
         st.divider()
         st.markdown("### 📋 Job Market")
@@ -1702,7 +1725,6 @@ def show_dashboard():
                 if played:
                     is_win = played["Score"].startswith("W")
                     css = "game-card-win" if is_win else "game-card-loss"
-                    # Fixed V2.4: Show detailed stats on dashboard too
                     st.markdown(UIComponents.game_result_card(i+1, f"{opp} ({played.get('OppOVR','?')})", played['Score'], is_win, stats=played.get('Stats')), unsafe_allow_html=True)
                 else:
                     css = "game-card-rival" if opp==st.session_state.team_rival else "game-card-pending"
@@ -1747,7 +1769,23 @@ def show_season_end():
         is_win = score.startswith("W")
         stats = log.get("Stats")
         opp_ovr = log.get("OppOVR", "?")
-        st.markdown(UIComponents.game_result_card(wk, f"{opp} ({opp_ovr})", score, is_win, is_rival=(opp == st.session_state.team_rival), stats=stats), unsafe_allow_html=True)
+        
+        # FIX: Replaced broken HTML with Native Streamlit Columns
+        with st.container():
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                st.markdown(f"**Week {wk} vs {opp} ({opp_ovr})**")
+                st.markdown(f"### {score}")
+                st.markdown("✅ WIN" if is_win else "❌ LOSS")
+            with col2:
+                if stats:
+                    s_grid = pd.DataFrame([
+                        {"Metric": "🔥 QB Duel", "Value": f"{stats['qb_duel'][0]} vs {stats['qb_duel'][1]}"},
+                        {"Metric": "⚔️ OFF vs DEF", "Value": f"{stats['off_vs_def'][0]} vs {stats['off_vs_def'][1]}"},
+                        {"Metric": "🛡️ DEF vs OFF", "Value": f"{stats['def_vs_off'][0]} vs {stats['def_vs_off'][1]}"},
+                    ])
+                    st.dataframe(s_grid, hide_index=True, use_container_width=True)
+            st.divider()
 
     st.divider(); c1, c2 = st.columns(2)
     if c1.button("Enter Selection Sunday (Reveal Rankings) 🏆", type="primary"):
@@ -1889,7 +1927,6 @@ def show_postseason():
                 st.rerun()
             return
             
-        # V2.5: Dedicated "Round 5" for post-championship celebration
         if round_num == 5:
              st.balloons()
              st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
@@ -2170,6 +2207,14 @@ def render_system_sidebar():
                 st.error(f"Error loading save: {e}")
         
         render_news_box()
+
+# --- V2.6: Auto-Scroll Fix via JS ---
+st.markdown("""
+<script>
+    var body = window.parent.document.querySelector(".main");
+    body.scrollTop = 0;
+</script>
+""", unsafe_allow_html=True)
 
 init_session_state_defaults()
 render_system_sidebar()
