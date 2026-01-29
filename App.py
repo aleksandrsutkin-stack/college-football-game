@@ -1239,9 +1239,6 @@ def show_recruiting_wrap():
         st.session_state.recruiting_summary = None
         st.session_state.game_state = GameState.DASHBOARD
         st.rerun()
-"""
-MISSING HELPER FUNCTIONS - Add these after Part 2
-"""
 
 def render_news_box():
     with st.sidebar:
@@ -1523,20 +1520,6 @@ def init_playoff_bracket(user_rank, user_team_name):
         "Rank": int(ur),
         "SeedMap": seed_map
     }
-"""
-Build the Program: College Football CEO
-MERGED VERSION 2.1 - PART 5: VIEW FUNCTIONS
-
-This file contains all screen/view functions:
-- Setup
-- Dashboard  
-- Season End
-- Selection Sunday
-- Postseason
-- Season Recap
-- Fired
-- Retirement
-"""
 
 # ==============================================================================
 # SETUP SCREEN
