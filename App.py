@@ -320,6 +320,33 @@ st.markdown("""
     font-size: 1.2em;
     text-shadow: 0 0 4px rgba(255, 215, 0, 0.6);
 }
+
+/* GAME CARD STATES */
+.game-card { background: white; border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; margin-bottom: 12px; }
+.game-card-win { background: linear-gradient(145deg, #e8f5e9 0%, #f1f8e9 100%); border: 2px solid #4CAF50; }
+.game-card-loss { background: linear-gradient(145deg, #ffebee 0%, #fff3e0 100%); border: 2px solid #f44336; }
+.game-card-rival { background: linear-gradient(145deg, #fff3e0 0%, #ffe0b2 100%); border: 3px solid #ff9800; box-shadow: 0 0 12px rgba(255, 152, 0, 0.4); }
+.game-card-pending { background: linear-gradient(145deg, #e3f2fd 0%, #e8eaf6 100%); border: 2px dashed #2196f3; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: bold; font-size: 1.1em; }
+
+/* RESUME BOX & GRID */
+.resume-box { background: white; border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.resume-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
+.resume-item { padding: 15px; background: #f5f5f5; border-radius: 8px; border-left: 4px solid #2196f3; }
+.resume-label { font-size: 0.85em; color: #666; margin-bottom: 5px; }
+.resume-value { font-size: 1.3em; font-weight: bold; color: #333; }
+
+/* RANK & TREND INDICATORS */
+.rank-num { font-weight: bold; font-size: 1.1em; }
+.rank-team { font-weight: bold; }
+.rank-rec { text-align: center; }
+.rank-status { font-weight: bold; text-align: center; }
+.bubble-warning { color: #ff9800; animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.trend-arrow { margin-left: 5px; font-size: 0.9em; }
+.trend-up { color: #4CAF50; }
+.trend-down { color: #f44336; }
+.rivalry-trophy { background: #fff3e0; border: 2px solid #ff9800; padding: 8px 12px; border-radius: 8px; margin-top: 10px; font-size: 0.9em; color: #e65100; text-align: center; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -477,6 +504,21 @@ def get_next_unlock(facility_type: str, current_level: int) -> str:
     else: return f"Level {next_level}: Continued Improvements"
 
 def render_enhanced_facility_card(facility_type: str, current_level: int, max_level: int = 10) -> str:
+    """Render a facility card with input validation."""
+    # Input validation
+    if not isinstance(facility_type, str) or not facility_type:
+        facility_type = "Unknown"
+    
+    try:
+        current_level = int(current_level)
+        max_level = int(max_level)
+        # Ensure current_level is within valid range
+        current_level = max(0, min(current_level, max_level))
+        max_level = max(1, max_level)  # Ensure max_level is at least 1
+    except (ValueError, TypeError):
+        current_level = 0
+        max_level = 10
+    
     visual = get_facility_visual(facility_type, current_level)
     next_unlock = get_next_unlock(facility_type, current_level)
     pips_html = ""
@@ -500,13 +542,35 @@ def get_position_color(pos: str) -> str:
     return colors.get(pos, "pos-QB")
 
 def render_nil_prospect_card(prospect: dict, is_need: bool = False) -> str:
-    tier = prospect.get('tier', 3)
-    name = prospect.get('name', 'Unknown')
-    pos = prospect.get('pos', 'QB')
-    rating = prospect.get('rating', 75)
-    ask = prospect.get('ask', 1000000)
-    trait = prospect.get('trait', '⭐')
-    status = prospect.get('status', 'AVAILABLE')
+    """Render a NIL prospect card with input validation."""
+    # Input validation
+    if not isinstance(prospect, dict):
+        prospect = {}
+    
+    # Extract and validate data with safe defaults
+    try:
+        tier = int(prospect.get('tier', 3))
+        tier = max(1, min(3, tier))  # Clamp to valid range 1-3
+    except (ValueError, TypeError):
+        tier = 3
+    
+    name = str(prospect.get('name', 'Unknown'))
+    pos = str(prospect.get('pos', 'QB'))
+    
+    try:
+        rating = int(prospect.get('rating', 75))
+        rating = max(0, min(99, rating))  # Clamp to valid range
+    except (ValueError, TypeError):
+        rating = 75
+    
+    try:
+        ask = float(prospect.get('ask', 1000000))
+        ask = max(0, ask)
+    except (ValueError, TypeError):
+        ask = 1000000
+    
+    trait = str(prospect.get('trait', '⭐'))
+    status = str(prospect.get('status', 'AVAILABLE'))
     
     tier_class = f"nil-card-tier{tier}"
     medal_class = ["medal-gold", "medal-silver", "medal-bronze"][tier - 1]
@@ -532,22 +596,27 @@ def render_nil_prospect_card(prospect: dict, is_need: bool = False) -> str:
     """
     return html
 
-def render_nil_filter_buttons() -> str:
-    html = """
-    <div style='display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;'>
-        <button style='background: #FFD700; color: #333; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer;'>🥇 Tier 1</button>
-        <button style='background: #C0C0C0; color: #333; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer;'>🥈 Tier 2</button>
-        <button style='background: #CD7F32; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer;'>🥉 Tier 3</button>
-        <button style='background: #2196f3; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer;'>🎯 Needs Only</button>
-        <button style='background: #4caf50; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer;'>✅ Available</button>
-    </div>
-    """
-    return html
-
 def render_interest_meter(recruit: dict, chance: float, spend_by_pos: dict) -> str:
+    """Render an interest meter for a recruit with input validation."""
+    # Input validation
+    if not isinstance(recruit, dict):
+        recruit = {}
+    if not isinstance(chance, (int, float)):
+        chance = 0.0
+    # Clamp chance to valid range
+    chance = max(0.0, min(1.0, float(chance)))
+    
     pos = recruit.get('pos', 'QB')
     offer = recruit.get('offer', 0)
     ask = recruit.get('ask', 1_000_000)
+    
+    # Ensure numeric values
+    try:
+        offer = float(offer)
+        ask = max(1, float(ask))  # Prevent division by zero
+    except (ValueError, TypeError):
+        offer = 0
+        ask = 1_000_000
     
     interest_pct = int(chance * 100)
     if interest_pct >= 70:
@@ -588,8 +657,29 @@ def get_weather_icon() -> str:
     return random.choice(weather)
 
 def render_game_preview_card(week: int, opponent: str, opp_data: dict, user_off: int, user_def: int, is_rival: bool = False) -> str:
-    opp_off = opp_data.get('OffOVR', 75)
-    opp_def = opp_data.get('DefOVR', 75)
+    """Render a game preview card with input validation."""
+    # Input validation
+    if not isinstance(opp_data, dict):
+        opp_data = {}
+    
+    try:
+        week = int(week)
+        user_off = int(user_off)
+        user_def = int(user_def)
+    except (ValueError, TypeError):
+        week = 1
+        user_off = 75
+        user_def = 75
+    
+    if not isinstance(opponent, str) or not opponent:
+        opponent = "Unknown"
+    
+    try:
+        opp_off = int(opp_data.get('OffOVR', 75))
+        opp_def = int(opp_data.get('DefOVR', 75))
+    except (ValueError, TypeError):
+        opp_off = 75
+        opp_def = 75
     
     user_off_advantage = user_off - opp_def
     user_def_advantage = user_def - opp_off
@@ -607,7 +697,16 @@ def render_game_preview_card(week: int, opponent: str, opp_data: dict, user_off:
         rivalry_html = f"<div class='rivalry-trophy'>🏆 <strong>{trophy}</strong> on the line!</div>"
     
     def create_matchup_bar(user_val: int, opp_val: int) -> str:
-        total = max(1, user_val + opp_val)
+        """Create a matchup bar with validation."""
+        # Ensure values are non-negative integers
+        try:
+            user_val = max(0, int(user_val))
+            opp_val = max(0, int(opp_val))
+        except (ValueError, TypeError):
+            user_val = 75
+            opp_val = 75
+        
+        total = max(1, user_val + opp_val)  # Prevent division by zero
         user_pct = (user_val / total) * 100
         color = "#4CAF50" if user_val > opp_val else "#f44336" if user_val < opp_val else "#ff9800"
         return f"<div class='matchup-bar'><div class='matchup-bar-fill' style='width: {user_pct}%; background: {color};'></div></div>"
@@ -638,17 +737,48 @@ def render_game_preview_card(week: int, opponent: str, opp_data: dict, user_off:
     return html
 
 def render_game_result_with_bars(week: int, opponent: str, score: str, is_win: bool, stats: dict) -> str:
+    """Render a game result card with input validation."""
+    # Input validation
+    if not isinstance(stats, dict):
+        stats = {}
+    if not isinstance(opponent, str) or not opponent:
+        opponent = "Unknown"
+    if not isinstance(score, str) or not score:
+        score = "0-0"
+    
     css_class = "game-card-win" if is_win else "game-card-loss"
+    
+    # Safely extract stats with defaults
     qb_duel = stats.get('qb_duel', [75, 75])
     off_vs_def = stats.get('off_vs_def', [75, 75])
     def_vs_off = stats.get('def_vs_off', [75, 75])
+    
+    # Validate stat arrays
+    if not isinstance(qb_duel, (list, tuple)) or len(qb_duel) < 2:
+        qb_duel = [75, 75]
+    if not isinstance(off_vs_def, (list, tuple)) or len(off_vs_def) < 2:
+        off_vs_def = [75, 75]
+    if not isinstance(def_vs_off, (list, tuple)) or len(def_vs_off) < 2:
+        def_vs_off = [75, 75]
     
     qb_mvp = "⭐" if qb_duel[0] > qb_duel[1] else ""
     off_mvp = "⭐" if off_vs_def[0] > off_vs_def[1] else ""
     def_mvp = "⭐" if def_vs_off[0] > def_vs_off[1] else ""
     
     def create_stat_bar(user_val: int, opp_val: int, label: str, user_mvp: str = "") -> str:
-        max_val = max(user_val, opp_val, 1)
+        """Create a stat comparison bar with validation."""
+        # Input validation
+        try:
+            user_val = max(0, int(user_val))
+            opp_val = max(0, int(opp_val))
+        except (ValueError, TypeError):
+            user_val = 75
+            opp_val = 75
+        
+        if not isinstance(label, str):
+            label = "Stat"
+        
+        max_val = max(user_val, opp_val, 1)  # Prevent division by zero
         user_pct = (user_val / max_val) * 100
         opp_pct = (opp_val / max_val) * 100
         return f"""
@@ -849,6 +979,23 @@ class UIComponents:
     
     @staticmethod
     def progress_bar_gradient(label: str, value: int, max_value: int = 100, team_color: str = "#2196F3") -> str:
+        """Render a progress bar with input validation."""
+        # Input validation
+        if not isinstance(label, str):
+            label = str(label) if label else "Progress"
+        
+        try:
+            value = int(value)
+            max_value = max(1, int(max_value))  # Prevent division by zero
+            value = max(0, value)  # Ensure value is non-negative
+        except (ValueError, TypeError):
+            value = 0
+            max_value = 100
+        
+        # Validate team_color is a string
+        if not isinstance(team_color, str) or not team_color:
+            team_color = "#2196F3"
+        
         pct = min(100, (value / max_value) * 100)
         return f"<div style='margin: 10px 0;'><div style='display: flex; justify-content: space-between; margin-bottom: 5px;'><span style='font-weight: bold;'>{label}</span><span>{value}/{max_value}</span></div><div style='background: #e0e0e0; height: 24px; border-radius: 12px; overflow: hidden;'><div style='width: {pct}%; height: 100%; background: {team_color}; transition: width 0.3s ease;'></div></div></div>"
     def star_rating(rating: int, max_stars: int = 10) -> str:
@@ -1513,11 +1660,25 @@ def detect_era_boundaries(history: List[Dict]) -> List[Dict]:
     return eras
 
 def render_timeline_node(season: Dict, category: str) -> str:
+    """Render a timeline node with input validation."""
+    # Input validation
+    if not isinstance(season, dict):
+        season = {}
+    if not isinstance(category, str):
+        category = "loss"
+    
     year = season.get("Year", "????")
     record = season.get("Record", "?-?")
     rank = season.get("Rank", "NR")
     bowl = season.get("Bowl", "None")
     result = season.get("PostseasonResult", "")
+    
+    # Validate string fields
+    year = str(year) if year else "????"
+    record = str(record) if record else "?-?"
+    rank = str(rank) if rank else "NR"
+    bowl = str(bowl) if bowl else "None"
+    result = str(result) if result else ""
     
     dot_class = "timeline-dot"
     if category == "championship": dot_class += " timeline-dot-championship"
