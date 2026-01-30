@@ -33,6 +33,7 @@ except ImportError:
 # ==============================================================================
 
 STATE_VERSION = 4.6
+NY6_BOWLS = ["Rose Bowl", "Sugar Bowl", "Orange Bowl", "Cotton Bowl", "Peach Bowl", "Fiesta Bowl"]
 
 class GameState:
     """Game state constants representing different screens/phases of the game."""
@@ -1683,6 +1684,7 @@ def render_cfp_bracket_tree(data: dict):
 .bracket-score{font-weight:bold;margin-left:10px;color:#666}
 .bracket-round-title{text-align:center;font-weight:bold;text-transform:uppercase;color:#666;margin-bottom:10px;font-size:0.9em;letter-spacing:1px}
 .bracket-bye{background:#E3F2FD;border:2px dashed #2196F3;color:#1976D2;font-style:italic;text-align:center}
+.bracket-bowl{font-size:0.75em;color:#666;text-align:center;margin-top:6px}
 </style>""", unsafe_allow_html=True)
     
     html = "<div class='bracket-container'>"
@@ -1694,7 +1696,9 @@ def render_cfp_bracket_tree(data: dict):
             cls = "bracket-matchup"
             if m.get("winner"): cls += " completed"
             if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
-            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div></div>"
+            bowl_display = m.get("bowl", "")
+            bowl_html = f"<div class='bracket-bowl'>🏟️ {bowl_display}</div>" if bowl_display and bowl_display != "On-Campus" else ""
+            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div>{bowl_html}</div>"
         
         html += "</div><div class='bracket-round'><div class='bracket-round-title'>Quarterfinals</div>"
         qf_seeds = data.get("QF_Seeds", seeds[:4])
@@ -1715,7 +1719,9 @@ def render_cfp_bracket_tree(data: dict):
             if m.get("winner"): cls += " completed"
             else: cls += " active"
             if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
-            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div></div>"
+            bowl_display = m.get("bowl", "")
+            bowl_html = f"<div class='bracket-bowl'>🏟️ {bowl_display}</div>" if bowl_display and bowl_display != "On-Campus" else ""
+            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div>{bowl_html}</div>"
         
         html += "</div><div class='bracket-round'><div class='bracket-round-title'>Semifinals</div>"
         html += "<div class='bracket-matchup' style='opacity:0.6;text-align:center;padding:20px;color:#999;'>Awaiting QF</div>" * 2
@@ -1730,7 +1736,9 @@ def render_cfp_bracket_tree(data: dict):
             if m.get("winner"): cls += " completed"
             else: cls += " active"
             if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
-            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div></div>"
+            bowl_display = m.get("bowl", "")
+            bowl_html = f"<div class='bracket-bowl'>🏟️ {bowl_display}</div>" if bowl_display and bowl_display != "On-Campus" else ""
+            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div>{bowl_html}</div>"
         
         html += "</div><div class='bracket-round'><div class='bracket-round-title'>National Championship</div>"
         html += "<div class='bracket-matchup active' style='padding:30px;text-align:center;'><div style='font-size:2em;'>🏆</div><div style='color:#666;margin-top:10px;'>Awaiting Semifinals</div></div></div>"
@@ -1772,13 +1780,27 @@ def init_playoff_bracket(user_rank, user_team_name):
         for i in range(len(top12)):
             if i != target_idx and top12[i] == user_team_name: top12[i] = "FCS East"
     
+    bowls = random.sample(NY6_BOWLS, 6)
+    qf_bowls = bowls[:4]
+    sf_bowls = bowls[4:]
     r1_matches = [
-        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
-        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
-        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9], "winner": None},
-        {"seed_high": 8, "seed_low": 9, "t1": top12[7], "t2": top12[8], "winner": None},
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None, "bowl": "On-Campus"},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None, "bowl": "On-Campus"},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9], "winner": None, "bowl": "On-Campus"},
+        {"seed_high": 8, "seed_low": 9, "t1": top12[7], "t2": top12[8], "winner": None, "bowl": "On-Campus"},
     ]
-    return {"Type": "CFP", "Round": 1, "Seeds": top12, "QF_Seeds": top12[:4], "Matches": r1_matches, "UserAlive": True, "Rank": int(ur), "SeedMap": seed_map}
+    return {
+        "Type": "CFP",
+        "Round": 1,
+        "Seeds": top12,
+        "QF_Seeds": top12[:4],
+        "Matches": r1_matches,
+        "QF_Bowls": qf_bowls,
+        "SF_Bowls": sf_bowls,
+        "UserAlive": True,
+        "Rank": int(ur),
+        "SeedMap": seed_map,
+    }
 
 def initialize_trophy_tracking():
     if "trophy_stats" not in st.session_state:
@@ -3101,11 +3123,12 @@ def show_postseason():
                     winners = [m["winner"] for m in matches]
                     qf_seeds = data.get("QF_Seeds", seeds[:4])
                     if len(winners) >= 4:
+                         qf_bowls = data.get("QF_Bowls", [])
                          new_matches = [
-                            {"t1": qf_seeds[0], "t2": winners[3], "winner": None}, # 1 vs 8/9
-                            {"t1": qf_seeds[3], "t2": winners[0], "winner": None}, # 4 vs 5/12
-                            {"t1": qf_seeds[2], "t2": winners[1], "winner": None}, # 3 vs 6/11
-                            {"t1": qf_seeds[1], "t2": winners[2], "winner": None}, # 2 vs 7/10
+                            {"t1": qf_seeds[0], "t2": winners[3], "winner": None, "bowl": qf_bowls[0] if len(qf_bowls) > 0 else ""}, # 1 vs 8/9
+                            {"t1": qf_seeds[3], "t2": winners[0], "winner": None, "bowl": qf_bowls[1] if len(qf_bowls) > 1 else ""}, # 4 vs 5/12
+                            {"t1": qf_seeds[2], "t2": winners[1], "winner": None, "bowl": qf_bowls[2] if len(qf_bowls) > 2 else ""}, # 3 vs 6/11
+                            {"t1": qf_seeds[1], "t2": winners[2], "winner": None, "bowl": qf_bowls[3] if len(qf_bowls) > 3 else ""}, # 2 vs 7/10
                          ]
 
                 st.session_state.postseason_data["Round"] = 2; st.session_state.postseason_data["Matches"] = new_matches; st.rerun()
@@ -3164,9 +3187,11 @@ def show_postseason():
                 winners = [m["winner"] for m in matches]
                 new_matches = []
                 if len(winners) >= 2:
+                    sf_bowls = data.get("SF_Bowls", [])
                     for i in range(0, len(winners), 2):
                         if i+1 < len(winners):
-                            new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None})
+                            bowl_name = sf_bowls[i // 2] if len(sf_bowls) > i // 2 else ""
+                            new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None, "bowl": bowl_name})
 
                 if not new_matches and round_num >= 4:
                     # If this was the Championship, move to Round 5 (Victory Lap)
