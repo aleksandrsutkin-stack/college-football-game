@@ -873,22 +873,6 @@ def render_rankings_table_header() -> str:
     """
 
 
-def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20) -> str:
-    if not history: return "<p style='text-align: center; color: #999;'>No dynasty history yet. Start your legend!</p>"
-    history = sorted(history, key=lambda x: x.get("Year", 0))
-    eras = detect_era_boundaries(history)
-    timeline_html = ""
-    for season in history[-max_years:]:
-        category = categorize_season(season.get("Record", "0-0"), season.get("PostseasonResult", ""))
-        timeline_html += render_timeline_node(season, category)
-    
-    era_markers = ""
-    for era in eras:
-        era_markers += f"<div class='era-marker' style='background: linear-gradient(135deg, {era['color']} 0%, {era['color']}dd 100%);'>📅 {era['name']} ({era['start_year']}-{era['end_year']})</div>"
-    
-    full_html = f"<div style='margin: 20px 0;'>{era_markers}<div class='timeline-container'><div class='timeline-line'></div>{timeline_html}</div></div>"
-    return full_html
-
 def calculate_percentile(user_score: int, all_coaches: List[Dict]) -> int:
     """
     Calculate the user's percentile rank among all coaches based on career score.
