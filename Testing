@@ -1004,6 +1004,46 @@ def render_trophy_shelf(shelf_name: str, trophies: List[Dict], max_display: int 
     """
     return html
 
+def play_week_game(week_index: int, opponent: str, opponent_data: dict, is_rival: bool, is_sim: bool = False) -> dict:
+    rng = game_rng(st.session_state.year, week_index + 1, opponent, "SIM" if is_sim else "PLAY")
+    res = engine_play_game_v8(
+        st.session_state.team_off,
+        st.session_state.team_def,
+        opponent_data.get("OffOVR"),
+        opponent_data.get("DefOVR"),
+        st.session_state.staff,
+        st.session_state.my_schemes,
+        {"Off": opponent_data.get("Off"), "Def": opponent_data.get("Def")},
+        st.session_state.game_plan,
+        opponent_data.get("Coaches"),
+        week_index % 2 == 0,
+        opponent == st.session_state.team_rival,
+        st.session_state.facilities["Stadium"],
+        opponent_data.get("Stadium"),
+        rng,
+    )
+    st.session_state.season_logs.append({
+        "Week": week_index + 1,
+        "Opponent": opponent,
+        "Score": f"{res['result']} {res['score']}",
+        "Stats": res["stats"],
+        "OppOVR": opponent_data.get("OVR"),
+    })
+    if res["result"] == "W":
+        st.session_state.record["w"] += 1
+        st.session_state.career_stats["w"] += 1
+        if not is_sim:
+            st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_rival else 2))
+            if is_rival:
+                st.session_state.trophy_stats["rivalry_wins"] += 1
+    else:
+        st.session_state.record["l"] += 1
+        st.session_state.career_stats["l"] += 1
+        if not is_sim:
+            st.session_state.job_security = max(0, st.session_state.job_security - 2)
+    st.session_state.week_index += 1
+    return res
+
 # ==============================================================================
 # UI COMPONENTS
 # ==============================================================================
@@ -2654,7 +2694,10 @@ def show_dashboard():
                     with cols[j]:
                         rtg = role_rating(cand, role)
                         vis = f"{rtg}" if cand.get("scouted") else get_letter_grade(rtg)
-                        st.markdown(f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>", unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>",
+                            unsafe_allow_html=True,
+                        )
                         b1, b2 = st.columns(2)
                         if b1.button("Hire", key=f"hire_{role}_{j}"):
                             if BudgetManager.spend(cand["salary"], f"Hire {role}"):
@@ -2664,7 +2707,8 @@ def show_dashboard():
                                 st.rerun()
                         if not cand.get("scouted") and b2.button("Scout", key=f"sc_{role}_{j}"):
                             if BudgetManager.spend(25000, "Scout Coach"):
-                                cand["scouted"] = True; st.rerun()
+                                cand["scouted"] = True
+                                st.rerun()
         else: st.info("No vacancies.")
 
     with tab3:
@@ -2712,20 +2756,7 @@ def show_dashboard():
             with c2:
                 st.markdown("Action")
                 if st.button(f"Play Week {wk+1}", type="primary", use_container_width=True, key=f"play_wk_{wk}"):
-                    rng = game_rng(st.session_state.year, wk+1, opp, "PLAY")
-                    res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
-                    
-                    st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
-                    if res["result"] == "W":
-                        st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                        st.session_state.job_security = min(100, st.session_state.job_security + (5 if opp==st.session_state.team_rival else 2))
-                        # V2.9 Track Rivalry
-                        if is_rival: st.session_state.trophy_stats["rivalry_wins"] += 1
-                    else:
-                        st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                        st.session_state.job_security = max(0, st.session_state.job_security - 2)
-                    
-                    st.session_state.week_index += 1
+                    play_week_game(wk, opp, opp_data, is_rival, is_sim=False)
                     if st.session_state.week_index >= 12: end_regular_season_and_stay_on_results()
                     st.rerun()
             with c3:
@@ -2735,14 +2766,7 @@ def show_dashboard():
                         wk = st.session_state.week_index
                         opp = sched[wk]
                         opp_data = OpponentManager.get(opp)
-                        rng = game_rng(st.session_state.year, wk+1, opp, "SIM")
-                        res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
-                        st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
-                        if res["result"] == "W":
-                            st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                        else:
-                            st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                        st.session_state.week_index += 1
+                        play_week_game(wk, opp, opp_data, opp == st.session_state.team_rival, is_sim=True)
                         time.sleep(0.01) # Stabilization
                     end_regular_season_and_stay_on_results()
                     st.rerun()
@@ -3279,6 +3303,8 @@ def render_system_sidebar():
     with st.sidebar:
         st.header("💾 CEO System")
         st.caption(f"Version {STATE_VERSION}")
+        if not HAS_MODULES:
+            st.info("External helpers not found. Using inline helpers from this file.")
         if st.button("Export Save File"):
             state_copy = dict(st.session_state)
             if "top8_resolved" in state_copy:
