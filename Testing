@@ -2774,7 +2774,7 @@ def show_season_end():
     
     avg_sos, best_win, worst_loss = get_season_metrics()
     st.divider(); st.subheader("🏆 Your Tournament Resume")
-    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-val'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-val'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-val'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-val'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-value'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-value'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-value'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-value'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
     
     st.subheader("Game-by-game recap")
     for log in st.session_state.season_logs:
@@ -2923,12 +2923,12 @@ def show_postseason():
             return
             
         if round_num == 5:
-             st.balloons()
-             st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
-             if st.button("Finish Season & Celebrate", type="primary"):
-                 st.session_state.game_state = GameState.SEASON_RECAP
-                 st.rerun()
-             return
+            st.balloons()
+            st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
+            if st.button("Finish Season & Celebrate", type="primary"):
+                st.session_state.game_state = GameState.SEASON_RECAP
+                st.rerun()
+            return
 
         for m in matches:
             if m.get("t1") == st.session_state.team_name or m.get("t2") == st.session_state.team_name: user_match = m; break
@@ -3009,32 +3009,32 @@ def show_postseason():
                     st.rerun()
 
         elif user_match and user_match.get("winner"):
-             st.success("✅ Round Complete!")
-             if st.button("Advance to Next Round →", type="primary"):
-                 winners = [m["winner"] for m in matches]
-                 new_matches = []
-                 if len(winners) >= 2:
-                     for i in range(0, len(winners), 2):
-                         if i+1 < len(winners):
-                             new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None})
-                 
-                 if not new_matches and round_num >= 4:
-                      # If this was the Championship, move to Round 5 (Victory Lap)
-                      if user_alive:
-                          st.session_state.last_postseason_result = "TITLE"
-                          st.session_state.career_stats["titles"] += 1
-                          BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
-                          award_trophy("National Title")
-                          st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
-                          st.session_state.postseason_data["Round"] = 5
-                          st.rerun()
-                      else:
-                          st.session_state.game_state = GameState.SEASON_RECAP
-                          st.rerun()
-                 else:
-                     st.session_state.postseason_data["Matches"] = new_matches
-                     st.session_state.postseason_data["Round"] = round_num + 1
-                     st.rerun()
+            st.success("✅ Round Complete!")
+            if st.button("Advance to Next Round →", type="primary"):
+                winners = [m["winner"] for m in matches]
+                new_matches = []
+                if len(winners) >= 2:
+                    for i in range(0, len(winners), 2):
+                        if i+1 < len(winners):
+                            new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None})
+
+                if not new_matches and round_num >= 4:
+                    # If this was the Championship, move to Round 5 (Victory Lap)
+                    if user_alive:
+                        st.session_state.last_postseason_result = "TITLE"
+                        st.session_state.career_stats["titles"] += 1
+                        BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
+                        award_trophy("National Title")
+                        st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
+                        st.session_state.postseason_data["Round"] = 5
+                        st.rerun()
+                    else:
+                        st.session_state.game_state = GameState.SEASON_RECAP
+                        st.rerun()
+                else:
+                    st.session_state.postseason_data["Matches"] = new_matches
+                    st.session_state.postseason_data["Round"] = round_num + 1
+                    st.rerun()
 
 def show_season_recap():
     sync_team_ratings()
