@@ -90,6 +90,10 @@ class GameConfig:
     TROPHY_ICONS = {k: v["icon"] for k, v in TROPHY_CATEGORIES.items()}
     TROPHY_ICONS["Bowl Win"] = "🎳"
     TROPHY_ICONS["National Title"] = "🏆"
+    TROPHY_ICONS["CFP Appearance"] = "⚔️"
+    TROPHY_ICONS["Perfect Season"] = "💯"
+    TROPHY_ICONS["10+ Win Season"] = "🔟"
+    TROPHY_ICONS["Conference Title"] = "🏅"
 
     LEGENDS = [
         {"Name": "Nick Saban", "Titles": 7, "Wins": 292, "Losses": 71, "BowlWins": 19},
@@ -300,6 +304,9 @@ st.markdown("""
 .timeline-dot-championship { background: #FFD700; box-shadow: 0 0 0 2px #FFD700, 0 0 16px rgba(255, 215, 0, 0.8); width: 32px; height: 32px; left: -46px; }
 .timeline-content { background: white; border: 2px solid #e0e0e0; border-radius: 8px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .timeline-year { font-weight: bold; color: #2196f3; font-size: 1.1em; margin-bottom: 5px; }
+.timeline-record { color: #333; }
+.timeline-bowl { font-size: 0.85em; color: #666; margin-top: 5px; }
+.timeline-achievements { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .timeline-achievement { background: #fff3e0; color: #e65100; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; display: inline-block; margin-top: 5px; }
 .era-marker { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold; text-align: center; margin: 20px 0; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
 
@@ -1439,7 +1446,10 @@ def trophy_icon(name: str) -> str:
 
 def award_trophy(trophy_name: str):
     if "trophies" not in st.session_state: st.session_state.trophies = []
-    st.session_state.trophies.append({"Year": st.session_state.year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
+    year = st.session_state.year
+    exists = any(t.get("Year") == year and t.get("Name") == trophy_name for t in st.session_state.trophies)
+    if not exists:
+        st.session_state.trophies.append({"Year": year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
     
     # Update trophy stats
     if "trophy_stats" not in st.session_state: initialize_trophy_tracking()
@@ -1530,14 +1540,17 @@ def check_and_award_achievements():
     # CFP Appearances
     if st.session_state.get("last_postseason_result", "").startswith("CFP"):
         st.session_state.trophy_stats["cfp_appearances"] += 1
+        award_trophy("CFP Appearance")
     
     # Perfect Seasons
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12:
         st.session_state.trophy_stats["perfect_seasons"] += 1
+        award_trophy("Perfect Season")
     
     # 10+ Win Seasons
     if st.session_state.record['w'] >= 10:
         st.session_state.trophy_stats["ten_win_seasons"] += 1
+        award_trophy("10+ Win Season")
 
 def process_postseason_security_boost():
     """
@@ -1879,7 +1892,12 @@ def render_timeline_node(season: Dict, category: str) -> str:
     if "CFP" in result: achievements.append("<span class='timeline-achievement'>⚔️ CFP Appearance</span>")
     if record.endswith("-0"): achievements.append("<span class='timeline-achievement'>💯 Perfect Season</span>")
     
-    achievements_html = " ".join(achievements) if achievements else ""
+    achievements_html = (
+        f"<div class='timeline-achievements'>{' '.join(achievements)}</div>"
+        if achievements
+        else ""
+    )
+    bowl_html = f"<div class='timeline-bowl'>{bowl}</div>" if bowl and bowl != "None" else ""
     
     html = f"""
     <div class='timeline-node'>
@@ -1887,7 +1905,7 @@ def render_timeline_node(season: Dict, category: str) -> str:
         <div class='timeline-content'>
             <div class='timeline-year'>Year {year}</div>
             <div class='timeline-record'><strong>{record}</strong> • Rank {rank}</div>
-            <div style='font-size: 0.85em; color: #666; margin-top: 5px;'>{bowl}</div>
+            {bowl_html}
             {achievements_html}
         </div>
     </div>
@@ -2625,8 +2643,29 @@ def show_offseason_top8_v8():
                             safe_toast(f"❌ LOST: {r['name']}")
                             st.rerun()
     st.divider()
-    if st.button("Finish Top-8 & Continue →", type="primary"):
-        st.session_state.offseason_step = 5
+    if st.button("Simulate Top-8 Battles", type="secondary"):
+        for r in st.session_state.top8:
+            rid = int(r["id"]); pos = r["pos"]
+            if rid in st.session_state.top8_resolved:
+                continue
+            offer = float(r.get("offer", 0) or 0)
+            if offer <= 0:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. No offer submitted.")
+                continue
+            chance = top8_commit_chance(r, {pos: offer}, st.session_state.staff, st.session_state.prestige)
+            if random.random() < chance:
+                BudgetManager.spend(int(offer), f"Top-8 commit: {r['name']}")
+                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
+                r["status"] = "COMMITTED"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
+            else:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
+        sync_team_ratings()
         st.rerun()
 
 # ==============================================================================
@@ -3015,6 +3054,7 @@ def show_selection_sunday():
         st.session_state.last_postseason_result = "NO_BOWL"
         if st.button("End Season -> Offseason", type="primary"):
             st.session_state.history.append({"Year": st.session_state.year, "Record": f"{user_wins}-{st.session_state.record['l']}", "Rank": "NR", "Bowl": "None", "PostseasonResult": "NO_BOWL"})
+            check_and_award_achievements()
             st.session_state.game_state = GameState.SEASON_RECAP; st.rerun()
     elif user_rank <= 12:
         st.success(f"🎉 You made the COLLEGE FOOTBALL PLAYOFF! (Rank #{user_rank})")
@@ -3178,6 +3218,7 @@ def show_postseason():
                     st.session_state.postseason_data["UserAlive"] = False
                     st.session_state.last_postseason_result = "CFP_LOSS"
                     process_postseason_security_boost()
+                    check_and_award_achievements()
                     add_news(f"{st.session_state.team_name} is eliminated by {opp}."); st.error(f"Eliminated by {opp}")
                     st.rerun()
 
@@ -3202,6 +3243,7 @@ def show_postseason():
                         award_trophy("National Title")
                         st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
                         process_postseason_security_boost()
+                        check_and_award_achievements()
                         st.session_state.postseason_data["Round"] = 5
                         st.rerun()
                     else:
