@@ -90,6 +90,10 @@ class GameConfig:
     TROPHY_ICONS = {k: v["icon"] for k, v in TROPHY_CATEGORIES.items()}
     TROPHY_ICONS["Bowl Win"] = "🎳"
     TROPHY_ICONS["National Title"] = "🏆"
+    TROPHY_ICONS["CFP Appearance"] = "⚔️"
+    TROPHY_ICONS["Perfect Season"] = "💯"
+    TROPHY_ICONS["10+ Win Season"] = "🔟"
+    TROPHY_ICONS["Conference Title"] = "🏅"
 
     LEGENDS = [
         {"Name": "Nick Saban", "Titles": 7, "Wins": 292, "Losses": 71, "BowlWins": 19},
@@ -1439,7 +1443,10 @@ def trophy_icon(name: str) -> str:
 
 def award_trophy(trophy_name: str):
     if "trophies" not in st.session_state: st.session_state.trophies = []
-    st.session_state.trophies.append({"Year": st.session_state.year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
+    year = st.session_state.year
+    exists = any(t.get("Year") == year and t.get("Name") == trophy_name for t in st.session_state.trophies)
+    if not exists:
+        st.session_state.trophies.append({"Year": year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
     
     # Update trophy stats
     if "trophy_stats" not in st.session_state: initialize_trophy_tracking()
@@ -1530,14 +1537,17 @@ def check_and_award_achievements():
     # CFP Appearances
     if st.session_state.get("last_postseason_result", "").startswith("CFP"):
         st.session_state.trophy_stats["cfp_appearances"] += 1
+        award_trophy("CFP Appearance")
     
     # Perfect Seasons
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12:
         st.session_state.trophy_stats["perfect_seasons"] += 1
+        award_trophy("Perfect Season")
     
     # 10+ Win Seasons
     if st.session_state.record['w'] >= 10:
         st.session_state.trophy_stats["ten_win_seasons"] += 1
+        award_trophy("10+ Win Season")
 
 def process_postseason_security_boost():
     """
@@ -3015,6 +3025,7 @@ def show_selection_sunday():
         st.session_state.last_postseason_result = "NO_BOWL"
         if st.button("End Season -> Offseason", type="primary"):
             st.session_state.history.append({"Year": st.session_state.year, "Record": f"{user_wins}-{st.session_state.record['l']}", "Rank": "NR", "Bowl": "None", "PostseasonResult": "NO_BOWL"})
+            check_and_award_achievements()
             st.session_state.game_state = GameState.SEASON_RECAP; st.rerun()
     elif user_rank <= 12:
         st.success(f"🎉 You made the COLLEGE FOOTBALL PLAYOFF! (Rank #{user_rank})")
@@ -3178,6 +3189,7 @@ def show_postseason():
                     st.session_state.postseason_data["UserAlive"] = False
                     st.session_state.last_postseason_result = "CFP_LOSS"
                     process_postseason_security_boost()
+                    check_and_award_achievements()
                     add_news(f"{st.session_state.team_name} is eliminated by {opp}."); st.error(f"Eliminated by {opp}")
                     st.rerun()
 
@@ -3202,6 +3214,7 @@ def show_postseason():
                         award_trophy("National Title")
                         st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
                         process_postseason_security_boost()
+                        check_and_award_achievements()
                         st.session_state.postseason_data["Round"] = 5
                         st.rerun()
                     else:
