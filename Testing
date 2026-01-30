@@ -1,6 +1,6 @@
 """
 Build the Program: College Football CEO
-VERSION 4.5 (The Ultimate UI Update)
+VERSION 4.6 (The Ultimate UI Update)
 
 Audit Log:
 - MERGE: Combined V3.0 Logic (Hard Mode, Scheduling, Bug Fixes) with V2.9 UI Suite.
@@ -32,7 +32,7 @@ except ImportError:
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 4.5
+STATE_VERSION = 4.6
 
 class GameState:
     """Game state constants representing different screens/phases of the game."""
@@ -483,16 +483,23 @@ def render_enhanced_staff_card(coach: dict, role: str, rating: int) -> str:
     trait_icon = get_trait_icon(trait)
     tenure_years = coach.get('tenure_years', 1)
     stars = "⭐" * rating + "☆" * (10 - rating)
+    trait_icon_html = f"<div class='staff-trait-icon'>{trait_icon}</div>" if trait_icon else ""
+    trait_label_html = (
+        "<div style='margin-top: 8px; font-size: 0.85em; color: #666;'>"
+        f"<strong>Trait:</strong> {trait}</div>"
+        if trait != "None"
+        else ""
+    )
     
     return (
         f"<div class='staff-card-enhanced {quality_class}'>"
-        f"{f'<div class=\"staff-trait-icon\">{trait_icon}</div>' if trait_icon else ''}"
+        f"{trait_icon_html}"
         f"<div class='staff-headshot {headshot_class}'>{initials}</div>"
         f"<div class='staff-role'>{role}</div>"
         f"<div class='staff-name'>{coach.get('name', 'Unknown')}</div>"
         f"<div style='margin: 8px 0;'>{stars}</div>"
         f"<div class='staff-tenure'>Year {tenure_years}</div>"
-        f"{f\"<div style='margin-top: 8px; font-size: 0.85em; color: #666;'><strong>Trait:</strong> {trait}</div>\" if trait != 'None' else ''}"
+        f"{trait_label_html}"
         "</div>"
     )
 
@@ -610,7 +617,7 @@ def render_nil_prospect_card(prospect: dict, is_need: bool = False) -> str:
     """
     return html
 
-def render_interest_meter(recruit: dict, chance: float, spend_by_pos: dict) -> str:
+def render_interest_meter(recruit: dict, chance: float, spend_by_pos: dict) -> tuple[str, str]:
     """Render an interest meter for a recruit with input validation."""
     # Input validation
     if not isinstance(recruit, dict):
@@ -661,10 +668,9 @@ def render_interest_meter(recruit: dict, chance: float, spend_by_pos: dict) -> s
             <div class='interest-meter-fill' style='width: {interest_pct}%; background: {meter_color};'>{interest_pct}%</div>
         </div>
         {offer_status}
-        {rivalry_html}
     </div>
     """
-    return html
+    return html, rivalry_html
 
 def get_weather_icon() -> str:
     weather = ["☀️", "⛅", "🌤️", "🌧️", "❄️", "🌨️"]
@@ -2547,7 +2553,10 @@ def show_offseason_top8_v8():
                     st.session_state.staff,
                     st.session_state.prestige
                 )
-                st.markdown(render_interest_meter(r, chance, {}), unsafe_allow_html=True)
+                meter_html, rivalry_html = render_interest_meter(r, chance, {})
+                st.markdown(meter_html, unsafe_allow_html=True)
+                if rivalry_html:
+                    st.markdown(rivalry_html, unsafe_allow_html=True)
             
             with c2:
                 # Offer slider
