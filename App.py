@@ -989,38 +989,38 @@ def render_trophy_shelf(shelf_name: str, trophies: List[Dict], max_display: int 
         "icon": "🏆", "color": "#FFD700", "empty_text": "Earn Trophy", "track_key": "titles"
     })
     
-    trophy_html = ""
+    trophy_items = []
     for trophy in trophies[:max_display]:
         year = trophy.get("Year", "????")
         icon = trophy.get("Icon", category_data["icon"])
         name = trophy.get("Name", shelf_name)
         icon_class = "trophy-icon-national" if "National" in shelf_name or "Championship" in name else "trophy-icon"
-        trophy_html += f"""
-        <div class='trophy-item' title='{name} - {year}'>
-            <div class='{icon_class}'>{icon}</div>
-            <div class='trophy-label'>{name}</div>
-            <div class='trophy-year'>{year}</div>
-        </div>
-        """
+        trophy_items.append(
+            f"<div class='trophy-item' title='{name} - {year}'>"
+            f"<div class='{icon_class}'>{icon}</div>"
+            f"<div class='trophy-label'>{name}</div>"
+            f"<div class='trophy-year'>{year}</div>"
+            "</div>"
+        )
     
     if show_empty:
         empty_count = max(0, max_display - len(trophies))
         for _ in range(empty_count):
-            trophy_html += f"""
-            <div class='trophy-item trophy-empty' title='{category_data["empty_text"]}'>
-                <div class='trophy-icon'>{category_data["icon"]}</div>
-                <div class='trophy-label'>???</div>
-                <div class='trophy-year'>????</div>
-            </div>
-            """
-    
-    html = f"""
-    <div class='trophy-shelf'>
-        <div class='trophy-shelf-title'>{shelf_name} ({len(trophies)})</div>
-        <div class='trophy-display'>{trophy_html}</div>
-    </div>
-    """
-    return html
+            trophy_items.append(
+                f"<div class='trophy-item trophy-empty' title='{category_data['empty_text']}'>"
+                f"<div class='trophy-icon'>{category_data['icon']}</div>"
+                "<div class='trophy-label'>???</div>"
+                "<div class='trophy-year'>????</div>"
+                "</div>"
+            )
+
+    trophy_html = "".join(trophy_items)
+    return (
+        f"<div class='trophy-shelf'>"
+        f"<div class='trophy-shelf-title'>{shelf_name} ({len(trophies)})</div>"
+        f"<div class='trophy-display'>{trophy_html}</div>"
+        "</div>"
+    )
 
 def play_week_game(week_index: int, opponent: str, opponent_data: dict, is_rival: bool, is_sim: bool = False) -> dict:
     rng = game_rng(st.session_state.year, week_index + 1, opponent, "SIM" if is_sim else "PLAY")
