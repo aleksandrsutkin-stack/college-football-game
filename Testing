@@ -2593,6 +2593,7 @@ def show_dashboard():
     sec_cls = "security-safe" if st.session_state.job_security > 75 else ("security-warm" if st.session_state.job_security > 40 else "security-hot")
     st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{st.session_state.job_security}%</span></div>", unsafe_allow_html=True)
     st.markdown(f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'><h2>{st.session_state.team_name}</h2></div>", unsafe_allow_html=True)
+    st.divider()
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Budget", helper_format_cash(st.session_state.budget))
@@ -2670,24 +2671,21 @@ def show_dashboard():
         st.markdown("### 🏗️ Program Facilities")
         st.caption("Invest in your program's infrastructure to boost recruiting, development, and revenue")
         st.divider()
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(render_enhanced_facility_card("Marketing", st.session_state.facilities["Marketing"]), unsafe_allow_html=True)
-            if st.button("Upgrade Marketing ($1M)", key="um", use_container_width=True):
-                if BudgetManager.spend(1000000, "Upgrade Marketing"):
-                    st.session_state.facilities["Marketing"] += 1; st.rerun()
-        with c2:
-            st.markdown(render_enhanced_facility_card("Training", st.session_state.facilities["Training"]), unsafe_allow_html=True)
-            if st.button("Upgrade Training ($3M)", key="ut", use_container_width=True):
-                if BudgetManager.spend(3000000, "Upgrade Training"):
-                    st.session_state.facilities["Training"] += 1; st.rerun()
-        with c3:
-            st.markdown(render_enhanced_facility_card("Stadium", st.session_state.facilities["Stadium"]), unsafe_allow_html=True)
-            if st.button("Upgrade Stadium ($10M)", key="us", use_container_width=True):
-                if BudgetManager.spend(10000000, "Upgrade Stadium"):
-                    st.session_state.facilities["Stadium"] += 1
-                    st.session_state.prestige = min(99, st.session_state.prestige + 1)
-                    st.rerun()
+        facility_options = [
+            ("Marketing", 1_000_000, "um"),
+            ("Training", 3_000_000, "ut"),
+            ("Stadium", 10_000_000, "us"),
+        ]
+        cols = st.columns(3)
+        for col, (facility_name, cost, key) in zip(cols, facility_options):
+            with col:
+                st.markdown(render_enhanced_facility_card(facility_name, st.session_state.facilities[facility_name]), unsafe_allow_html=True)
+                if st.button(f"Upgrade {facility_name} ({helper_format_cash(cost)})", key=key, use_container_width=True):
+                    if BudgetManager.spend(cost, f"Upgrade {facility_name}"):
+                        st.session_state.facilities[facility_name] += 1
+                        if facility_name == "Stadium":
+                            st.session_state.prestige = min(99, st.session_state.prestige + 1)
+                        st.rerun()
 
     with tab4:
         if len(st.session_state.staff) < 4: st.error("Fill Staff First!"); return
