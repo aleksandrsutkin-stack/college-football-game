@@ -1,6 +1,6 @@
 """
 Build the Program: College Football CEO
-VERSION 3.0 (The Stability & UI Fix Update)
+VERSION 4.6 (The Stability & UI Fix Update)
 
 Audit Log:
 - Critical UI Fix: Replaced broken HTML Game Cards in Dashboard with Native Streamlit Containers.
@@ -23,7 +23,7 @@ from typing import List, Dict, Optional, Set
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 3.0
+STATE_VERSION = 4.6
 
 class GameState:
     SETUP = "SETUP"
