@@ -2635,8 +2635,29 @@ def show_offseason_top8_v8():
                             safe_toast(f"❌ LOST: {r['name']}")
                             st.rerun()
     st.divider()
-    if st.button("Finish Top-8 & Continue →", type="primary"):
-        st.session_state.offseason_step = 5
+    if st.button("Simulate Top-8 Battles", type="secondary"):
+        for r in st.session_state.top8:
+            rid = int(r["id"]); pos = r["pos"]
+            if rid in st.session_state.top8_resolved:
+                continue
+            offer = float(r.get("offer", 0) or 0)
+            if offer <= 0:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. No offer submitted.")
+                continue
+            chance = top8_commit_chance(r, {pos: offer}, st.session_state.staff, st.session_state.prestige)
+            if random.random() < chance:
+                BudgetManager.spend(int(offer), f"Top-8 commit: {r['name']}")
+                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
+                r["status"] = "COMMITTED"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
+            else:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
+        sync_team_ratings()
         st.rerun()
 
 # ==============================================================================
