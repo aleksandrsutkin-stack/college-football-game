@@ -207,6 +207,10 @@ st.markdown("""
 /* ENHANCED CARDS */
 .staff-card-enhanced { background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); border: 2px solid #e0e0e0; border-radius: 12px; padding: 15px; margin-bottom: 15px; position: relative; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .staff-card-enhanced:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+.staff-card { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+.staff-role { font-size: 0.85em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #546e7a; margin-bottom: 4px; }
+.staff-name { font-size: 1.05em; font-weight: 800; color: #1a1a1a; }
+.small-muted { font-size: 0.85em; color: #6c757d; }
 .staff-card-gold { border: 2px solid #FFD700; background: linear-gradient(145deg, #FFFEF0 0%, #FFF9E6 100%); }
 .staff-card-silver { border: 2px solid #C0C0C0; background: linear-gradient(145deg, #F8F8F8 0%, #EFEFEF 100%); }
 .staff-card-bronze { border: 2px solid #CD7F32; background: linear-gradient(145deg, #FFF5E6 0%, #FFEACC 100%); }
@@ -248,6 +252,8 @@ st.markdown("""
 .nil-trait-badge { background: #e1bee7; color: #6a1b9a; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; display: inline-block; margin-top: 5px; }
 
 /* MISC UI */
+.top8-card-title { font-size: 1.15em; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
+.top8-card-trait { font-size: 0.85em; font-weight: 700; color: #6a1b9a; margin-left: 6px; }
 .interest-meter-container { background: #f5f5f5; height: 20px; border-radius: 10px; overflow: hidden; margin: 10px 0; border: 1px solid #ddd; }
 .interest-meter-fill { height: 100%; transition: width 0.5s ease; background: linear-gradient(90deg, #ff9800 0%, #ff5722 100%); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; color: white; font-size: 0.75em; font-weight: bold; }
 .rivalry-indicator { background: #ffebee; border: 2px dashed #e53935; padding: 6px 10px; border-radius: 6px; font-size: 0.8em; color: #c62828; margin-top: 5px; }
@@ -2491,7 +2497,12 @@ def show_offseason_top8_v8():
         
         with st.container(border=True):
             # Header
-            st.markdown(f"### {pos} {r['name']} ({r['rating']}) {r.get('trait', '')}")
+            trait = r.get("trait", "")
+            trait_html = f"<span class='top8-card-trait'>{trait}</span>" if trait else ""
+            st.markdown(
+                f"<div class='top8-card-title'>{pos} {r['name']} ({r['rating']}){trait_html}</div>",
+                unsafe_allow_html=True,
+            )
             st.caption(f"💰 Asking Price: {helper_format_cash(ask)}")
             
             c1, c2 = st.columns([2, 1])
