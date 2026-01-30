@@ -1,6 +1,6 @@
 """
 Build the Program: College Football CEO
-VERSION 4.2 (The Ultimate UI Update)
+VERSION 4.5 (The Ultimate UI Update)
 
 Audit Log:
 - MERGE: Combined V3.0 Logic (Hard Mode, Scheduling, Bug Fixes) with V2.9 UI Suite.
@@ -32,7 +32,7 @@ except ImportError:
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 4.0
+STATE_VERSION = 4.5
 
 class GameState:
     """Game state constants representing different screens/phases of the game."""
