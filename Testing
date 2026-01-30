@@ -2775,7 +2775,7 @@ def show_dashboard():
                         rtg = role_rating(cand, role)
                         vis = f"{rtg}" if cand.get("scouted") else get_letter_grade(rtg)
                         st.markdown(
-                            f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>",
+                            f"<div class='staff-card'><div class='staff-role'>{role}</div><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>",
                             unsafe_allow_html=True,
                         )
                         b1, b2 = st.columns(2)
@@ -2915,7 +2915,7 @@ def show_season_end():
     
     avg_sos, best_win, worst_loss = get_season_metrics()
     st.divider(); st.subheader("🏆 Your Tournament Resume")
-    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-value'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-value'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-value'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-value'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div class='resume-item'><div class='resume-label'>Record</div><div class='resume-value'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div class='resume-item'><div class='resume-label'>SOS Score</div><div class='resume-value'>{avg_sos}</div></div><div class='resume-item'><div class='resume-label'>Best Win</div><div class='resume-value'>{best_win}</div></div><div class='resume-item'><div class='resume-label'>Worst Loss</div><div class='resume-value'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
     
     st.subheader("Game-by-game recap")
     for log in st.session_state.season_logs:
