@@ -3337,9 +3337,8 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
-# Initialize the session state and render the system sidebar
+# Initialize the session state
 init_session_state_defaults()
-render_system_sidebar()
 
 # ---
 # Function definitions for each game state must be declared beforehand and **not nested** inside any conditional blocks.
@@ -3368,3 +3367,6 @@ else:
     # If the game state is invalid or missing, default back to the dashboard.
     st.session_state.game_state = GameState.DASHBOARD
     st.rerun()
+
+# Render the system sidebar last to avoid UI ghosting with heavy HTML cards.
+render_system_sidebar()
