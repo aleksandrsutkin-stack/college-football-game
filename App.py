@@ -1,6 +1,6 @@
 """
 Build the Program: College Football CEO
-VERSION 4.2 (The Ultimate UI Update)
+VERSION 4.5 (The Ultimate UI Update)
 
 Audit Log:
 - MERGE: Combined V3.0 Logic (Hard Mode, Scheduling, Bug Fixes) with V2.9 UI Suite.
@@ -32,7 +32,7 @@ except ImportError:
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 4.0
+STATE_VERSION = 4.5
 
 class GameState:
     """Game state constants representing different screens/phases of the game."""
@@ -964,6 +964,85 @@ def render_legacy_report_card(grade: str, score: int, percentile: int) -> str:
     label = grade_labels.get(grade, "Career Complete")
     html = f"<div class='legacy-report-card'><h2 style='margin-bottom: 10px;'>Legacy Report Card</h2><div class='report-card-grade'>{grade}</div><div style='font-size: 1.5em; font-weight: bold; color: #f57f17; margin: 10px 0;'>{label}</div><div style='font-size: 1.2em; color: #666; margin: 5px 0;'>Career Score: <strong>{score}</strong></div><div class='percentile-badge'>Top {100 - percentile}% of All-Time Coaches</div></div>"
     return html
+
+def render_trophy_shelf(shelf_name: str, trophies: List[Dict], max_display: int = 8, show_empty: bool = True) -> str:
+    """Render a 3D trophy shelf display with trophies organized by category."""
+    category_data = GameConfig.TROPHY_CATEGORIES.get(shelf_name, {
+        "icon": "🏆", "color": "#FFD700", "empty_text": "Earn Trophy", "track_key": "titles"
+    })
+    
+    trophy_html = ""
+    for trophy in trophies[:max_display]:
+        year = trophy.get("Year", "????")
+        icon = trophy.get("Icon", category_data["icon"])
+        name = trophy.get("Name", shelf_name)
+        icon_class = "trophy-icon-national" if "National" in shelf_name or "Championship" in name else "trophy-icon"
+        trophy_html += f"""
+        <div class='trophy-item' title='{name} - {year}'>
+            <div class='{icon_class}'>{icon}</div>
+            <div class='trophy-label'>{name}</div>
+            <div class='trophy-year'>{year}</div>
+        </div>
+        """
+    
+    if show_empty:
+        empty_count = max(0, max_display - len(trophies))
+        for _ in range(empty_count):
+            trophy_html += f"""
+            <div class='trophy-item trophy-empty' title='{category_data["empty_text"]}'>
+                <div class='trophy-icon'>{category_data["icon"]}</div>
+                <div class='trophy-label'>???</div>
+                <div class='trophy-year'>????</div>
+            </div>
+            """
+    
+    html = f"""
+    <div class='trophy-shelf'>
+        <div class='trophy-shelf-title'>{shelf_name} ({len(trophies)})</div>
+        <div class='trophy-display'>{trophy_html}</div>
+    </div>
+    """
+    return html
+
+def play_week_game(week_index: int, opponent: str, opponent_data: dict, is_rival: bool, is_sim: bool = False) -> dict:
+    rng = game_rng(st.session_state.year, week_index + 1, opponent, "SIM" if is_sim else "PLAY")
+    res = engine_play_game_v8(
+        st.session_state.team_off,
+        st.session_state.team_def,
+        opponent_data.get("OffOVR"),
+        opponent_data.get("DefOVR"),
+        st.session_state.staff,
+        st.session_state.my_schemes,
+        {"Off": opponent_data.get("Off"), "Def": opponent_data.get("Def")},
+        st.session_state.game_plan,
+        opponent_data.get("Coaches"),
+        week_index % 2 == 0,
+        opponent == st.session_state.team_rival,
+        st.session_state.facilities["Stadium"],
+        opponent_data.get("Stadium"),
+        rng,
+    )
+    st.session_state.season_logs.append({
+        "Week": week_index + 1,
+        "Opponent": opponent,
+        "Score": f"{res['result']} {res['score']}",
+        "Stats": res["stats"],
+        "OppOVR": opponent_data.get("OVR"),
+    })
+    if res["result"] == "W":
+        st.session_state.record["w"] += 1
+        st.session_state.career_stats["w"] += 1
+        if not is_sim:
+            st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_rival else 2))
+            if is_rival:
+                st.session_state.trophy_stats["rivalry_wins"] += 1
+    else:
+        st.session_state.record["l"] += 1
+        st.session_state.career_stats["l"] += 1
+        if not is_sim:
+            st.session_state.job_security = max(0, st.session_state.job_security - 2)
+    st.session_state.week_index += 1
+    return res
 
 # ==============================================================================
 # UI COMPONENTS
@@ -2554,6 +2633,7 @@ def show_dashboard():
     sec_cls = "security-safe" if st.session_state.job_security > 75 else ("security-warm" if st.session_state.job_security > 40 else "security-hot")
     st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{st.session_state.job_security}%</span></div>", unsafe_allow_html=True)
     st.markdown(f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'><h2>{st.session_state.team_name}</h2></div>", unsafe_allow_html=True)
+    st.divider()
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Budget", helper_format_cash(st.session_state.budget))
@@ -2614,7 +2694,10 @@ def show_dashboard():
                     with cols[j]:
                         rtg = role_rating(cand, role)
                         vis = f"{rtg}" if cand.get("scouted") else get_letter_grade(rtg)
-                        st.markdown(f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>", unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>",
+                            unsafe_allow_html=True,
+                        )
                         b1, b2 = st.columns(2)
                         if b1.button("Hire", key=f"hire_{role}_{j}"):
                             if BudgetManager.spend(cand["salary"], f"Hire {role}"):
@@ -2624,31 +2707,29 @@ def show_dashboard():
                                 st.rerun()
                         if not cand.get("scouted") and b2.button("Scout", key=f"sc_{role}_{j}"):
                             if BudgetManager.spend(25000, "Scout Coach"):
-                                cand["scouted"] = True; st.rerun()
+                                cand["scouted"] = True
+                                st.rerun()
         else: st.info("No vacancies.")
 
     with tab3:
         st.markdown("### 🏗️ Program Facilities")
         st.caption("Invest in your program's infrastructure to boost recruiting, development, and revenue")
         st.divider()
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(render_enhanced_facility_card("Marketing", st.session_state.facilities["Marketing"]), unsafe_allow_html=True)
-            if st.button("Upgrade Marketing ($1M)", key="um", use_container_width=True):
-                if BudgetManager.spend(1000000, "Upgrade Marketing"):
-                    st.session_state.facilities["Marketing"] += 1; st.rerun()
-        with c2:
-            st.markdown(render_enhanced_facility_card("Training", st.session_state.facilities["Training"]), unsafe_allow_html=True)
-            if st.button("Upgrade Training ($3M)", key="ut", use_container_width=True):
-                if BudgetManager.spend(3000000, "Upgrade Training"):
-                    st.session_state.facilities["Training"] += 1; st.rerun()
-        with c3:
-            st.markdown(render_enhanced_facility_card("Stadium", st.session_state.facilities["Stadium"]), unsafe_allow_html=True)
-            if st.button("Upgrade Stadium ($10M)", key="us", use_container_width=True):
-                if BudgetManager.spend(10000000, "Upgrade Stadium"):
-                    st.session_state.facilities["Stadium"] += 1
-                    st.session_state.prestige = min(99, st.session_state.prestige + 1)
-                    st.rerun()
+        facility_options = [
+            ("Marketing", 1_000_000, "um"),
+            ("Training", 3_000_000, "ut"),
+            ("Stadium", 10_000_000, "us"),
+        ]
+        cols = st.columns(3)
+        for col, (facility_name, cost, key) in zip(cols, facility_options):
+            with col:
+                st.markdown(render_enhanced_facility_card(facility_name, st.session_state.facilities[facility_name]), unsafe_allow_html=True)
+                if st.button(f"Upgrade {facility_name} ({helper_format_cash(cost)})", key=key, use_container_width=True):
+                    if BudgetManager.spend(cost, f"Upgrade {facility_name}"):
+                        st.session_state.facilities[facility_name] += 1
+                        if facility_name == "Stadium":
+                            st.session_state.prestige = min(99, st.session_state.prestige + 1)
+                        st.rerun()
 
     with tab4:
         if len(st.session_state.staff) < 4: st.error("Fill Staff First!"); return
@@ -2675,20 +2756,7 @@ def show_dashboard():
             with c2:
                 st.markdown("Action")
                 if st.button(f"Play Week {wk+1}", type="primary", use_container_width=True, key=f"play_wk_{wk}"):
-                    rng = game_rng(st.session_state.year, wk+1, opp, "PLAY")
-                    res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
-                    
-                    st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
-                    if res["result"] == "W":
-                        st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                        st.session_state.job_security = min(100, st.session_state.job_security + (5 if opp==st.session_state.team_rival else 2))
-                        # V2.9 Track Rivalry
-                        if is_rival: st.session_state.trophy_stats["rivalry_wins"] += 1
-                    else:
-                        st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                        st.session_state.job_security = max(0, st.session_state.job_security - 2)
-                    
-                    st.session_state.week_index += 1
+                    play_week_game(wk, opp, opp_data, is_rival, is_sim=False)
                     if st.session_state.week_index >= 12: end_regular_season_and_stay_on_results()
                     st.rerun()
             with c3:
@@ -2698,14 +2766,7 @@ def show_dashboard():
                         wk = st.session_state.week_index
                         opp = sched[wk]
                         opp_data = OpponentManager.get(opp)
-                        rng = game_rng(st.session_state.year, wk+1, opp, "SIM")
-                        res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
-                        st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
-                        if res["result"] == "W":
-                            st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                        else:
-                            st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                        st.session_state.week_index += 1
+                        play_week_game(wk, opp, opp_data, opp == st.session_state.team_rival, is_sim=True)
                         time.sleep(0.01) # Stabilization
                     end_regular_season_and_stay_on_results()
                     st.rerun()
@@ -2774,7 +2835,7 @@ def show_season_end():
     
     avg_sos, best_win, worst_loss = get_season_metrics()
     st.divider(); st.subheader("🏆 Your Tournament Resume")
-    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-val'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-val'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-val'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-val'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-value'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-value'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-value'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-value'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
     
     st.subheader("Game-by-game recap")
     for log in st.session_state.season_logs:
@@ -2923,12 +2984,12 @@ def show_postseason():
             return
             
         if round_num == 5:
-             st.balloons()
-             st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
-             if st.button("Finish Season & Celebrate", type="primary"):
-                 st.session_state.game_state = GameState.SEASON_RECAP
-                 st.rerun()
-             return
+            st.balloons()
+            st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
+            if st.button("Finish Season & Celebrate", type="primary"):
+                st.session_state.game_state = GameState.SEASON_RECAP
+                st.rerun()
+            return
 
         for m in matches:
             if m.get("t1") == st.session_state.team_name or m.get("t2") == st.session_state.team_name: user_match = m; break
@@ -3009,32 +3070,32 @@ def show_postseason():
                     st.rerun()
 
         elif user_match and user_match.get("winner"):
-             st.success("✅ Round Complete!")
-             if st.button("Advance to Next Round →", type="primary"):
-                 winners = [m["winner"] for m in matches]
-                 new_matches = []
-                 if len(winners) >= 2:
-                     for i in range(0, len(winners), 2):
-                         if i+1 < len(winners):
-                             new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None})
-                 
-                 if not new_matches and round_num >= 4:
-                      # If this was the Championship, move to Round 5 (Victory Lap)
-                      if user_alive:
-                          st.session_state.last_postseason_result = "TITLE"
-                          st.session_state.career_stats["titles"] += 1
-                          BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
-                          award_trophy("National Title")
-                          st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
-                          st.session_state.postseason_data["Round"] = 5
-                          st.rerun()
-                      else:
-                          st.session_state.game_state = GameState.SEASON_RECAP
-                          st.rerun()
-                 else:
-                     st.session_state.postseason_data["Matches"] = new_matches
-                     st.session_state.postseason_data["Round"] = round_num + 1
-                     st.rerun()
+            st.success("✅ Round Complete!")
+            if st.button("Advance to Next Round →", type="primary"):
+                winners = [m["winner"] for m in matches]
+                new_matches = []
+                if len(winners) >= 2:
+                    for i in range(0, len(winners), 2):
+                        if i+1 < len(winners):
+                            new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None})
+
+                if not new_matches and round_num >= 4:
+                    # If this was the Championship, move to Round 5 (Victory Lap)
+                    if user_alive:
+                        st.session_state.last_postseason_result = "TITLE"
+                        st.session_state.career_stats["titles"] += 1
+                        BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
+                        award_trophy("National Title")
+                        st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
+                        st.session_state.postseason_data["Round"] = 5
+                        st.rerun()
+                    else:
+                        st.session_state.game_state = GameState.SEASON_RECAP
+                        st.rerun()
+                else:
+                    st.session_state.postseason_data["Matches"] = new_matches
+                    st.session_state.postseason_data["Round"] = round_num + 1
+                    st.rerun()
 
 def show_season_recap():
     sync_team_ratings()
@@ -3242,6 +3303,8 @@ def render_system_sidebar():
     with st.sidebar:
         st.header("💾 CEO System")
         st.caption(f"Version {STATE_VERSION}")
+        if not HAS_MODULES:
+            st.info("External helpers not found. Using inline helpers from this file.")
         if st.button("Export Save File"):
             state_copy = dict(st.session_state)
             if "top8_resolved" in state_copy:
@@ -3274,9 +3337,8 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
-# Initialize the session state and render the system sidebar
+# Initialize the session state
 init_session_state_defaults()
-render_system_sidebar()
 
 # ---
 # Function definitions for each game state must be declared beforehand and **not nested** inside any conditional blocks.
@@ -3305,3 +3367,6 @@ else:
     # If the game state is invalid or missing, default back to the dashboard.
     st.session_state.game_state = GameState.DASHBOARD
     st.rerun()
+
+# Render the system sidebar last to avoid UI ghosting with heavy HTML cards.
+render_system_sidebar()
