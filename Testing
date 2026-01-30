@@ -1569,6 +1569,41 @@ def process_postseason_security_boost():
                 st.session_state.job_security + 3.0
             )
 
+def update_prestige_after_season():
+    year = st.session_state.get("year", 0)
+    if st.session_state.get("prestige_last_updated_year") == year:
+        return
+
+    wins = safe_int(st.session_state.record.get("w", 0), 0)
+    expected = safe_int(st.session_state.get("expected_wins", 6), 6)
+    delta = wins - expected
+    last_result = st.session_state.get("last_postseason_result", "NONE")
+    change = 0
+
+    if delta >= 3:
+        change += 2
+    elif delta >= 1:
+        change += 1
+    elif delta <= -3:
+        change -= 2
+    elif delta <= -1:
+        change -= 1
+
+    if last_result == "TITLE":
+        change += 3
+    elif "CFP" in last_result:
+        change += 2
+    elif last_result == "BOWL_WIN":
+        change += 1
+    elif last_result == "NO_BOWL":
+        change -= 1
+
+    if change != 0:
+        st.session_state.prestige = max(1, min(99, st.session_state.prestige + change))
+        add_news(f"Prestige updated to {st.session_state.prestige} ({'+' if change > 0 else ''}{change}).")
+
+    st.session_state.prestige_last_updated_year = year
+
 def build_season_summary_dict():
     w = safe_int(st.session_state.record.get("w", 0), 0); l = safe_int(st.session_state.record.get("l", 0), 0)
     sos, best, worst = get_season_metrics()
@@ -2080,7 +2115,7 @@ def migrate_state():
     if isinstance(st.session_state.get("top8_resolved"), list): st.session_state.top8_resolved = set(st.session_state.top8_resolved)
     
     defaults = {
-        "year": 2026, "prestige": 60, "job_security": 75, "expected_wins": 6, "tenure": 1,
+        "year": 2026, "prestige": 60, "prestige_last_updated_year": None, "job_security": 75, "expected_wins": 6, "tenure": 1,
         "history": [], "schedule": [], "season_simulated": False, "active_transfers": {p: False for p in GameConfig.POSITIONS},
         "inflation": 1.0, "revenue_report": None, "postseason_data": {"Type": None}, "team_needs": [], "game_plan": "Normal", "week_index": 0, "news": [], "offseason_step": 1,
         "nil_class": [], "hs_total_spend": 0, "hs_shares": {p: 14.3 for p in GameConfig.POSITIONS}, "hs_spend_by_pos": {p: 0 for p in GameConfig.POSITIONS}, "hs_alloc_by_pos": {p: 0 for p in GameConfig.POSITIONS},
@@ -3156,6 +3191,7 @@ def show_season_recap():
     
     st.divider()
     if st.button("Proceed to Offseason ->", type="primary"):
+        update_prestige_after_season()
         apply_roster_attrition()
         st.session_state.game_state = GameState.OFFSEASON; st.session_state.offseason_step = 1; st.rerun()
 
