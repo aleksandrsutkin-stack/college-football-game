@@ -484,18 +484,17 @@ def render_enhanced_staff_card(coach: dict, role: str, rating: int) -> str:
     tenure_years = coach.get('tenure_years', 1)
     stars = "⭐" * rating + "☆" * (10 - rating)
     
-    html = f"""
-    <div class='staff-card-enhanced {quality_class}'>
-        {f'<div class="staff-trait-icon">{trait_icon}</div>' if trait_icon else ''}
-        <div class='staff-headshot {headshot_class}'>{initials}</div>
-        <div class='staff-role'>{role}</div>
-        <div class='staff-name'>{coach.get('name', 'Unknown')}</div>
-        <div style='margin: 8px 0;'>{stars}</div>
-        <div class='staff-tenure'>Year {tenure_years}</div>
-        {f"<div style='margin-top: 8px; font-size: 0.85em; color: #666;'><strong>Trait:</strong> {trait}</div>" if trait != 'None' else ''}
-    </div>
-    """
-    return html
+    return (
+        f"<div class='staff-card-enhanced {quality_class}'>"
+        f"{f'<div class=\"staff-trait-icon\">{trait_icon}</div>' if trait_icon else ''}"
+        f"<div class='staff-headshot {headshot_class}'>{initials}</div>"
+        f"<div class='staff-role'>{role}</div>"
+        f"<div class='staff-name'>{coach.get('name', 'Unknown')}</div>"
+        f"<div style='margin: 8px 0;'>{stars}</div>"
+        f"<div class='staff-tenure'>Year {tenure_years}</div>"
+        f"{f\"<div style='margin-top: 8px; font-size: 0.85em; color: #666;'><strong>Trait:</strong> {trait}</div>\" if trait != 'None' else ''}"
+        "</div>"
+    )
 
 def get_facility_visual(facility_type: str, level: int) -> str:
     visuals = {
