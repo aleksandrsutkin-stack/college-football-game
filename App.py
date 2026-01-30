@@ -484,18 +484,17 @@ def render_enhanced_staff_card(coach: dict, role: str, rating: int) -> str:
     tenure_years = coach.get('tenure_years', 1)
     stars = "⭐" * rating + "☆" * (10 - rating)
     
-    html = f"""
-    <div class='staff-card-enhanced {quality_class}'>
-        {f'<div class="staff-trait-icon">{trait_icon}</div>' if trait_icon else ''}
-        <div class='staff-headshot {headshot_class}'>{initials}</div>
-        <div class='staff-role'>{role}</div>
-        <div class='staff-name'>{coach.get('name', 'Unknown')}</div>
-        <div style='margin: 8px 0;'>{stars}</div>
-        <div class='staff-tenure'>Year {tenure_years}</div>
-        {f"<div style='margin-top: 8px; font-size: 0.85em; color: #666;'><strong>Trait:</strong> {trait}</div>" if trait != 'None' else ''}
-    </div>
-    """
-    return html
+    return (
+        f"<div class='staff-card-enhanced {quality_class}'>"
+        f"{f'<div class=\"staff-trait-icon\">{trait_icon}</div>' if trait_icon else ''}"
+        f"<div class='staff-headshot {headshot_class}'>{initials}</div>"
+        f"<div class='staff-role'>{role}</div>"
+        f"<div class='staff-name'>{coach.get('name', 'Unknown')}</div>"
+        f"<div style='margin: 8px 0;'>{stars}</div>"
+        f"<div class='staff-tenure'>Year {tenure_years}</div>"
+        f"{f\"<div style='margin-top: 8px; font-size: 0.85em; color: #666;'><strong>Trait:</strong> {trait}</div>\" if trait != 'None' else ''}"
+        "</div>"
+    )
 
 def get_facility_visual(facility_type: str, level: int) -> str:
     visuals = {
@@ -796,26 +795,25 @@ def render_game_result_with_bars(week: int, opponent: str, score: str, is_win: b
         max_val = max(user_val, opp_val, 1)  # Prevent division by zero
         user_pct = (user_val / max_val) * 100
         opp_pct = (opp_val / max_val) * 100
-        return f"""
-        <div class='stat-comparison'>
-            <div class='stat-label'>{label}</div>
-            <div class='stat-bars-container'>
-                <div class='stat-bar-left'><div class='stat-bar-fill-user' style='width: {user_pct}%;'>{user_val} {user_mvp}</div></div>
-                <div style='font-weight: bold; color: #666;'>vs</div>
-                <div class='stat-bar-right'><div class='stat-bar-fill-opp' style='width: {opp_pct}%;'>{opp_val}</div></div>
-            </div>
-        </div>
-        """
+        return (
+            "<div class='stat-comparison'>"
+            f"<div class='stat-label'>{label}</div>"
+            "<div class='stat-bars-container'>"
+            f"<div class='stat-bar-left'><div class='stat-bar-fill-user' style='width: {user_pct}%;'>{user_val} {user_mvp}</div></div>"
+            "<div style='font-weight: bold; color: #666;'>vs</div>"
+            f"<div class='stat-bar-right'><div class='stat-bar-fill-opp' style='width: {opp_pct}%;'>{opp_val}</div></div>"
+            "</div>"
+            "</div>"
+        )
     
-    html = f"""
-    <div class='game-card {css_class}'>
-        <div class='card-header'><span style='font-size: 1.3em;'>{score}</span><span>vs {opponent}</span></div>
-        {create_stat_bar(qb_duel[0], qb_duel[1], "🔥 QB Duel", qb_mvp)}
-        {create_stat_bar(off_vs_def[0], off_vs_def[1], "⚔️ OFF vs DEF", off_mvp)}
-        {create_stat_bar(def_vs_off[0], def_vs_off[1], "🛡️ DEF vs OFF", def_mvp)}
-    </div>
-    """
-    return html
+    return (
+        f"<div class='game-card {css_class}'>"
+        f"<div class='card-header'><span style='font-size: 1.3em;'>{score}</span><span>vs {opponent}</span></div>"
+        f"{create_stat_bar(qb_duel[0], qb_duel[1], '🔥 QB Duel', qb_mvp)}"
+        f"{create_stat_bar(off_vs_def[0], off_vs_def[1], '⚔️ OFF vs DEF', off_mvp)}"
+        f"{create_stat_bar(def_vs_off[0], def_vs_off[1], '🛡️ DEF vs OFF', def_mvp)}"
+        "</div>"
+    )
 
 def get_conference_badge_class(conf: str) -> str:
     conf_map = {"SEC": "conf-SEC", "Big Ten": "conf-BIG", "ACC": "conf-ACC", "Big 12": "conf-B12"}
