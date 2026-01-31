@@ -293,6 +293,7 @@ st.markdown("""
 .trophy-year { font-size: 0.7em; color: rgba(255,255,255,0.7); margin-top: 3px; }
 .trophy-empty { opacity: 0.3; background: rgba(255,255,255,0.05); border: 2px dashed rgba(255,255,255,0.2); }
 .trophy-empty .trophy-icon { filter: grayscale(1); }
+@keyframes pulse-fade { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.5; } }
 
 /* TIMELINE */
 .timeline-container { position: relative; padding: 20px 0 20px 60px; }
@@ -833,6 +834,13 @@ def get_conference_badge_class(conf: str) -> str:
     conf_map = {"SEC": "conf-SEC", "Big Ten": "conf-BIG", "ACC": "conf-ACC", "Big 12": "conf-B12"}
     return conf_map.get(conf, "conf-G5")
 
+def get_prestige_tier(prestige: int) -> tuple:
+    if prestige >= 95: return ("🌟 BLUE BLOOD", "#FFD700")
+    elif prestige >= 85: return ("⚔️ POWERHOUSE", "#C0C0C0")
+    elif prestige >= 75: return ("📈 RISING PROGRAM", "#CD7F32")
+    elif prestige >= 65: return ("🔨 REBUILDING", "#4CAF50")
+    else: return ("🆘 STRUGGLING", "#f44336")
+
 def get_record_color_class(wins: int, losses: int) -> str:
     if losses == 0 and wins >= 12: return "record-undefeated"
     elif wins >= 10: return "record-strong"
@@ -991,10 +999,9 @@ def render_trophy_shelf(shelf_name: str, trophies: List[Dict], max_display: int 
         empty_count = max(0, max_display - len(trophies))
         for _ in range(empty_count):
             trophy_items.append(
-                f"<div class='trophy-item trophy-empty' title='{category_data['empty_text']}'>"
-                f"<div class='trophy-icon'>{category_data['icon']}</div>"
-                "<div class='trophy-label'>???</div>"
-                "<div class='trophy-year'>????</div>"
+                f"<div class='trophy-item trophy-empty' style='animation: pulse-fade 2s infinite;' title='{category_data['empty_text']}'>"
+                "<div class='trophy-icon' style='opacity: 0.15;'>❓</div>"
+                "<div class='trophy-label' style='font-style: italic;'>Earn This</div>"
                 "</div>"
             )
 
@@ -2613,6 +2620,9 @@ def show_offseason_top8_v8():
                     else:
                         chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
                         if random.random() < chance:
+                            st.balloons()
+                            st.success(f"🎉 {r['name']} COMMITS TO {st.session_state.team_name}!")
+                            time.sleep(1.5)
                             BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
                             st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
                             r["status"] = "COMMITTED"
@@ -2763,9 +2773,37 @@ def show_dashboard():
     if st.session_state.revenue_report:
         st.markdown(f"<div class='finance-alert'>{st.session_state.revenue_report}</div>", unsafe_allow_html=True)
 
+    st.subheader("🎯 Season Goals")
+    goals_met = 0
+    goals_total = 3
+    g1, g2, g3 = st.columns(3)
+    with g1:
+        bowl_eligible = st.session_state.record['w'] >= 6
+        g1.metric("Bowl Eligible", "✅" if bowl_eligible else "❌")
+        if bowl_eligible: goals_met += 1
+    with g2:
+        beat_expectations = st.session_state.record['w'] >= st.session_state.expected_wins
+        g2.metric("Meet Expectations", "✅" if beat_expectations else "❌")
+        if beat_expectations: goals_met += 1
+    with g3:
+        beat_rival = any(
+            log for log in st.session_state.season_logs
+            if log['Opponent'] == st.session_state.team_rival and 'W' in log['Score']
+        )
+        g3.metric("Beat Rival", "✅" if beat_rival else "❌")
+        if beat_rival: goals_met += 1
+    st.progress(goals_met / goals_total)
+
     sec_cls = "security-safe" if st.session_state.job_security > 75 else ("security-warm" if st.session_state.job_security > 40 else "security-hot")
     st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{st.session_state.job_security}%</span></div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'><h2>{st.session_state.team_name}</h2></div>", unsafe_allow_html=True)
+    tier_name, tier_color = get_prestige_tier(st.session_state.prestige)
+    st.markdown(
+        f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'>"
+        f"<h2>{st.session_state.team_name}</h2>"
+        f"<div style='display: inline-block; background: {tier_color}; color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-left: 10px;'>"
+        f"{tier_name}</div></div>",
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -2895,12 +2933,19 @@ def show_dashboard():
             with c3:
                 st.markdown("Simulate")
                 if st.button("Sim Season", use_container_width=True, key="sim_season_main"):
-                    while not st.session_state.season_simulated and st.session_state.week_index < 12:
-                        wk = st.session_state.week_index
-                        opp = sched[wk]
-                        opp_data = OpponentManager.get(opp)
-                        play_week_game(wk, opp, opp_data, opp == st.session_state.team_rival, is_sim=True)
-                        time.sleep(0.01) # Stabilization
+                    with st.spinner("🏈 Simulating season..."):
+                        remaining_games = max(0, 12 - st.session_state.week_index)
+                        progress_bar = st.progress(0.0)
+                        for i in range(remaining_games):
+                            wk = st.session_state.week_index
+                            if wk >= len(sched):
+                                break
+                            opp = sched[wk]
+                            opp_data = OpponentManager.get(opp)
+                            play_week_game(wk, opp, opp_data, opp == st.session_state.team_rival, is_sim=True)
+                            progress_bar.progress((i + 1) / max(1, remaining_games))
+                            time.sleep(0.01) # Stabilization
+                        progress_bar.empty()
                     end_regular_season_and_stay_on_results()
                     st.rerun()
 
@@ -3247,6 +3292,32 @@ def show_season_recap():
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Record", summary["Record"]); c2.metric("Rank", summary["FinalRank"]); c3.metric("SOS", summary["SOS"]); c4.metric("Bowl", summary["Postseason"])
     
+    st.subheader("🎥 Season Highlights")
+    if st.session_state.season_logs:
+        best_game = max(
+            st.session_state.season_logs,
+            key=lambda g: g.get("OppOVR", 0) if "W" in g.get("Score", "") else 0
+        )
+        if "W" in best_game.get("Score", ""):
+            st.success(f"🔥 **Signature Win:** Beat #{best_game['Opponent']} ({best_game['OppOVR']}) {best_game['Score']}")
+        
+        close_wins = []
+        for g in st.session_state.season_logs:
+            score = g.get("Score", "")
+            if "W" not in score:
+                continue
+            try:
+                final_score = score.split()[1]
+                left, right = final_score.split("-")
+                if abs(int(left) - int(right)) <= 7:
+                    close_wins.append(g)
+            except (IndexError, ValueError):
+                continue
+        if close_wins:
+            st.warning(f"😅 **Nail-biters:** {len(close_wins)} wins decided by 7 or less")
+    else:
+        st.info("No games logged yet.")
+
     st.divider()
     if st.button("Proceed to Offseason ->", type="primary"):
         update_prestige_after_season()
