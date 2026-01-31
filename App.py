@@ -2773,27 +2773,6 @@ def show_dashboard():
     if st.session_state.revenue_report:
         st.markdown(f"<div class='finance-alert'>{st.session_state.revenue_report}</div>", unsafe_allow_html=True)
 
-    st.subheader("🎯 Season Goals")
-    goals_met = 0
-    goals_total = 3
-    g1, g2, g3 = st.columns(3)
-    with g1:
-        bowl_eligible = st.session_state.record['w'] >= 6
-        g1.metric("Bowl Eligible", "✅" if bowl_eligible else "❌")
-        if bowl_eligible: goals_met += 1
-    with g2:
-        beat_expectations = st.session_state.record['w'] >= st.session_state.expected_wins
-        g2.metric("Meet Expectations", "✅" if beat_expectations else "❌")
-        if beat_expectations: goals_met += 1
-    with g3:
-        beat_rival = any(
-            log for log in st.session_state.season_logs
-            if log['Opponent'] == st.session_state.team_rival and 'W' in log['Score']
-        )
-        g3.metric("Beat Rival", "✅" if beat_rival else "❌")
-        if beat_rival: goals_met += 1
-    st.progress(goals_met / goals_total)
-
     sec_cls = "security-safe" if st.session_state.job_security > 75 else ("security-warm" if st.session_state.job_security > 40 else "security-hot")
     st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{st.session_state.job_security}%</span></div>", unsafe_allow_html=True)
     tier_name, tier_color = get_prestige_tier(st.session_state.prestige)
@@ -3292,6 +3271,127 @@ def show_season_recap():
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Record", summary["Record"]); c2.metric("Rank", summary["FinalRank"]); c3.metric("SOS", summary["SOS"]); c4.metric("Bowl", summary["Postseason"])
     
+    st.subheader("🎯 Season Goals Report Card")
+    wins = st.session_state.record['w']
+    losses = st.session_state.record['l']
+    expected = st.session_state.expected_wins
+    rival = st.session_state.team_rival
+    goals = []
+
+    bowl_eligible = wins >= 6
+    goals.append({
+        "name": "Bowl Eligibility",
+        "target": "Win 6+ Games",
+        "result": f"{wins} Wins",
+        "achieved": bowl_eligible,
+        "icon": "🎳" if bowl_eligible else "❌",
+    })
+
+    beat_expectations = wins >= expected
+    goals.append({
+        "name": "Meet Expectations",
+        "target": f"Win {expected}+ Games",
+        "result": f"{wins} Wins ({'+' if wins >= expected else ''}{wins - expected})",
+        "achieved": beat_expectations,
+        "icon": "✅" if beat_expectations else "⚠️",
+    })
+
+    rival_game = next((log for log in st.session_state.season_logs if log['Opponent'] == rival), None)
+    beat_rival = bool(rival_game and 'W' in rival_game.get('Score', ''))
+    goals.append({
+        "name": f"Beat {rival}",
+        "target": "Win Rivalry Game",
+        "result": rival_game['Score'] if rival_game else "Not Played",
+        "achieved": beat_rival,
+        "icon": "⚡" if beat_rival else "💔",
+    })
+
+    conf_champ = "CONF" in st.session_state.get("last_postseason_result", "")
+    if st.session_state.team_conf in ["SEC", "Big Ten", "ACC", "Big 12"]:
+        goals.append({
+            "name": "Conference Champion",
+            "target": f"Win {st.session_state.team_conf}",
+            "result": "Champion" if conf_champ else "Not Won",
+            "achieved": conf_champ,
+            "icon": "🏅" if conf_champ else "—",
+        })
+
+    made_cfp = (
+        st.session_state.get("last_postseason_result", "").startswith("CFP")
+        or st.session_state.get("last_postseason_result") == "TITLE"
+    )
+    goals.append({
+        "name": "College Football Playoff",
+        "target": "Top 12 Ranking",
+        "result": summary['FinalRank'],
+        "achieved": made_cfp,
+        "icon": "🏆" if made_cfp else "—",
+    })
+
+    goals_met = sum(1 for g in goals if g["achieved"])
+    total_goals = len(goals)
+    grade_pct = (goals_met / total_goals) * 100
+
+    if grade_pct >= 80: grade = "A"; grade_color = "#4CAF50"
+    elif grade_pct >= 60: grade = "B"; grade_color = "#2196F3"
+    elif grade_pct >= 40: grade = "C"; grade_color = "#FF9800"
+    else: grade = "D"; grade_color = "#f44336"
+
+    st.markdown(f"""
+    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 20px;
+                border-radius: 12px;
+                margin-bottom: 20px;
+                color: white;'>
+        <div style='display: flex; justify-content: space-between; align-items: center; gap: 20px;'>
+            <div style='flex: 1;'>
+                <h3 style='margin: 0; color: white;'>Goals Achieved: {goals_met}/{total_goals}</h3>
+                <div style='background: rgba(255,255,255,0.2);
+                           height: 20px;
+                           border-radius: 10px;
+                           margin-top: 10px;
+                           overflow: hidden;'>
+                    <div style='background: {grade_color};
+                               height: 100%;
+                               width: {grade_pct}%;
+                               transition: width 0.5s ease;'></div>
+                </div>
+            </div>
+            <div style='font-size: 4em;
+                       font-weight: 900;
+                       color: {grade_color};
+                       text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                       background: white;
+                       width: 80px;
+                       height: 80px;
+                       border-radius: 50%;
+                       display: flex;
+                       align-items: center;
+                       justify-content: center;'>
+                {grade}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    cols = st.columns(min(len(goals), 3))
+    for i, goal in enumerate(goals):
+        with cols[i % len(cols)]:
+            status_style = "background: #e8f5e9; border-left: 4px solid #4CAF50;" if goal["achieved"] else "background: #ffebee; border-left: 4px solid #f44336;"
+            st.markdown(f"""
+            <div style='{status_style}
+                       padding: 15px;
+                       border-radius: 8px;
+                       margin-bottom: 10px;'>
+                <div style='font-size: 2em; text-align: center;'>{goal['icon']}</div>
+                <div style='font-weight: bold; margin: 5px 0; text-align: center;'>{goal['name']}</div>
+                <div style='font-size: 0.85em; color: #666; text-align: center;'>Target: {goal['target']}</div>
+                <div style='font-size: 0.9em; font-weight: bold; margin-top: 5px; text-align: center;'>{goal['result']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.divider()
+
     st.subheader("🎥 Season Highlights")
     if st.session_state.season_logs:
         best_game = max(
