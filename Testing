@@ -1814,6 +1814,7 @@ def organize_trophies_by_category(all_trophies: List[Dict]) -> Dict[str, List[Di
         elif "CFP" in name or "Playoff" in name: categories["CFP Appearances"].append(trophy)
         elif "Bowl" in name: categories["Bowl Victories"].append(trophy)
         elif "Perfect" in name: categories["Perfect Seasons"].append(trophy)
+        elif "10+" in name or "10 Win" in name: categories["10+ Win Seasons"].append(trophy)
         elif "Conference" in name: categories["Conference Titles"].append(trophy)
     return categories
 
