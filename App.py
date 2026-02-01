@@ -1891,34 +1891,43 @@ def render_timeline_node(season: Dict, category: str) -> str:
     )
     bowl_html = f"<div class='timeline-bowl'>{bowl}</div>" if bowl and bowl != "None" else ""
     
-    html = f"""
-    <div class='timeline-node'>
-        <div class='{dot_class}'></div>
-        <div class='timeline-content'>
-            <div class='timeline-year'>Year {year}</div>
-            <div class='timeline-record'><strong>{record}</strong> • Rank {rank}</div>
-            {bowl_html}
-            {achievements_html}
-        </div>
-    </div>
-    """
-    return html
+    return (
+        "<div class='timeline-node'>"
+        f"<div class='{dot_class}'></div>"
+        "<div class='timeline-content'>"
+        f"<div class='timeline-year'>Year {year}</div>"
+        f"<div class='timeline-record'><strong>{record}</strong> • Rank {rank}</div>"
+        f"{bowl_html}"
+        f"{achievements_html}"
+        "</div>"
+        "</div>"
+    )
 
 def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20) -> str:
     if not history: return "<p style='text-align: center; color: #999;'>No dynasty history yet. Start your legend!</p>"
     history = sorted(history, key=lambda x: x.get("Year", 0))
     eras = detect_era_boundaries(history)
-    timeline_html = ""
+    timeline_items = []
     for season in history[-max_years:]:
         category = categorize_season(season.get("Record", "0-0"), season.get("PostseasonResult", ""))
-        timeline_html += render_timeline_node(season, category)
+        timeline_items.append(render_timeline_node(season, category))
     
-    era_markers = ""
+    era_markers = []
     for era in eras:
-        era_markers += f"<div class='era-marker' style='background: linear-gradient(135deg, {era['color']} 0%, {era['color']}dd 100%);'>📅 {era['name']} ({era['start_year']}-{era['end_year']})</div>"
+        era_markers.append(
+            f"<div class='era-marker' style='background: linear-gradient(135deg, {era['color']} 0%, {era['color']}dd 100%);'>"
+            f"📅 {era['name']} ({era['start_year']}-{era['end_year']})</div>"
+        )
     
-    full_html = f"<div style='margin: 20px 0;'>{era_markers}<div class='timeline-container'><div class='timeline-line'></div>{timeline_html}</div></div>"
-    return full_html
+    return (
+        "<div style='margin: 20px 0;'>"
+        f"{''.join(era_markers)}"
+        "<div class='timeline-container'>"
+        "<div class='timeline-line'></div>"
+        f"{''.join(timeline_items)}"
+        "</div>"
+        "</div>"
+    )
 
 # ==============================================================================
 # ENGINE & STATE
