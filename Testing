@@ -3177,7 +3177,7 @@ def show_postseason():
         if round_num == 5:
             st.balloons()
             st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
-            if st.button("Finish Season & Celebrate", type="primary"):
+            if st.button("Advance to Offseason Summary →", type="primary"):
                 st.session_state.game_state = GameState.SEASON_RECAP
                 st.rerun()
             return
