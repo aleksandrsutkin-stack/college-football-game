@@ -1,6 +1,6 @@
 """
 Build the Program: College Football CEO
-VERSION 4.2 (The Ultimate UI Update)
+VERSION 4.6 (The Ultimate UI Update)
 
 Audit Log:
 - MERGE: Combined V3.0 Logic (Hard Mode, Scheduling, Bug Fixes) with V2.9 UI Suite.
@@ -32,7 +32,8 @@ except ImportError:
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
 
-STATE_VERSION = 4.0
+STATE_VERSION = 4.6
+NY6_BOWLS = ["Rose Bowl", "Sugar Bowl", "Orange Bowl", "Cotton Bowl", "Peach Bowl", "Fiesta Bowl"]
 
 class GameState:
     """Game state constants representing different screens/phases of the game."""
@@ -89,6 +90,10 @@ class GameConfig:
     TROPHY_ICONS = {k: v["icon"] for k, v in TROPHY_CATEGORIES.items()}
     TROPHY_ICONS["Bowl Win"] = "🎳"
     TROPHY_ICONS["National Title"] = "🏆"
+    TROPHY_ICONS["CFP Appearance"] = "⚔️"
+    TROPHY_ICONS["Perfect Season"] = "💯"
+    TROPHY_ICONS["10+ Win Season"] = "🔟"
+    TROPHY_ICONS["Conference Title"] = "🏅"
 
     LEGENDS = [
         {"Name": "Nick Saban", "Titles": 7, "Wins": 292, "Losses": 71, "BowlWins": 19},
@@ -164,6 +169,14 @@ class GameConfig:
         "MAC": ["Toledo", "Miami (OH)", "Ohio", "Northern Illinois", "Western Michigan", "Bowling Green", "Buffalo"],
         "G5": ["Tulane", "Memphis", "Navy", "Army", "USF", "Liberty", "App State", "James Madison", "San Jose State", "Wyoming", "Air Force", "Nevada", "UNLV", "Rice", "North Texas", "UTSA", "Texas State"]
     }
+
+    G5_RIVAL_CANDIDATES = {
+        "San Jose State": ["Fresno St", "Stanford"],
+        "Fresno St": ["San Jose State", "San Diego St"],
+        "San Diego St": ["Fresno St", "San Jose State"],
+        "Stanford": ["Cal"],
+        "Cal": ["Stanford"],
+    }
     
     ALL_TEAMS = [t for c in CONFERENCES.values() for t in c]
 
@@ -207,6 +220,10 @@ st.markdown("""
 /* ENHANCED CARDS */
 .staff-card-enhanced { background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); border: 2px solid #e0e0e0; border-radius: 12px; padding: 15px; margin-bottom: 15px; position: relative; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .staff-card-enhanced:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+.staff-card { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+.staff-role { font-size: 0.85em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #546e7a; margin-bottom: 4px; }
+.staff-name { font-size: 1.05em; font-weight: 800; color: #1a1a1a; }
+.small-muted { font-size: 0.85em; color: #6c757d; }
 .staff-card-gold { border: 2px solid #FFD700; background: linear-gradient(145deg, #FFFEF0 0%, #FFF9E6 100%); }
 .staff-card-silver { border: 2px solid #C0C0C0; background: linear-gradient(145deg, #F8F8F8 0%, #EFEFEF 100%); }
 .staff-card-bronze { border: 2px solid #CD7F32; background: linear-gradient(145deg, #FFF5E6 0%, #FFEACC 100%); }
@@ -248,6 +265,8 @@ st.markdown("""
 .nil-trait-badge { background: #e1bee7; color: #6a1b9a; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; display: inline-block; margin-top: 5px; }
 
 /* MISC UI */
+.top8-card-title { font-size: 1.15em; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
+.top8-card-trait { font-size: 0.85em; font-weight: 700; color: #6a1b9a; margin-left: 6px; }
 .interest-meter-container { background: #f5f5f5; height: 20px; border-radius: 10px; overflow: hidden; margin: 10px 0; border: 1px solid #ddd; }
 .interest-meter-fill { height: 100%; transition: width 0.5s ease; background: linear-gradient(90deg, #ff9800 0%, #ff5722 100%); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; color: white; font-size: 0.75em; font-weight: bold; }
 .rivalry-indicator { background: #ffebee; border: 2px dashed #e53935; padding: 6px 10px; border-radius: 6px; font-size: 0.8em; color: #c62828; margin-top: 5px; }
@@ -282,6 +301,7 @@ st.markdown("""
 .trophy-year { font-size: 0.7em; color: rgba(255,255,255,0.7); margin-top: 3px; }
 .trophy-empty { opacity: 0.3; background: rgba(255,255,255,0.05); border: 2px dashed rgba(255,255,255,0.2); }
 .trophy-empty .trophy-icon { filter: grayscale(1); }
+@keyframes pulse-fade { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.5; } }
 
 /* TIMELINE */
 .timeline-container { position: relative; padding: 20px 0 20px 60px; }
@@ -293,6 +313,9 @@ st.markdown("""
 .timeline-dot-championship { background: #FFD700; box-shadow: 0 0 0 2px #FFD700, 0 0 16px rgba(255, 215, 0, 0.8); width: 32px; height: 32px; left: -46px; }
 .timeline-content { background: white; border: 2px solid #e0e0e0; border-radius: 8px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .timeline-year { font-weight: bold; color: #2196f3; font-size: 1.1em; margin-bottom: 5px; }
+.timeline-record { color: #333; }
+.timeline-bowl { font-size: 0.85em; color: #666; margin-top: 5px; }
+.timeline-achievements { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .timeline-achievement { background: #fff3e0; color: #e65100; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; display: inline-block; margin-top: 5px; }
 .era-marker { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold; text-align: center; margin: 20px 0; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
 
@@ -477,19 +500,25 @@ def render_enhanced_staff_card(coach: dict, role: str, rating: int) -> str:
     trait_icon = get_trait_icon(trait)
     tenure_years = coach.get('tenure_years', 1)
     stars = "⭐" * rating + "☆" * (10 - rating)
+    trait_icon_html = f"<div class='staff-trait-icon'>{trait_icon}</div>" if trait_icon else ""
+    trait_label_html = (
+        "<div style='margin-top: 8px; font-size: 0.85em; color: #666;'>"
+        f"<strong>Trait:</strong> {trait}</div>"
+        if trait != "None"
+        else ""
+    )
     
-    html = f"""
-    <div class='staff-card-enhanced {quality_class}'>
-        {f'<div class="staff-trait-icon">{trait_icon}</div>' if trait_icon else ''}
-        <div class='staff-headshot {headshot_class}'>{initials}</div>
-        <div class='staff-role'>{role}</div>
-        <div class='staff-name'>{coach.get('name', 'Unknown')}</div>
-        <div style='margin: 8px 0;'>{stars}</div>
-        <div class='staff-tenure'>Year {tenure_years}</div>
-        {f"<div style='margin-top: 8px; font-size: 0.85em; color: #666;'><strong>Trait:</strong> {trait}</div>" if trait != 'None' else ''}
-    </div>
-    """
-    return html
+    return (
+        f"<div class='staff-card-enhanced {quality_class}'>"
+        f"{trait_icon_html}"
+        f"<div class='staff-headshot {headshot_class}'>{initials}</div>"
+        f"<div class='staff-role'>{role}</div>"
+        f"<div class='staff-name'>{coach.get('name', 'Unknown')}</div>"
+        f"<div style='margin: 8px 0;'>{stars}</div>"
+        f"<div class='staff-tenure'>Year {tenure_years}</div>"
+        f"{trait_label_html}"
+        "</div>"
+    )
 
 def get_facility_visual(facility_type: str, level: int) -> str:
     visuals = {
@@ -605,7 +634,7 @@ def render_nil_prospect_card(prospect: dict, is_need: bool = False) -> str:
     """
     return html
 
-def render_interest_meter(recruit: dict, chance: float, spend_by_pos: dict) -> str:
+def render_interest_meter(recruit: dict, chance: float, spend_by_pos: dict) -> tuple[str, str]:
     """Render an interest meter for a recruit with input validation."""
     # Input validation
     if not isinstance(recruit, dict):
@@ -656,10 +685,9 @@ def render_interest_meter(recruit: dict, chance: float, spend_by_pos: dict) -> s
             <div class='interest-meter-fill' style='width: {interest_pct}%; background: {meter_color};'>{interest_pct}%</div>
         </div>
         {offer_status}
-        {rivalry_html}
     </div>
     """
-    return html
+    return html, rivalry_html
 
 def get_weather_icon() -> str:
     weather = ["☀️", "⛅", "🌤️", "🌧️", "❄️", "🌨️"]
@@ -790,30 +818,36 @@ def render_game_result_with_bars(week: int, opponent: str, score: str, is_win: b
         max_val = max(user_val, opp_val, 1)  # Prevent division by zero
         user_pct = (user_val / max_val) * 100
         opp_pct = (opp_val / max_val) * 100
-        return f"""
-        <div class='stat-comparison'>
-            <div class='stat-label'>{label}</div>
-            <div class='stat-bars-container'>
-                <div class='stat-bar-left'><div class='stat-bar-fill-user' style='width: {user_pct}%;'>{user_val} {user_mvp}</div></div>
-                <div style='font-weight: bold; color: #666;'>vs</div>
-                <div class='stat-bar-right'><div class='stat-bar-fill-opp' style='width: {opp_pct}%;'>{opp_val}</div></div>
-            </div>
-        </div>
-        """
+        return (
+            "<div class='stat-comparison'>"
+            f"<div class='stat-label'>{label}</div>"
+            "<div class='stat-bars-container'>"
+            f"<div class='stat-bar-left'><div class='stat-bar-fill-user' style='width: {user_pct}%;'>{user_val} {user_mvp}</div></div>"
+            "<div style='font-weight: bold; color: #666;'>vs</div>"
+            f"<div class='stat-bar-right'><div class='stat-bar-fill-opp' style='width: {opp_pct}%;'>{opp_val}</div></div>"
+            "</div>"
+            "</div>"
+        )
     
-    html = f"""
-    <div class='game-card {css_class}'>
-        <div class='card-header'><span style='font-size: 1.3em;'>{score}</span><span>vs {opponent}</span></div>
-        {create_stat_bar(qb_duel[0], qb_duel[1], "🔥 QB Duel", qb_mvp)}
-        {create_stat_bar(off_vs_def[0], off_vs_def[1], "⚔️ OFF vs DEF", off_mvp)}
-        {create_stat_bar(def_vs_off[0], def_vs_off[1], "🛡️ DEF vs OFF", def_mvp)}
-    </div>
-    """
-    return html
+    return (
+        f"<div class='game-card {css_class}'>"
+        f"<div class='card-header'><span style='font-size: 1.3em;'>{score}</span><span>vs {opponent}</span></div>"
+        f"{create_stat_bar(qb_duel[0], qb_duel[1], '🔥 QB Duel', qb_mvp)}"
+        f"{create_stat_bar(off_vs_def[0], off_vs_def[1], '⚔️ OFF vs DEF', off_mvp)}"
+        f"{create_stat_bar(def_vs_off[0], def_vs_off[1], '🛡️ DEF vs OFF', def_mvp)}"
+        "</div>"
+    )
 
 def get_conference_badge_class(conf: str) -> str:
     conf_map = {"SEC": "conf-SEC", "Big Ten": "conf-BIG", "ACC": "conf-ACC", "Big 12": "conf-B12"}
     return conf_map.get(conf, "conf-G5")
+
+def get_prestige_tier(prestige: int) -> tuple:
+    if prestige >= 95: return ("🌟 BLUE BLOOD", "#FFD700")
+    elif prestige >= 85: return ("⚔️ POWERHOUSE", "#C0C0C0")
+    elif prestige >= 75: return ("📈 RISING PROGRAM", "#CD7F32")
+    elif prestige >= 65: return ("🔨 REBUILDING", "#4CAF50")
+    else: return ("🆘 STRUGGLING", "#f44336")
 
 def get_record_color_class(wins: int, losses: int) -> str:
     if losses == 0 and wins >= 12: return "record-undefeated"
@@ -854,22 +888,6 @@ def render_rankings_table_header() -> str:
     </div>
     """
 
-
-def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20) -> str:
-    if not history: return "<p style='text-align: center; color: #999;'>No dynasty history yet. Start your legend!</p>"
-    history = sorted(history, key=lambda x: x.get("Year", 0))
-    eras = detect_era_boundaries(history)
-    timeline_html = ""
-    for season in history[-max_years:]:
-        category = categorize_season(season.get("Record", "0-0"), season.get("PostseasonResult", ""))
-        timeline_html += render_timeline_node(season, category)
-    
-    era_markers = ""
-    for era in eras:
-        era_markers += f"<div class='era-marker' style='background: linear-gradient(135deg, {era['color']} 0%, {era['color']}dd 100%);'>📅 {era['name']} ({era['start_year']}-{era['end_year']})</div>"
-    
-    full_html = f"<div style='margin: 20px 0;'>{era_markers}<div class='timeline-container'><div class='timeline-line'></div>{timeline_html}</div></div>"
-    return full_html
 
 def calculate_percentile(user_score: int, all_coaches: List[Dict]) -> int:
     """
@@ -964,6 +982,84 @@ def render_legacy_report_card(grade: str, score: int, percentile: int) -> str:
     label = grade_labels.get(grade, "Career Complete")
     html = f"<div class='legacy-report-card'><h2 style='margin-bottom: 10px;'>Legacy Report Card</h2><div class='report-card-grade'>{grade}</div><div style='font-size: 1.5em; font-weight: bold; color: #f57f17; margin: 10px 0;'>{label}</div><div style='font-size: 1.2em; color: #666; margin: 5px 0;'>Career Score: <strong>{score}</strong></div><div class='percentile-badge'>Top {100 - percentile}% of All-Time Coaches</div></div>"
     return html
+
+def render_trophy_shelf(shelf_name: str, trophies: List[Dict], max_display: int = 8, show_empty: bool = True) -> str:
+    """Render a 3D trophy shelf display with trophies organized by category."""
+    category_data = GameConfig.TROPHY_CATEGORIES.get(shelf_name, {
+        "icon": "🏆", "color": "#FFD700", "empty_text": "Earn Trophy", "track_key": "titles"
+    })
+    
+    trophy_items = []
+    for trophy in trophies[:max_display]:
+        year = trophy.get("Year", "????")
+        icon = trophy.get("Icon", category_data["icon"])
+        name = trophy.get("Name", shelf_name)
+        icon_class = "trophy-icon-national" if "National" in shelf_name or "Championship" in name else "trophy-icon"
+        trophy_items.append(
+            f"<div class='trophy-item' title='{name} - {year}'>"
+            f"<div class='{icon_class}'>{icon}</div>"
+            f"<div class='trophy-label'>{name}</div>"
+            f"<div class='trophy-year'>{year}</div>"
+            "</div>"
+        )
+    
+    if show_empty:
+        empty_count = max(0, max_display - len(trophies))
+        for _ in range(empty_count):
+            trophy_items.append(
+                f"<div class='trophy-item trophy-empty' style='animation: pulse-fade 2s infinite;' title='{category_data['empty_text']}'>"
+                "<div class='trophy-icon' style='opacity: 0.15;'>❓</div>"
+                "<div class='trophy-label' style='font-style: italic;'>Earn This</div>"
+                "</div>"
+            )
+
+    trophy_html = "".join(trophy_items)
+    return (
+        f"<div class='trophy-shelf'>"
+        f"<div class='trophy-shelf-title'>{shelf_name} ({len(trophies)})</div>"
+        f"<div class='trophy-display'>{trophy_html}</div>"
+        "</div>"
+    )
+
+def play_week_game(week_index: int, opponent: str, opponent_data: dict, is_rival: bool, is_sim: bool = False) -> dict:
+    rng = game_rng(st.session_state.year, week_index + 1, opponent, "SIM" if is_sim else "PLAY")
+    res = engine_play_game_v8(
+        st.session_state.team_off,
+        st.session_state.team_def,
+        opponent_data.get("OffOVR"),
+        opponent_data.get("DefOVR"),
+        st.session_state.staff,
+        st.session_state.my_schemes,
+        {"Off": opponent_data.get("Off"), "Def": opponent_data.get("Def")},
+        st.session_state.game_plan,
+        opponent_data.get("Coaches"),
+        week_index % 2 == 0,
+        opponent == st.session_state.team_rival,
+        st.session_state.facilities["Stadium"],
+        opponent_data.get("Stadium"),
+        rng,
+    )
+    st.session_state.season_logs.append({
+        "Week": week_index + 1,
+        "Opponent": opponent,
+        "Score": f"{res['result']} {res['score']}",
+        "Stats": res["stats"],
+        "OppOVR": opponent_data.get("OVR"),
+    })
+    if res["result"] == "W":
+        st.session_state.record["w"] += 1
+        st.session_state.career_stats["w"] += 1
+        if not is_sim:
+            st.session_state.job_security = min(100, st.session_state.job_security + (5 if is_rival else 2))
+            if is_rival:
+                st.session_state.trophy_stats["rivalry_wins"] += 1
+    else:
+        st.session_state.record["l"] += 1
+        st.session_state.career_stats["l"] += 1
+        if not is_sim:
+            st.session_state.job_security = max(0, st.session_state.job_security - 2)
+    st.session_state.week_index += 1
+    return res
 
 # ==============================================================================
 # UI COMPONENTS
@@ -1280,6 +1376,19 @@ def get_conference(team: str) -> str:
         if team in teams: return conf
     return "G5"
 
+def get_default_rival(team: str) -> str:
+    preset = GameConfig.TEAMS_DB.get(team, {}).get("Rival")
+    if preset:
+        return preset
+    if team in GameConfig.G5_RIVAL_CANDIDATES:
+        return random.choice(GameConfig.G5_RIVAL_CANDIDATES[team])
+    conf = get_conference(team)
+    candidates = [t for t in get_conferences_map().get(conf, []) if t != team]
+    if candidates:
+        rng = make_deterministic_rng("rival", team)
+        return rng.choice(candidates)
+    return "Rival"
+
 def compute_team_needs(roster: dict, k: int = 3) -> list:
     roster = roster or {}
     vals = sorted([(pos, safe_int(roster.get(pos, 75), 75)) for pos in GameConfig.POSITIONS], key=lambda x: x[1])
@@ -1349,7 +1458,10 @@ def trophy_icon(name: str) -> str:
 
 def award_trophy(trophy_name: str):
     if "trophies" not in st.session_state: st.session_state.trophies = []
-    st.session_state.trophies.append({"Year": st.session_state.year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
+    year = st.session_state.year
+    exists = any(t.get("Year") == year and t.get("Name") == trophy_name for t in st.session_state.trophies)
+    if not exists:
+        st.session_state.trophies.append({"Year": year, "Name": trophy_name, "Icon": trophy_icon(trophy_name)})
     
     # Update trophy stats
     if "trophy_stats" not in st.session_state: initialize_trophy_tracking()
@@ -1440,14 +1552,86 @@ def check_and_award_achievements():
     # CFP Appearances
     if st.session_state.get("last_postseason_result", "").startswith("CFP"):
         st.session_state.trophy_stats["cfp_appearances"] += 1
+        award_trophy("CFP Appearance")
     
     # Perfect Seasons
     if st.session_state.record['l'] == 0 and st.session_state.record['w'] >= 12:
         st.session_state.trophy_stats["perfect_seasons"] += 1
+        award_trophy("Perfect Season")
     
     # 10+ Win Seasons
     if st.session_state.record['w'] >= 10:
         st.session_state.trophy_stats["ten_win_seasons"] += 1
+        award_trophy("10+ Win Season")
+
+def process_postseason_security_boost():
+    """
+    Rewards the player for postseason success.
+    Prevents the 'Stuck at 75%' job security ceiling by escalating elite outcomes.
+    """
+    last_result = st.session_state.get("last_postseason_result", "NONE")
+
+    # 1. Championship Protection (The 'Saban' Rule)
+    if last_result == "TITLE":
+        st.session_state.job_security = 100.0
+        add_news("🏆 CHAMPIONSHIP PROTECTED: You are untouchable in the eyes of the Boosters.")
+        return
+
+    # 2. CFP Appearance Boost
+    if "CFP" in last_result:
+        st.session_state.job_security = min(
+            98.0,
+            st.session_state.job_security + 15.0
+        )
+        add_news("⚔️ CFP BONUS: Playoff appearance has stabilized your job security.")
+
+    # 3. Bowl Game Stabilization
+    elif "BOWL" in last_result:
+        if "WIN" in last_result:
+            st.session_state.job_security = min(
+                90.0,
+                st.session_state.job_security + 8.0
+            )
+        else:
+            # Bowl eligibility alone should prevent firing
+            st.session_state.job_security = max(
+                45.0,
+                st.session_state.job_security + 3.0
+            )
+
+def update_prestige_after_season():
+    """
+    V4.6 NEW: Updates the 1-99 Prestige rating based on performance vs expectations.
+    Ensures program growth is tied to results, not just tenure.
+    """
+    year = st.session_state.get("year", 0)
+    # Prevent double-triggering prestige in the same year
+    if st.session_state.get("prestige_last_updated_year") == year:
+        return
+
+    wins = safe_int(st.session_state.record.get("w", 0), 0)
+    expected = safe_int(st.session_state.get("expected_wins", 6), 6)
+    delta = wins - expected
+    last_result = st.session_state.get("last_postseason_result", "NONE")
+    change = 0
+
+    # Win-Delta Logic
+    if delta >= 3: change += 2      # Crushed expectations
+    elif delta >= 1: change += 1    # Improved
+    elif delta <= -4: change -= 3   # Disaster season
+    elif delta <= -2: change -= 1   # Underperformed
+
+    # Postseason Bonuses
+    if last_result == "TITLE": change += 4
+    elif "CFP" in last_result: change += 2
+    elif last_result == "BOWL_WIN": change += 1
+    elif last_result == "NO_BOWL": change -= 1
+
+    if change != 0:
+        st.session_state.prestige = max(1, min(99, st.session_state.prestige + change))
+        add_news(f"Program Prestige adjusted to {st.session_state.prestige} ({'+' if change > 0 else ''}{change}).")
+
+    st.session_state.prestige_last_updated_year = year
 
 def build_season_summary_dict():
     w = safe_int(st.session_state.record.get("w", 0), 0); l = safe_int(st.session_state.record.get("l", 0), 0)
@@ -1525,6 +1709,7 @@ def render_cfp_bracket_tree(data: dict):
 .bracket-score{font-weight:bold;margin-left:10px;color:#666}
 .bracket-round-title{text-align:center;font-weight:bold;text-transform:uppercase;color:#666;margin-bottom:10px;font-size:0.9em;letter-spacing:1px}
 .bracket-bye{background:#E3F2FD;border:2px dashed #2196F3;color:#1976D2;font-style:italic;text-align:center}
+.bracket-bowl{font-size:0.75em;color:#666;text-align:center;margin-top:6px}
 </style>""", unsafe_allow_html=True)
     
     html = "<div class='bracket-container'>"
@@ -1536,7 +1721,9 @@ def render_cfp_bracket_tree(data: dict):
             cls = "bracket-matchup"
             if m.get("winner"): cls += " completed"
             if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
-            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div></div>"
+            bowl_display = m.get("bowl", "")
+            bowl_html = f"<div class='bracket-bowl'>🏟️ {bowl_display}</div>" if bowl_display and bowl_display != "On-Campus" else ""
+            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div>{bowl_html}</div>"
         
         html += "</div><div class='bracket-round'><div class='bracket-round-title'>Quarterfinals</div>"
         qf_seeds = data.get("QF_Seeds", seeds[:4])
@@ -1557,7 +1744,9 @@ def render_cfp_bracket_tree(data: dict):
             if m.get("winner"): cls += " completed"
             else: cls += " active"
             if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
-            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div></div>"
+            bowl_display = m.get("bowl", "")
+            bowl_html = f"<div class='bracket-bowl'>🏟️ {bowl_display}</div>" if bowl_display and bowl_display != "On-Campus" else ""
+            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div>{bowl_html}</div>"
         
         html += "</div><div class='bracket-round'><div class='bracket-round-title'>Semifinals</div>"
         html += "<div class='bracket-matchup' style='opacity:0.6;text-align:center;padding:20px;color:#999;'>Awaiting QF</div>" * 2
@@ -1572,7 +1761,9 @@ def render_cfp_bracket_tree(data: dict):
             if m.get("winner"): cls += " completed"
             else: cls += " active"
             if user_team in [m.get("t1"), m.get("t2")]: cls += " user-involved"
-            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div></div>"
+            bowl_display = m.get("bowl", "")
+            bowl_html = f"<div class='bracket-bowl'>🏟️ {bowl_display}</div>" if bowl_display and bowl_display != "On-Campus" else ""
+            html += f"<div class='{cls}'><div class='bracket-team {'winner' if m.get('winner')==m.get('t1') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t1'),'?')}</span>{m.get('t1')}</span><span class='bracket-score'>{m.get('s1','')}</span></div><div class='bracket-team {'winner' if m.get('winner')==m.get('t2') else 'loser' if m.get('winner') else ''}'><span><span class='bracket-seed'>{seed_map.get(m.get('t2'),'?')}</span>{m.get('t2')}</span><span class='bracket-score'>{m.get('s2','')}</span></div>{bowl_html}</div>"
         
         html += "</div><div class='bracket-round'><div class='bracket-round-title'>National Championship</div>"
         html += "<div class='bracket-matchup active' style='padding:30px;text-align:center;'><div style='font-size:2em;'>🏆</div><div style='color:#666;margin-top:10px;'>Awaiting Semifinals</div></div></div>"
@@ -1614,13 +1805,27 @@ def init_playoff_bracket(user_rank, user_team_name):
         for i in range(len(top12)):
             if i != target_idx and top12[i] == user_team_name: top12[i] = "FCS East"
     
+    bowls = random.sample(NY6_BOWLS, 6)
+    qf_bowls = bowls[:4]
+    sf_bowls = bowls[4:]
     r1_matches = [
-        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None},
-        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None},
-        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9], "winner": None},
-        {"seed_high": 8, "seed_low": 9, "t1": top12[7], "t2": top12[8], "winner": None},
+        {"seed_high": 5, "seed_low": 12, "t1": top12[4], "t2": top12[11], "winner": None, "bowl": "On-Campus"},
+        {"seed_high": 6, "seed_low": 11, "t1": top12[5], "t2": top12[10], "winner": None, "bowl": "On-Campus"},
+        {"seed_high": 7, "seed_low": 10, "t1": top12[6], "t2": top12[9], "winner": None, "bowl": "On-Campus"},
+        {"seed_high": 8, "seed_low": 9, "t1": top12[7], "t2": top12[8], "winner": None, "bowl": "On-Campus"},
     ]
-    return {"Type": "CFP", "Round": 1, "Seeds": top12, "QF_Seeds": top12[:4], "Matches": r1_matches, "UserAlive": True, "Rank": int(ur), "SeedMap": seed_map}
+    return {
+        "Type": "CFP",
+        "Round": 1,
+        "Seeds": top12,
+        "QF_Seeds": top12[:4],
+        "Matches": r1_matches,
+        "QF_Bowls": qf_bowls,
+        "SF_Bowls": sf_bowls,
+        "UserAlive": True,
+        "Rank": int(ur),
+        "SeedMap": seed_map,
+    }
 
 def initialize_trophy_tracking():
     if "trophy_stats" not in st.session_state:
@@ -1637,6 +1842,7 @@ def organize_trophies_by_category(all_trophies: List[Dict]) -> Dict[str, List[Di
         elif "CFP" in name or "Playoff" in name: categories["CFP Appearances"].append(trophy)
         elif "Bowl" in name: categories["Bowl Victories"].append(trophy)
         elif "Perfect" in name: categories["Perfect Seasons"].append(trophy)
+        elif "10+" in name or "10 Win" in name: categories["10+ Win Seasons"].append(trophy)
         elif "Conference" in name: categories["Conference Titles"].append(trophy)
     return categories
 
@@ -1699,36 +1905,50 @@ def render_timeline_node(season: Dict, category: str) -> str:
     if "CFP" in result: achievements.append("<span class='timeline-achievement'>⚔️ CFP Appearance</span>")
     if record.endswith("-0"): achievements.append("<span class='timeline-achievement'>💯 Perfect Season</span>")
     
-    achievements_html = " ".join(achievements) if achievements else ""
+    achievements_html = (
+        f"<div class='timeline-achievements'>{' '.join(achievements)}</div>"
+        if achievements
+        else ""
+    )
+    bowl_html = f"<div class='timeline-bowl'>{bowl}</div>" if bowl and bowl != "None" else ""
     
-    html = f"""
-    <div class='timeline-node'>
-        <div class='{dot_class}'></div>
-        <div class='timeline-content'>
-            <div class='timeline-year'>Year {year}</div>
-            <div class='timeline-record'><strong>{record}</strong> • Rank {rank}</div>
-            <div style='font-size: 0.85em; color: #666; margin-top: 5px;'>{bowl}</div>
-            {achievements_html}
-        </div>
-    </div>
-    """
-    return html
+    return (
+        "<div class='timeline-node'>"
+        f"<div class='{dot_class}'></div>"
+        "<div class='timeline-content'>"
+        f"<div class='timeline-year'>Year {year}</div>"
+        f"<div class='timeline-record'><strong>{record}</strong> • Rank {rank}</div>"
+        f"{bowl_html}"
+        f"{achievements_html}"
+        "</div>"
+        "</div>"
+    )
 
 def render_dynasty_timeline_infographic(history: List[Dict], max_years: int = 20) -> str:
     if not history: return "<p style='text-align: center; color: #999;'>No dynasty history yet. Start your legend!</p>"
     history = sorted(history, key=lambda x: x.get("Year", 0))
     eras = detect_era_boundaries(history)
-    timeline_html = ""
+    timeline_items = []
     for season in history[-max_years:]:
         category = categorize_season(season.get("Record", "0-0"), season.get("PostseasonResult", ""))
-        timeline_html += render_timeline_node(season, category)
+        timeline_items.append(render_timeline_node(season, category))
     
-    era_markers = ""
+    era_markers = []
     for era in eras:
-        era_markers += f"<div class='era-marker' style='background: linear-gradient(135deg, {era['color']} 0%, {era['color']}dd 100%);'>📅 {era['name']} ({era['start_year']}-{era['end_year']})</div>"
+        era_markers.append(
+            f"<div class='era-marker' style='background: linear-gradient(135deg, {era['color']} 0%, {era['color']}dd 100%);'>"
+            f"📅 {era['name']} ({era['start_year']}-{era['end_year']})</div>"
+        )
     
-    full_html = f"<div style='margin: 20px 0;'>{era_markers}<div class='timeline-container'><div class='timeline-line'></div>{timeline_html}</div></div>"
-    return full_html
+    return (
+        "<div style='margin: 20px 0;'>"
+        f"{''.join(era_markers)}"
+        "<div class='timeline-container'>"
+        "<div class='timeline-line'></div>"
+        f"{''.join(timeline_items)}"
+        "</div>"
+        "</div>"
+    )
 
 # ==============================================================================
 # ENGINE & STATE
@@ -1960,7 +2180,7 @@ def migrate_state():
     if isinstance(st.session_state.get("top8_resolved"), list): st.session_state.top8_resolved = set(st.session_state.top8_resolved)
     
     defaults = {
-        "year": 2026, "prestige": 60, "job_security": 75, "expected_wins": 6, "tenure": 1,
+        "year": 2026, "prestige": 60, "prestige_last_updated_year": None, "job_security": 75, "expected_wins": 6, "tenure": 1,
         "history": [], "schedule": [], "season_simulated": False, "active_transfers": {p: False for p in GameConfig.POSITIONS},
         "inflation": 1.0, "revenue_report": None, "postseason_data": {"Type": None}, "team_needs": [], "game_plan": "Normal", "week_index": 0, "news": [], "offseason_step": 1,
         "nil_class": [], "hs_total_spend": 0, "hs_shares": {p: 14.3 for p in GameConfig.POSITIONS}, "hs_spend_by_pos": {p: 0 for p in GameConfig.POSITIONS}, "hs_alloc_by_pos": {p: 0 for p in GameConfig.POSITIONS},
@@ -2377,7 +2597,12 @@ def show_offseason_top8_v8():
         
         with st.container(border=True):
             # Header
-            st.markdown(f"### {pos} {r['name']} ({r['rating']}) {r.get('trait', '')}")
+            trait = r.get("trait", "")
+            trait_html = f"<span class='top8-card-trait'>{trait}</span>" if trait else ""
+            st.markdown(
+                f"<div class='top8-card-title'>{pos} {r['name']} ({r['rating']}){trait_html}</div>",
+                unsafe_allow_html=True,
+            )
             st.caption(f"💰 Asking Price: {helper_format_cash(ask)}")
             
             c1, c2 = st.columns([2, 1])
@@ -2390,7 +2615,10 @@ def show_offseason_top8_v8():
                     st.session_state.staff,
                     st.session_state.prestige
                 )
-                st.markdown(render_interest_meter(r, chance, {}), unsafe_allow_html=True)
+                meter_html, rivalry_html = render_interest_meter(r, chance, {})
+                st.markdown(meter_html, unsafe_allow_html=True)
+                if rivalry_html:
+                    st.markdown(rivalry_html, unsafe_allow_html=True)
             
             with c2:
                 # Offer slider
@@ -2422,6 +2650,9 @@ def show_offseason_top8_v8():
                     else:
                         chance = top8_commit_chance(r, {pos: float(r.get("offer", 0) or 0)}, st.session_state.staff, st.session_state.prestige)
                         if random.random() < chance:
+                            st.balloons()
+                            st.success(f"🎉 {r['name']} COMMITS TO {st.session_state.team_name}!")
+                            time.sleep(1.5)
                             BudgetManager.spend(r["offer"], f"Top-8 commit: {r['name']}")
                             st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
                             r["status"] = "COMMITTED"
@@ -2437,8 +2668,29 @@ def show_offseason_top8_v8():
                             safe_toast(f"❌ LOST: {r['name']}")
                             st.rerun()
     st.divider()
-    if st.button("Finish Top-8 & Continue →", type="primary"):
-        st.session_state.offseason_step = 5
+    if st.button("Simulate Top-8 Battles", type="secondary"):
+        for r in st.session_state.top8:
+            rid = int(r["id"]); pos = r["pos"]
+            if rid in st.session_state.top8_resolved:
+                continue
+            offer = float(r.get("offer", 0) or 0)
+            if offer <= 0:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. No offer submitted.")
+                continue
+            chance = top8_commit_chance(r, {pos: offer}, st.session_state.staff, st.session_state.prestige)
+            if random.random() < chance:
+                BudgetManager.spend(int(offer), f"Top-8 commit: {r['name']}")
+                st.session_state.roster[pos] = max(st.session_state.roster[pos], r["rating"])
+                r["status"] = "COMMITTED"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{st.session_state.team_name} lands Top-8 {pos} {r['name']} ({r['rating']})!")
+            else:
+                r["status"] = "LOST"
+                st.session_state.top8_resolved.add(rid)
+                add_news(f"{r['name']} commits elsewhere. Lost recruit.")
+        sync_team_ratings()
         st.rerun()
 
 # ==============================================================================
@@ -2456,9 +2708,11 @@ def run_setup():
     
     if team in GameConfig.REAL_WORLD_INIT:
         d = GameConfig.REAL_WORLD_INIT[team]
-        tier, budget, conf, rival = d["Tier"], {1:25000000, 2:15000000}.get(d["Tier"], 5000000), get_conference(team), d.get("Rival", "Rival")
+        tier, budget, conf = d["Tier"], {1:25000000, 2:15000000}.get(d["Tier"], 5000000), get_conference(team)
+        rival = d.get("Rival") or get_default_rival(team)
     else:
-        tier, budget, conf, rival = 3, 5000000, get_conference(team), "Rival"
+        tier, budget, conf = 3, 5000000, get_conference(team)
+        rival = get_default_rival(team)
         
     expect = {1: 10, 2: 8, 3: 6}.get(tier, 4)
     st.info(f"**{team}** | Conf: {conf} | Tier: {tier} | Budget: {helper_format_cash(budget)} | Rival: {rival}")
@@ -2553,7 +2807,15 @@ def show_dashboard():
 
     sec_cls = "security-safe" if st.session_state.job_security > 75 else ("security-warm" if st.session_state.job_security > 40 else "security-hot")
     st.markdown(f"<div class='security-box'>Year {st.session_state.tenure} | Security: <span class='{sec_cls}'>{st.session_state.job_security}%</span></div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'><h2>{st.session_state.team_name}</h2></div>", unsafe_allow_html=True)
+    tier_name, tier_color = get_prestige_tier(st.session_state.prestige)
+    st.markdown(
+        f"<div style='background-color: {st.session_state.team_color}; padding: 10px; border-radius: 5px; color: white;'>"
+        f"<h2>{st.session_state.team_name}</h2>"
+        f"<div style='display: inline-block; background: {tier_color}; color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-left: 10px;'>"
+        f"{tier_name}</div></div>",
+        unsafe_allow_html=True,
+    )
+    st.divider()
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Budget", helper_format_cash(st.session_state.budget))
@@ -2614,7 +2876,10 @@ def show_dashboard():
                     with cols[j]:
                         rtg = role_rating(cand, role)
                         vis = f"{rtg}" if cand.get("scouted") else get_letter_grade(rtg)
-                        st.markdown(f"<div class='staff-card'><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>", unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div class='staff-card'><div class='staff-role'>{role}</div><div class='staff-name'>{cand['name']}</div><div class='small-muted'>OVR: {vis}</div><div style='font-weight:bold'>{helper_format_cash(cand['salary'])}</div></div>",
+                            unsafe_allow_html=True,
+                        )
                         b1, b2 = st.columns(2)
                         if b1.button("Hire", key=f"hire_{role}_{j}"):
                             if BudgetManager.spend(cand["salary"], f"Hire {role}"):
@@ -2624,31 +2889,29 @@ def show_dashboard():
                                 st.rerun()
                         if not cand.get("scouted") and b2.button("Scout", key=f"sc_{role}_{j}"):
                             if BudgetManager.spend(25000, "Scout Coach"):
-                                cand["scouted"] = True; st.rerun()
+                                cand["scouted"] = True
+                                st.rerun()
         else: st.info("No vacancies.")
 
     with tab3:
         st.markdown("### 🏗️ Program Facilities")
         st.caption("Invest in your program's infrastructure to boost recruiting, development, and revenue")
         st.divider()
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(render_enhanced_facility_card("Marketing", st.session_state.facilities["Marketing"]), unsafe_allow_html=True)
-            if st.button("Upgrade Marketing ($1M)", key="um", use_container_width=True):
-                if BudgetManager.spend(1000000, "Upgrade Marketing"):
-                    st.session_state.facilities["Marketing"] += 1; st.rerun()
-        with c2:
-            st.markdown(render_enhanced_facility_card("Training", st.session_state.facilities["Training"]), unsafe_allow_html=True)
-            if st.button("Upgrade Training ($3M)", key="ut", use_container_width=True):
-                if BudgetManager.spend(3000000, "Upgrade Training"):
-                    st.session_state.facilities["Training"] += 1; st.rerun()
-        with c3:
-            st.markdown(render_enhanced_facility_card("Stadium", st.session_state.facilities["Stadium"]), unsafe_allow_html=True)
-            if st.button("Upgrade Stadium ($10M)", key="us", use_container_width=True):
-                if BudgetManager.spend(10000000, "Upgrade Stadium"):
-                    st.session_state.facilities["Stadium"] += 1
-                    st.session_state.prestige = min(99, st.session_state.prestige + 1)
-                    st.rerun()
+        facility_options = [
+            ("Marketing", 1_000_000, "um"),
+            ("Training", 3_000_000, "ut"),
+            ("Stadium", 10_000_000, "us"),
+        ]
+        cols = st.columns(3)
+        for col, (facility_name, cost, key) in zip(cols, facility_options):
+            with col:
+                st.markdown(render_enhanced_facility_card(facility_name, st.session_state.facilities[facility_name]), unsafe_allow_html=True)
+                if st.button(f"Upgrade {facility_name} ({helper_format_cash(cost)})", key=key, use_container_width=True):
+                    if BudgetManager.spend(cost, f"Upgrade {facility_name}"):
+                        st.session_state.facilities[facility_name] += 1
+                        if facility_name == "Stadium":
+                            st.session_state.prestige = min(99, st.session_state.prestige + 1)
+                        st.rerun()
 
     with tab4:
         if len(st.session_state.staff) < 4: st.error("Fill Staff First!"); return
@@ -2675,38 +2938,25 @@ def show_dashboard():
             with c2:
                 st.markdown("Action")
                 if st.button(f"Play Week {wk+1}", type="primary", use_container_width=True, key=f"play_wk_{wk}"):
-                    rng = game_rng(st.session_state.year, wk+1, opp, "PLAY")
-                    res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
-                    
-                    st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
-                    if res["result"] == "W":
-                        st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                        st.session_state.job_security = min(100, st.session_state.job_security + (5 if opp==st.session_state.team_rival else 2))
-                        # V2.9 Track Rivalry
-                        if is_rival: st.session_state.trophy_stats["rivalry_wins"] += 1
-                    else:
-                        st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                        st.session_state.job_security = max(0, st.session_state.job_security - 2)
-                    
-                    st.session_state.week_index += 1
+                    play_week_game(wk, opp, opp_data, is_rival, is_sim=False)
                     if st.session_state.week_index >= 12: end_regular_season_and_stay_on_results()
                     st.rerun()
             with c3:
                 st.markdown("Simulate")
                 if st.button("Sim Season", use_container_width=True, key="sim_season_main"):
-                    while not st.session_state.season_simulated and st.session_state.week_index < 12:
-                        wk = st.session_state.week_index
-                        opp = sched[wk]
-                        opp_data = OpponentManager.get(opp)
-                        rng = game_rng(st.session_state.year, wk+1, opp, "SIM")
-                        res = engine_play_game_v8(st.session_state.team_off, st.session_state.team_def, opp_data.get("OffOVR"), opp_data.get("DefOVR"), st.session_state.staff, st.session_state.my_schemes, {"Off": opp_data.get("Off"), "Def": opp_data.get("Def")}, st.session_state.game_plan, opp_data.get("Coaches"), wk%2==0, opp==st.session_state.team_rival, st.session_state.facilities["Stadium"], opp_data.get("Stadium"), rng)
-                        st.session_state.season_logs.append({"Week": wk+1, "Opponent": opp, "Score": f"{res['result']} {res['score']}", "Stats": res["stats"], "OppOVR": opp_data.get("OVR")})
-                        if res["result"] == "W":
-                            st.session_state.record["w"] += 1; st.session_state.career_stats["w"] += 1
-                        else:
-                            st.session_state.record["l"] += 1; st.session_state.career_stats["l"] += 1
-                        st.session_state.week_index += 1
-                        time.sleep(0.01) # Stabilization
+                    with st.spinner("🏈 Simulating season..."):
+                        remaining_games = max(0, 12 - st.session_state.week_index)
+                        progress_bar = st.progress(0.0)
+                        for i in range(remaining_games):
+                            wk = st.session_state.week_index
+                            if wk >= len(sched):
+                                break
+                            opp = sched[wk]
+                            opp_data = OpponentManager.get(opp)
+                            play_week_game(wk, opp, opp_data, opp == st.session_state.team_rival, is_sim=True)
+                            progress_bar.progress((i + 1) / max(1, remaining_games))
+                            time.sleep(0.01) # Stabilization
+                        progress_bar.empty()
                     end_regular_season_and_stay_on_results()
                     st.rerun()
 
@@ -2774,7 +3024,7 @@ def show_season_end():
     
     avg_sos, best_win, worst_loss = get_season_metrics()
     st.divider(); st.subheader("🏆 Your Tournament Resume")
-    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div><div class='resume-label'>Record</div><div class='resume-val'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div><div class='resume-label'>SOS Score</div><div class='resume-val'>{avg_sos}</div></div><div><div class='resume-label'>Best Win</div><div class='resume-val'>{best_win}</div></div><div><div class='resume-label'>Worst Loss</div><div class='resume-val'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='resume-box'><div class='resume-grid'><div class='resume-item'><div class='resume-label'>Record</div><div class='resume-value'>{st.session_state.record['w']}-{st.session_state.record['l']}</div></div><div class='resume-item'><div class='resume-label'>SOS Score</div><div class='resume-value'>{avg_sos}</div></div><div class='resume-item'><div class='resume-label'>Best Win</div><div class='resume-value'>{best_win}</div></div><div class='resume-item'><div class='resume-label'>Worst Loss</div><div class='resume-value'>{worst_loss}</div></div></div></div>", unsafe_allow_html=True)
     
     st.subheader("Game-by-game recap")
     for log in st.session_state.season_logs:
@@ -2845,6 +3095,7 @@ def show_selection_sunday():
         st.session_state.last_postseason_result = "NO_BOWL"
         if st.button("End Season -> Offseason", type="primary"):
             st.session_state.history.append({"Year": st.session_state.year, "Record": f"{user_wins}-{st.session_state.record['l']}", "Rank": "NR", "Bowl": "None", "PostseasonResult": "NO_BOWL"})
+            check_and_award_achievements()
             st.session_state.game_state = GameState.SEASON_RECAP; st.rerun()
     elif user_rank <= 12:
         st.success(f"🎉 You made the COLLEGE FOOTBALL PLAYOFF! (Rank #{user_rank})")
@@ -2902,6 +3153,7 @@ def show_postseason():
                 else: st.session_state.career_stats["bowl_l"]+=1
                 
                 st.session_state.history.append({"Year": st.session_state.year, "Record": f"{w}-{l}", "Rank": f"#{data.get('Rank','?')}", "Bowl": flash['bowl'], "PostseasonResult": st.session_state.last_postseason_result})
+                process_postseason_security_boost()
                 check_and_award_achievements()
                 del st.session_state.postseason_flash
                 st.session_state.game_state = GameState.SEASON_RECAP; st.session_state.offseason_step = 1; st.rerun()
@@ -2923,12 +3175,13 @@ def show_postseason():
             return
             
         if round_num == 5:
-             st.balloons()
-             st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
-             if st.button("Finish Season & Celebrate", type="primary"):
-                 st.session_state.game_state = GameState.SEASON_RECAP
-                 st.rerun()
-             return
+            st.balloons()
+            st.success("🏆🏆🏆 NATIONAL CHAMPIONS! 🏆🏆🏆")
+            st.info("Season complete. Continue to the offseason summary to review results.")
+            if st.button("Advance to Offseason Summary →", type="primary"):
+                st.session_state.game_state = GameState.SEASON_RECAP
+                st.rerun()
+            return
 
         for m in matches:
             if m.get("t1") == st.session_state.team_name or m.get("t2") == st.session_state.team_name: user_match = m; break
@@ -2952,11 +3205,12 @@ def show_postseason():
                     winners = [m["winner"] for m in matches]
                     qf_seeds = data.get("QF_Seeds", seeds[:4])
                     if len(winners) >= 4:
+                         qf_bowls = data.get("QF_Bowls", [])
                          new_matches = [
-                            {"t1": qf_seeds[0], "t2": winners[3], "winner": None}, # 1 vs 8/9
-                            {"t1": qf_seeds[3], "t2": winners[0], "winner": None}, # 4 vs 5/12
-                            {"t1": qf_seeds[2], "t2": winners[1], "winner": None}, # 3 vs 6/11
-                            {"t1": qf_seeds[1], "t2": winners[2], "winner": None}, # 2 vs 7/10
+                            {"t1": qf_seeds[0], "t2": winners[3], "winner": None, "bowl": qf_bowls[0] if len(qf_bowls) > 0 else ""}, # 1 vs 8/9
+                            {"t1": qf_seeds[3], "t2": winners[0], "winner": None, "bowl": qf_bowls[1] if len(qf_bowls) > 1 else ""}, # 4 vs 5/12
+                            {"t1": qf_seeds[2], "t2": winners[1], "winner": None, "bowl": qf_bowls[2] if len(qf_bowls) > 2 else ""}, # 3 vs 6/11
+                            {"t1": qf_seeds[1], "t2": winners[2], "winner": None, "bowl": qf_bowls[3] if len(qf_bowls) > 3 else ""}, # 2 vs 7/10
                          ]
 
                 st.session_state.postseason_data["Round"] = 2; st.session_state.postseason_data["Matches"] = new_matches; st.rerun()
@@ -3005,36 +3259,42 @@ def show_postseason():
                     user_match["winner"] = opp
                     st.session_state.postseason_data["UserAlive"] = False
                     st.session_state.last_postseason_result = "CFP_LOSS"
+                    process_postseason_security_boost()
+                    check_and_award_achievements()
                     add_news(f"{st.session_state.team_name} is eliminated by {opp}."); st.error(f"Eliminated by {opp}")
                     st.rerun()
 
         elif user_match and user_match.get("winner"):
-             st.success("✅ Round Complete!")
-             if st.button("Advance to Next Round →", type="primary"):
-                 winners = [m["winner"] for m in matches]
-                 new_matches = []
-                 if len(winners) >= 2:
-                     for i in range(0, len(winners), 2):
-                         if i+1 < len(winners):
-                             new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None})
-                 
-                 if not new_matches and round_num >= 4:
-                      # If this was the Championship, move to Round 5 (Victory Lap)
-                      if user_alive:
-                          st.session_state.last_postseason_result = "TITLE"
-                          st.session_state.career_stats["titles"] += 1
-                          BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
-                          award_trophy("National Title")
-                          st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
-                          st.session_state.postseason_data["Round"] = 5
-                          st.rerun()
-                      else:
-                          st.session_state.game_state = GameState.SEASON_RECAP
-                          st.rerun()
-                 else:
-                     st.session_state.postseason_data["Matches"] = new_matches
-                     st.session_state.postseason_data["Round"] = round_num + 1
-                     st.rerun()
+            st.success("✅ Round Complete!")
+            if st.button("Advance to Next Round →", type="primary"):
+                winners = [m["winner"] for m in matches]
+                new_matches = []
+                if len(winners) >= 2:
+                    sf_bowls = data.get("SF_Bowls", [])
+                    for i in range(0, len(winners), 2):
+                        if i+1 < len(winners):
+                            bowl_name = sf_bowls[i // 2] if len(sf_bowls) > i // 2 else ""
+                            new_matches.append({"t1": winners[i], "t2": winners[i+1], "winner": None, "bowl": bowl_name})
+
+                if not new_matches and round_num >= 4:
+                    # If this was the Championship, move to Round 5 (Victory Lap)
+                    if user_alive:
+                        st.session_state.last_postseason_result = "TITLE"
+                        st.session_state.career_stats["titles"] += 1
+                        BudgetManager.add(50_000_000, "NATIONAL CHAMPIONSHIP!")
+                        award_trophy("National Title")
+                        st.session_state.history.append({"Year": st.session_state.year, "Record": "CHAMPS", "Rank": "#1", "Bowl": "National Title", "PostseasonResult": "TITLE"})
+                        process_postseason_security_boost()
+                        check_and_award_achievements()
+                        st.session_state.postseason_data["Round"] = 5
+                        st.rerun()
+                    else:
+                        st.session_state.game_state = GameState.SEASON_RECAP
+                        st.rerun()
+                else:
+                    st.session_state.postseason_data["Matches"] = new_matches
+                    st.session_state.postseason_data["Round"] = round_num + 1
+                    st.rerun()
 
 def show_season_recap():
     sync_team_ratings()
@@ -3043,9 +3303,159 @@ def show_season_recap():
     st.markdown(UIComponents.gradient_header("SEASON COMPLETE", f"Record: {summary['Record']} | Rank: {summary['FinalRank']}"), unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Record", summary["Record"]); c2.metric("Rank", summary["FinalRank"]); c3.metric("SOS", summary["SOS"]); c4.metric("Bowl", summary["Postseason"])
+
+    check_and_award_achievements()
     
+    st.subheader("🎯 Season Goals Report Card")
+    wins = st.session_state.record['w']
+    losses = st.session_state.record['l']
+    expected = st.session_state.expected_wins
+    rival = st.session_state.team_rival
+    goals = []
+
+    bowl_eligible = wins >= 6
+    goals.append({
+        "name": "Bowl Eligibility",
+        "target": "Win 6+ Games",
+        "result": f"{wins} Wins",
+        "achieved": bowl_eligible,
+        "icon": "🎳" if bowl_eligible else "❌",
+    })
+
+    beat_expectations = wins >= expected
+    goals.append({
+        "name": "Meet Expectations",
+        "target": f"Win {expected}+ Games",
+        "result": f"{wins} Wins ({'+' if wins >= expected else ''}{wins - expected})",
+        "achieved": beat_expectations,
+        "icon": "✅" if beat_expectations else "⚠️",
+    })
+
+    rival_game = next((log for log in st.session_state.season_logs if log['Opponent'] == rival), None)
+    beat_rival = bool(rival_game and 'W' in rival_game.get('Score', ''))
+    goals.append({
+        "name": f"Beat {rival}",
+        "target": "Win Rivalry Game",
+        "result": rival_game['Score'] if rival_game else "Not Played",
+        "achieved": beat_rival,
+        "icon": "⚡" if beat_rival else "💔",
+    })
+
+    conf_champ = "CONF" in st.session_state.get("last_postseason_result", "")
+    if st.session_state.team_conf in ["SEC", "Big Ten", "ACC", "Big 12"]:
+        goals.append({
+            "name": "Conference Champion",
+            "target": f"Win {st.session_state.team_conf}",
+            "result": "Champion" if conf_champ else "Not Won",
+            "achieved": conf_champ,
+            "icon": "🏅" if conf_champ else "—",
+        })
+
+    made_cfp = (
+        st.session_state.get("last_postseason_result", "").startswith("CFP")
+        or st.session_state.get("last_postseason_result") == "TITLE"
+    )
+    goals.append({
+        "name": "College Football Playoff",
+        "target": "Top 12 Ranking",
+        "result": summary['FinalRank'],
+        "achieved": made_cfp,
+        "icon": "🏆" if made_cfp else "—",
+    })
+
+    goals_met = sum(1 for g in goals if g["achieved"])
+    total_goals = len(goals)
+    grade_pct = (goals_met / total_goals) * 100
+
+    if grade_pct >= 80: grade = "A"; grade_color = "#4CAF50"
+    elif grade_pct >= 60: grade = "B"; grade_color = "#2196F3"
+    elif grade_pct >= 40: grade = "C"; grade_color = "#FF9800"
+    else: grade = "D"; grade_color = "#f44336"
+
+    st.markdown(f"""
+    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 20px;
+                border-radius: 12px;
+                margin-bottom: 20px;
+                color: white;'>
+        <div style='display: flex; justify-content: space-between; align-items: center; gap: 20px;'>
+            <div style='flex: 1;'>
+                <h3 style='margin: 0; color: white;'>Goals Achieved: {goals_met}/{total_goals}</h3>
+                <div style='background: rgba(255,255,255,0.2);
+                           height: 20px;
+                           border-radius: 10px;
+                           margin-top: 10px;
+                           overflow: hidden;'>
+                    <div style='background: {grade_color};
+                               height: 100%;
+                               width: {grade_pct}%;
+                               transition: width 0.5s ease;'></div>
+                </div>
+            </div>
+            <div style='font-size: 4em;
+                       font-weight: 900;
+                       color: {grade_color};
+                       text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                       background: white;
+                       width: 80px;
+                       height: 80px;
+                       border-radius: 50%;
+                       display: flex;
+                       align-items: center;
+                       justify-content: center;'>
+                {grade}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    cols = st.columns(min(len(goals), 3))
+    for i, goal in enumerate(goals):
+        with cols[i % len(cols)]:
+            status_style = "background: #e8f5e9; border-left: 4px solid #4CAF50;" if goal["achieved"] else "background: #ffebee; border-left: 4px solid #f44336;"
+            st.markdown(f"""
+            <div style='{status_style}
+                       padding: 15px;
+                       border-radius: 8px;
+                       margin-bottom: 10px;'>
+                <div style='font-size: 2em; text-align: center;'>{goal['icon']}</div>
+                <div style='font-weight: bold; margin: 5px 0; text-align: center;'>{goal['name']}</div>
+                <div style='font-size: 0.85em; color: #666; text-align: center;'>Target: {goal['target']}</div>
+                <div style='font-size: 0.9em; font-weight: bold; margin-top: 5px; text-align: center;'>{goal['result']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.divider()
+
+    st.subheader("🎥 Season Highlights")
+    if st.session_state.season_logs:
+        best_game = max(
+            st.session_state.season_logs,
+            key=lambda g: g.get("OppOVR", 0) if "W" in g.get("Score", "") else 0
+        )
+        if "W" in best_game.get("Score", ""):
+            st.success(f"🔥 **Signature Win:** Beat #{best_game['Opponent']} ({best_game['OppOVR']}) {best_game['Score']}")
+        
+        close_wins = []
+        for g in st.session_state.season_logs:
+            score = g.get("Score", "")
+            if "W" not in score:
+                continue
+            try:
+                final_score = score.split()[1]
+                left, right = final_score.split("-")
+                if abs(int(left) - int(right)) <= 7:
+                    close_wins.append(g)
+            except (IndexError, ValueError):
+                continue
+        if close_wins:
+            st.warning(f"😅 **Nail-biters:** {len(close_wins)} wins decided by 7 or less")
+    else:
+        st.info("No games logged yet.")
+
     st.divider()
     if st.button("Proceed to Offseason ->", type="primary"):
+        update_prestige_after_season()
         apply_roster_attrition()
         st.session_state.game_state = GameState.OFFSEASON; st.session_state.offseason_step = 1; st.rerun()
 
@@ -3242,6 +3652,8 @@ def render_system_sidebar():
     with st.sidebar:
         st.header("💾 CEO System")
         st.caption(f"Version {STATE_VERSION}")
+        if not HAS_MODULES:
+            st.info("External helpers not found. Using inline helpers from this file.")
         if st.button("Export Save File"):
             state_copy = dict(st.session_state)
             if "top8_resolved" in state_copy:
@@ -3274,9 +3686,8 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
-# Initialize the session state and render the system sidebar
+# Initialize the session state
 init_session_state_defaults()
-render_system_sidebar()
 
 # ---
 # Function definitions for each game state must be declared beforehand and **not nested** inside any conditional blocks.
@@ -3305,3 +3716,6 @@ else:
     # If the game state is invalid or missing, default back to the dashboard.
     st.session_state.game_state = GameState.DASHBOARD
     st.rerun()
+
+# Render the system sidebar last to avoid UI ghosting with heavy HTML cards.
+render_system_sidebar()
