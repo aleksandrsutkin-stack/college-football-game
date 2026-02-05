@@ -169,6 +169,14 @@ class GameConfig:
         "MAC": ["Toledo", "Miami (OH)", "Ohio", "Northern Illinois", "Western Michigan", "Bowling Green", "Buffalo"],
         "G5": ["Tulane", "Memphis", "Navy", "Army", "USF", "Liberty", "App State", "James Madison", "San Jose State", "Wyoming", "Air Force", "Nevada", "UNLV", "Rice", "North Texas", "UTSA", "Texas State"]
     }
+
+    G5_RIVAL_CANDIDATES = {
+        "San Jose State": ["Fresno St", "Stanford"],
+        "Fresno St": ["San Jose State", "San Diego St"],
+        "San Diego St": ["Fresno St", "San Jose State"],
+        "Stanford": ["Cal"],
+        "Cal": ["Stanford"],
+    }
     
     ALL_TEAMS = [t for c in CONFERENCES.values() for t in c]
 
@@ -1367,6 +1375,19 @@ def get_conference(team: str) -> str:
     for conf, teams in get_conferences_map().items():
         if team in teams: return conf
     return "G5"
+
+def get_default_rival(team: str) -> str:
+    preset = GameConfig.TEAMS_DB.get(team, {}).get("Rival")
+    if preset:
+        return preset
+    if team in GameConfig.G5_RIVAL_CANDIDATES:
+        return random.choice(GameConfig.G5_RIVAL_CANDIDATES[team])
+    conf = get_conference(team)
+    candidates = [t for t in get_conferences_map().get(conf, []) if t != team]
+    if candidates:
+        rng = make_deterministic_rng("rival", team)
+        return rng.choice(candidates)
+    return "Rival"
 
 def compute_team_needs(roster: dict, k: int = 3) -> list:
     roster = roster or {}
@@ -2687,9 +2708,11 @@ def run_setup():
     
     if team in GameConfig.REAL_WORLD_INIT:
         d = GameConfig.REAL_WORLD_INIT[team]
-        tier, budget, conf, rival = d["Tier"], {1:25000000, 2:15000000}.get(d["Tier"], 5000000), get_conference(team), d.get("Rival", "Rival")
+        tier, budget, conf = d["Tier"], {1:25000000, 2:15000000}.get(d["Tier"], 5000000), get_conference(team)
+        rival = d.get("Rival") or get_default_rival(team)
     else:
-        tier, budget, conf, rival = 3, 5000000, get_conference(team), "Rival"
+        tier, budget, conf = 3, 5000000, get_conference(team)
+        rival = get_default_rival(team)
         
     expect = {1: 10, 2: 8, 3: 6}.get(tier, 4)
     st.info(f"**{team}** | Conf: {conf} | Tier: {tier} | Budget: {helper_format_cash(budget)} | Rival: {rival}")
@@ -3279,6 +3302,8 @@ def show_season_recap():
     st.markdown(UIComponents.gradient_header("SEASON COMPLETE", f"Record: {summary['Record']} | Rank: {summary['FinalRank']}"), unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Record", summary["Record"]); c2.metric("Rank", summary["FinalRank"]); c3.metric("SOS", summary["SOS"]); c4.metric("Bowl", summary["Postseason"])
+
+    check_and_award_achievements()
     
     st.subheader("🎯 Season Goals Report Card")
     wins = st.session_state.record['w']
